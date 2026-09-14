@@ -6,27 +6,9 @@ use std::path::Path;
 
 use flate2::Crc;
 use flate2::write::ZlibEncoder;
-use ue2_assets::Error;
 use ue2_package::{ObjectRef, Package};
 
 use crate::{Result, read_decrypted};
-
-/// Top mip of a texture export, decoded to RGBA8.
-pub(crate) fn decode(package: &Package, file: &[u8], index: usize) -> std::result::Result<(u32, u32, Vec<u8>), Error> {
-    let exports = package.exports();
-    let export = exports.get(index).ok_or(Error::ExportOutOfRange)?;
-    let texture = ue2_assets::read_texture(package, file, export)?;
-    let palette = match texture.palette {
-        ObjectRef::Null => None,
-        ObjectRef::Export(palette) => {
-            Some(ue2_assets::read_palette(package, file, exports.get(palette).ok_or(Error::MissingPalette)?)?)
-        }
-        ObjectRef::Import(_) => return Err(Error::MissingPalette),
-    };
-    let mip = texture.mips.first().ok_or(Error::NoMipArray)?;
-    let rgba = ue2_assets::decode_rgba(texture.format, mip, palette.as_deref())?;
-    Ok((mip.width, mip.height, rgba))
-}
 
 /// Decodes every texture in a package; returns how many decoded and a message per failure.
 pub(crate) fn check_all(package: &Package, file: &[u8]) -> (usize, Vec<String>) {
@@ -36,7 +18,7 @@ pub(crate) fn check_all(package: &Package, file: &[u8]) -> (usize, Vec<String>) 
         if export.serial_size == 0 || !package.class_name(export).eq_ignore_ascii_case("Texture") {
             continue;
         }
-        match decode(package, file, index) {
+        match ue2_assets::decode_texture(package, file, index) {
             Ok(_) => decoded += 1,
             Err(error) => failures.push(format!("{}: {error}", package.object_path(ObjectRef::Export(index)))),
         }
@@ -50,9 +32,9 @@ pub(crate) fn export(package_path: &Path, object: &str, output: &Path) -> Result
     let index = (0..package.exports().len())
         .find(|&index| package.object_path(ObjectRef::Export(index)).eq_ignore_ascii_case(object))
         .ok_or_else(|| format!("no object `{object}` in {}", package_path.display()))?;
-    let (width, height, rgba) = decode(&package, &file, index)?;
-    fs::write(output, png(width, height, &rgba)?)?;
-    println!("wrote {} ({width}x{height})", output.display());
+    let image = ue2_assets::decode_texture(&package, &file, index)?;
+    fs::write(output, png(image.width, image.height, &image.rgba)?)?;
+    println!("wrote {} ({}x{})", output.display(), image.width, image.height);
     Ok(())
 }
 

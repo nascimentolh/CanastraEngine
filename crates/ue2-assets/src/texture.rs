@@ -89,6 +89,30 @@ fn mips_at(object: &[u8], start: usize) -> Result<Vec<Mip<'_>>, Error> {
     Ok(mips)
 }
 
+/// A decoded image, RGBA8 rows from the top.
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// Reads the texture export at `index`, resolves its palette and decodes the top mip.
+pub fn decode_texture(package: &Package, file: &[u8], index: usize) -> Result<Image, Error> {
+    let exports = package.exports();
+    let texture = read_texture(package, file, exports.get(index).ok_or(Error::ExportOutOfRange)?)?;
+    let palette = match texture.palette {
+        ObjectRef::Null => None,
+        ObjectRef::Export(palette) => {
+            Some(read_palette(package, file, exports.get(palette).ok_or(Error::MissingPalette)?)?)
+        }
+        ObjectRef::Import(_) => return Err(Error::MissingPalette),
+    };
+    let mip = texture.mips.first().ok_or(Error::NoMipArray)?;
+    let rgba = decode_rgba(texture.format, mip, palette.as_deref())?;
+    Ok(Image { width: mip.width, height: mip.height, rgba })
+}
+
 /// Palette colors as RGBA.
 pub fn read_palette(package: &Package, file: &[u8], export: &Export) -> Result<Vec<[u8; 4]>, Error> {
     let mut reader = Reader::at(object_bytes(file, export)?, export.serial_offset);

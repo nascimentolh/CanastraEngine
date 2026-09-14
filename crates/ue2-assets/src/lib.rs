@@ -10,7 +10,7 @@ use std::fmt;
 use ue2_core::{ReadError, Reader};
 use ue2_package::Package;
 
-pub use texture::{Mip, Texture, TextureFormat, decode_rgba, read_palette, read_texture};
+pub use texture::{Image, Mip, Texture, TextureFormat, decode_rgba, decode_texture, read_palette, read_texture};
 
 #[derive(Debug)]
 pub enum Error {
