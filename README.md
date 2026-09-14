@@ -11,7 +11,9 @@ so they can be tested against synthetic bytes and reused by tools.
 
 ```
 apps/        canastra-cli        IO, filesystem, user-facing commands
-crates/      l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
+crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
+             canastra-data       game data domain model shared by client, server and Studio
+             l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
              l2-dat              schema-driven decoder for the legacy system/*.dat tables
              ue2-package         UE2 package tables: names, imports, exports, object paths
              ue2-core            bounds-checked binary reader (compact index, FString, UTF-16)
@@ -25,6 +27,7 @@ cargo run --release -p canastra-cli -- scan    "<H5 client root>"
 cargo run --release -p canastra-cli -- package "<file>.utx"
 cargo run --release -p canastra-cli -- dat     "<file>.dat"
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
+cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats/items"
 ```
 
 `scan` on a real H5 client: 3020 of 3021 files decrypt, 1244 packages parse, and all 54 `system`

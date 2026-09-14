@@ -22,6 +22,20 @@ Decided on 2026-09-14 through a design interview. Change an entry only with a ne
   integrity checked on save; a broken reference blocks the save.
 - **Edited only through Canastra Studio**, never by hand.
 
+### Migration policy (2026-09-14)
+
+- **The server decides what exists and how it plays; the client supplies names and presentation.**
+  Client-only entries are not playable and are left out, with a warning.
+- **No silent loss:** every legacy client field is mapped or ignored under a stated reason (gameplay
+  copy, unknown meaning, not modeled yet). An unaccounted field fails the migration. Server data
+  without a place in the model is counted per item type.
+- **Repairs are reported:** broken client data is fixed only where the intent is clear, and each fix
+  is listed.
+- **Presentation is independent of gameplay kind:** shields are armor held like a weapon, and some etc
+  items are worn meshes.
+- Deferred until their systems are designed: item conditions, extractable contents, on-crit and
+  on-magic skills, item sets, quests.
+
 ## Server and extensibility
 
 - **Rust, same workspace.**
