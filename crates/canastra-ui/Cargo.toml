@@ -1,0 +1,13 @@
+[package]
+name = "canastra-ui"
+description = "Canastra UI: markup, a CSS subset and layout into a draw list. No GPU."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+roxmltree.workspace = true
+taffy.workspace = true
+
+[lints]
+workspace = true

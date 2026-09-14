@@ -1,0 +1,112 @@
+//! Canastra UI core: markup plus a CSS subset, laid out into a draw list.
+//!
+//! No GPU and no fonts: text size comes from a [`TextMeasure`] the renderer provides, and the
+//! result is plain draw commands and hit areas, so every rule here is testable without a window.
+
+mod css;
+mod layout;
+mod markup;
+
+use std::fmt;
+
+pub use css::{StyleSheet, parse_stylesheet};
+pub use layout::build;
+pub use markup::{Element, Tag, parse_markup};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Rgba(pub [u8; 4]);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fill {
+    Solid(Rgba),
+    /// Top color to bottom color.
+    Vertical(Rgba, Rgba),
+}
+
+/// Logical pixels from the top-left of the viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Rect {
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && y >= self.y && x < self.x + self.width && y < self.y + self.height
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Draw {
+    Rect {
+        rect: Rect,
+        fill: Option<Fill>,
+        border: Option<(f32, Rgba)>,
+        radius: f32,
+    },
+    /// A texture; with `inset > 0` its edges keep their size and only the middle stretches.
+    Image {
+        rect: Rect,
+        source: String,
+        inset: f32,
+    },
+    Text {
+        rect: Rect,
+        text: String,
+        color: Rgba,
+        size: f32,
+    },
+}
+
+/// An interactive element on screen, in pre-order element index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Hit {
+    pub rect: Rect,
+    pub element: usize,
+    pub action: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Frame {
+    /// Back to front.
+    pub draws: Vec<Draw>,
+    hits: Vec<Hit>,
+}
+
+impl Frame {
+    /// The topmost interactive element under the point.
+    pub fn hit(&self, x: f32, y: f32) -> Option<&Hit> {
+        self.hits.iter().rev().find(|hit| hit.rect.contains(x, y))
+    }
+}
+
+/// Measures text as the renderer will draw it.
+pub trait TextMeasure {
+    /// Width and height of `text` at `size`, wrapped to `max_width` when given.
+    fn measure(&mut self, text: &str, size: f32, max_width: Option<f32>) -> (f32, f32);
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiError {
+    Markup(String),
+    UnknownTag(String),
+    UnknownAttribute { tag: String, attribute: String },
+    Css(String),
+    Layout(String),
+}
+
+impl fmt::Display for UiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Markup(message) => write!(f, "markup: {message}"),
+            Self::UnknownTag(tag) => write!(f, "markup: unknown element <{tag}>"),
+            Self::UnknownAttribute { tag, attribute } => write!(f, "markup: <{tag}> has no attribute `{attribute}`"),
+            Self::Css(message) => write!(f, "css: {message}"),
+            Self::Layout(message) => write!(f, "layout: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for UiError {}
