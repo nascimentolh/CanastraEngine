@@ -25,6 +25,26 @@ pub enum Fill {
     Radial(Rgba, Rgba),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// How text is shaped; inherited from parent to child like in CSS.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextStyle {
+    /// Font size in logical pixels.
+    pub size: f32,
+    /// 100 to 900; 400 is normal, 700 bold.
+    pub weight: u16,
+    /// Extra space between letters in logical pixels.
+    pub letter_spacing: f32,
+    pub align: TextAlign,
+}
+
 /// One `box-shadow` layer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Shadow {
@@ -75,7 +95,7 @@ pub enum Draw {
         rect: Rect,
         text: String,
         color: Rgba,
-        size: f32,
+        style: TextStyle,
     },
 }
 
@@ -103,8 +123,8 @@ impl Frame {
 
 /// Measures text as the renderer will draw it.
 pub trait TextMeasure {
-    /// Width and height of `text` at `size`, wrapped to `max_width` when given.
-    fn measure(&mut self, text: &str, size: f32, max_width: Option<f32>) -> (f32, f32);
+    /// Width and height of `text` in `style`, wrapped to `max_width` when given.
+    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> (f32, f32);
 }
 
 #[derive(Debug, Clone, PartialEq)]

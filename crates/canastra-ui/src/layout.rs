@@ -7,7 +7,7 @@ use taffy::prelude::{
 
 use crate::css::{Align, Declaration, Length, StyleSheet};
 use crate::markup::{Element, Tag};
-use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextMeasure, UiError};
+use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextAlign, TextMeasure, TextStyle, UiError};
 
 const DEFAULT_FONT_SIZE: f32 = 13.0;
 
@@ -19,7 +19,7 @@ struct Computed {
     radius: f32,
     shadows: Vec<Shadow>,
     color: Rgba,
-    font_size: f32,
+    text: TextStyle,
     border_image: Option<(String, f32)>,
     padding: [f32; 4],
 }
@@ -30,7 +30,7 @@ const ROOT: Computed = Computed {
     radius: 0.0,
     shadows: Vec::new(),
     color: Rgba([255; 4]),
-    font_size: DEFAULT_FONT_SIZE,
+    text: TextStyle { size: DEFAULT_FONT_SIZE, weight: 400, letter_spacing: 0.0, align: TextAlign::Left },
     border_image: None,
     padding: [0.0; 4],
 };
@@ -38,7 +38,7 @@ const ROOT: Computed = Computed {
 /// Text measured by taffy while laying out leaves.
 struct Measured {
     text: String,
-    size: f32,
+    style: TextStyle,
 }
 
 struct Node<'a> {
@@ -78,7 +78,7 @@ pub fn build(
                         AvailableSpace::Definite(width) => Some(width),
                         _ => None,
                     });
-                    let (width, height) = text.measure(&measured.text, measured.size, max_width);
+                    let (width, height) = text.measure(&measured.text, &measured.style, max_width);
                     Size { width, height }
                 }
                 None => Size::ZERO,
@@ -104,8 +104,8 @@ fn node<'a>(
     let index = *next_index;
     *next_index += 1;
     let mut style = default_style(element.tag);
-    // Only text color and size inherit; everything else starts over.
-    let mut computed = Computed { color: parent.color, font_size: parent.font_size, ..ROOT };
+    // Only text color and style inherit; everything else starts over.
+    let mut computed = Computed { color: parent.color, text: parent.text, ..ROOT };
     for declaration in sheet.cascade(element, hovered == Some(index)) {
         apply(declaration, &mut style, &mut computed);
     }
@@ -115,7 +115,7 @@ fn node<'a>(
         _ => None,
     };
     let (id, children) = if let Some(text) = &text {
-        let measured = Measured { text: text.clone(), size: computed.font_size };
+        let measured = Measured { text: text.clone(), style: computed.text };
         (tree.new_leaf_with_context(style, measured)?, Vec::new())
     } else {
         let children = element
@@ -172,7 +172,10 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::BorderRadius(radius) => computed.radius = *radius,
         Declaration::BoxShadow(shadows) => computed.shadows.clone_from(shadows),
         Declaration::Color(color) => computed.color = *color,
-        Declaration::FontSize(size) => computed.font_size = *size,
+        Declaration::FontSize(size) => computed.text.size = *size,
+        Declaration::FontWeight(weight) => computed.text.weight = *weight,
+        Declaration::LetterSpacing(spacing) => computed.text.letter_spacing = *spacing,
+        Declaration::TextAlign(align) => computed.text.align = *align,
         Declaration::BorderImage(source, inset) => computed.border_image = Some((source.clone(), *inset)),
     }
 }
@@ -244,12 +247,7 @@ fn emit(
             width: rect.width - left - right,
             height: rect.height - top - bottom,
         };
-        frame.draws.push(Draw::Text {
-            rect: content,
-            text: text.clone(),
-            color: computed.color,
-            size: computed.font_size,
-        });
+        frame.draws.push(Draw::Text { rect: content, text: text.clone(), color: computed.color, style: computed.text });
     }
     if node.element.tag == Tag::Button || node.element.action.is_some() {
         frame.hits.push(Hit { rect, element: node.index, action: node.element.action.clone() });
@@ -273,7 +271,7 @@ mod tests {
     struct Monospace;
 
     impl TextMeasure for Monospace {
-        fn measure(&mut self, text: &str, _size: f32, _max_width: Option<f32>) -> (f32, f32) {
+        fn measure(&mut self, text: &str, _style: &TextStyle, _max_width: Option<f32>) -> (f32, f32) {
             (f32::from(u16::try_from(text.chars().count()).unwrap()) * 8.0, 16.0)
         }
     }

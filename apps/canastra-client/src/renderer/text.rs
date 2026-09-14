@@ -1,6 +1,7 @@
 //! Text through glyphon: one font system measures for layout and shapes for drawing.
 
-use canastra_ui::{Rect, Rgba, TextMeasure};
+use canastra_ui::{Rect, Rgba, TextAlign, TextMeasure, TextStyle};
+use glyphon::cosmic_text::Align;
 use glyphon::{
     Attrs, Buffer, Cache, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas,
     TextBounds, TextRenderer, Viewport,
@@ -14,27 +15,38 @@ pub(super) struct Label<'a> {
     pub(super) rect: Rect,
     pub(super) text: &'a str,
     pub(super) color: Rgba,
-    pub(super) size: f32,
+    pub(super) style: TextStyle,
 }
 
 pub(crate) struct Fonts(FontSystem);
 
 impl Fonts {
-    fn buffer(&mut self, text: &str, size: f32, width: Option<f32>) -> Buffer {
+    /// Shapes `text` in `style` scaled by `scale`, wrapping at `width` physical pixels.
+    fn buffer(&mut self, text: &str, style: &TextStyle, scale: f32, width: Option<f32>) -> Buffer {
+        let size = style.size * scale;
         let mut buffer = Buffer::new(&mut self.0, Metrics::new(size, size * LINE_HEIGHT));
         buffer.set_size(width, None);
-        buffer.set_text(text, &Attrs::new().family(Family::SansSerif), Shaping::Advanced, None);
+        let attrs = Attrs::new()
+            .family(Family::SansSerif)
+            .weight(glyphon::Weight(style.weight))
+            .letter_spacing(style.letter_spacing / style.size.max(1.0));
+        let align = match style.align {
+            TextAlign::Left => None,
+            TextAlign::Center => Some(Align::Center),
+            TextAlign::Right => Some(Align::Right),
+        };
+        buffer.set_text(text, &attrs, Shaping::Advanced, align);
         buffer.shape_until_scroll(&mut self.0, false);
         buffer
     }
 }
 
 impl TextMeasure for Fonts {
-    fn measure(&mut self, text: &str, size: f32, max_width: Option<f32>) -> (f32, f32) {
-        let buffer = self.buffer(text, size, max_width);
+    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> (f32, f32) {
+        let buffer = self.buffer(text, style, 1.0, max_width);
         let (width, lines) =
             buffer.layout_runs().fold((0.0_f32, 0_u16), |(width, lines), run| (width.max(run.line_w), lines + 1));
-        (width.ceil(), f32::from(lines.max(1)) * size * LINE_HEIGHT)
+        (width.ceil(), f32::from(lines.max(1)) * style.size * LINE_HEIGHT)
     }
 }
 
@@ -67,7 +79,7 @@ impl Text {
         let buffers: Vec<Buffer> = labels
             .iter()
             .map(|label| {
-                let mut buffer = self.fonts.buffer(label.text, label.size * scale, Some(label.rect.width * scale));
+                let mut buffer = self.fonts.buffer(label.text, &label.style, scale, Some(label.rect.width * scale));
                 buffer.set_size(Some(label.rect.width * scale), Some(label.rect.height * scale));
                 buffer
             })

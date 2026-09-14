@@ -1,7 +1,7 @@
 //! The CSS subset: simple compound selectors, a fixed set of properties, strict values.
 
 use crate::markup::{Element, Tag};
-use crate::{Fill, Rgba, Shadow, UiError};
+use crate::{Fill, Rgba, Shadow, TextAlign, UiError};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StyleSheet {
@@ -76,6 +76,9 @@ pub(crate) enum Declaration {
     BoxShadow(Vec<Shadow>),
     Color(Rgba),
     FontSize(f32),
+    FontWeight(u16),
+    LetterSpacing(f32),
+    TextAlign(TextAlign),
     /// Texture path and the inset, in texture pixels, kept unstretched at each edge.
     BorderImage(String, f32),
 }
@@ -179,6 +182,12 @@ fn declaration(text: &str) -> Result<Declaration, UiError> {
         "box-shadow" => Declaration::BoxShadow(shadows(value)?),
         "color" => Declaration::Color(color(value)?),
         "font-size" => Declaration::FontSize(px()?),
+        "font-weight" => Declaration::FontWeight(weight(value)?),
+        "letter-spacing" => Declaration::LetterSpacing(px()?),
+        "text-align" => Declaration::TextAlign(keyword(
+            value,
+            &[("left", TextAlign::Left), ("center", TextAlign::Center), ("right", TextAlign::Right)],
+        )?),
         "border-image" => border_image(value)?,
         other => return Err(css(&format!("unsupported property `{other}`"))),
     })
@@ -215,6 +224,19 @@ fn edges(value: &str) -> Result<[f32; 4], UiError> {
         [top, right, bottom, left] => [top, right, bottom, left],
         _ => return Err(css(&format!("expected one to four lengths, found `{value}`"))),
     })
+}
+
+/// `normal`, `bold` or a multiple of 100 from 100 to 900.
+fn weight(value: &str) -> Result<u16, UiError> {
+    match value {
+        "normal" => Ok(400),
+        "bold" => Ok(700),
+        _ => value
+            .parse()
+            .ok()
+            .filter(|weight| (100..=900).contains(weight) && weight % 100 == 0)
+            .ok_or_else(|| css(&format!("expected normal, bold or 100..900, found `{value}`"))),
+    }
 }
 
 fn keyword<T: Copy>(value: &str, options: &[(&str, T)]) -> Result<T, UiError> {
@@ -333,6 +355,8 @@ mod tests {
         assert_eq!(length("50%").unwrap(), Length::Percent(0.5));
         assert_eq!(fill("linear-gradient(#000, #fff)").unwrap(), Fill::Vertical(Rgba([0, 0, 0, 255]), Rgba([255; 4])));
         assert_eq!(fill("radial-gradient(#fff, #000)").unwrap(), Fill::Radial(Rgba([255; 4]), Rgba([0, 0, 0, 255])));
+        assert_eq!((weight("bold").unwrap(), weight("300").unwrap()), (700, 300));
+        assert!(weight("350").is_err() && weight("1000").is_err());
         assert_eq!(border("1px solid #fff").unwrap(), Some((1.0, Rgba([255; 4]))));
         assert_eq!(
             shadows("0 -4px 12px #0008, inset 0 1px 0 #fff").unwrap(),

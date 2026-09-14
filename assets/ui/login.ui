@@ -1,7 +1,7 @@
 <ui>
     <window id="login">
-        <label class="title" text="Canastra"/>
-        <label class="subtitle" text="Lineage II High Five"/>
+        <label class="title" text="CANASTRA"/>
+        <label class="subtitle" text="LINEAGE II · HIGH FIVE"/>
         <label class="status" bind="app.status" text=""/>
         <row class="actions">
             <button class="primary" text="Login" action="login"/>
