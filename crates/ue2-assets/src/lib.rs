@@ -3,13 +3,14 @@
 //! Nothing is converted or rewritten: parsed objects borrow the original bytes, and
 //! pixels are decoded to RGBA only when a caller asks for them.
 
+mod properties;
 mod texture;
 
 use std::fmt;
 
-use ue2_core::{ReadError, Reader};
-use ue2_package::Package;
+use ue2_core::ReadError;
 
+pub use properties::{Property, find, object_properties};
 pub use texture::{Image, Mip, Texture, TextureFormat, decode_rgba, decode_texture, read_palette, read_texture};
 
 #[derive(Debug)]
@@ -55,59 +56,4 @@ impl From<ue2_package::Error> for Error {
     fn from(error: ue2_package::Error) -> Self {
         Self::Package(error)
     }
-}
-
-const BOOL: u8 = 3;
-const STRUCT: u8 = 10;
-
-/// One tagged property: its name and raw value bytes (empty for booleans).
-struct Property<'a> {
-    name: &'a str,
-    value: &'a [u8],
-}
-
-/// Reads the tagged property list that starts every object, up to `None`.
-fn read_properties<'a>(reader: &mut Reader<'a>, package: &'a Package) -> Result<Vec<Property<'a>>, Error> {
-    let mut properties = Vec::new();
-    loop {
-        let name = package.name_at(reader.compact()?)?;
-        if name.eq_ignore_ascii_case("None") {
-            return Ok(properties);
-        }
-        let info = reader.u8()?;
-        let kind = info & 0x0F;
-        if kind == 0 {
-            return Err(Error::UnknownPropertyType(kind));
-        }
-        if kind == STRUCT {
-            package.name_at(reader.compact()?)?;
-        }
-        let size = match (info >> 4) & 0x07 {
-            0 => 1,
-            1 => 2,
-            2 => 4,
-            3 => 12,
-            4 => 16,
-            5 => usize::from(reader.u8()?),
-            6 => usize::from(reader.u16()?),
-            _ => reader.u32()? as usize,
-        };
-        // For booleans the high bit is the value, not an array flag.
-        if info & 0x80 != 0 && kind != BOOL {
-            skip_array_index(reader)?;
-        }
-        let value = if kind == BOOL { &[][..] } else { reader.bytes(size)? };
-        properties.push(Property { name, value });
-    }
-}
-
-/// One byte, or two when the top bit is set, or four when the top two bits are set.
-fn skip_array_index(reader: &mut Reader<'_>) -> Result<(), ReadError> {
-    let first = reader.u8()?;
-    let extra = match first {
-        0..0x80 => 0,
-        0x80..0xC0 => 1,
-        _ => 3,
-    };
-    reader.bytes(extra).map(drop)
 }

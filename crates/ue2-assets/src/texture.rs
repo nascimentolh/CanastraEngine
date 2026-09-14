@@ -3,7 +3,8 @@
 use ue2_core::Reader;
 use ue2_package::{Export, ObjectRef, Package};
 
-use crate::{Error, Property, read_properties};
+use crate::properties::read_properties;
+use crate::{Error, Property, find};
 
 /// A 4096-pixel texture has 13 mips; anything above this is not a mip count.
 const MAX_MIPS: i32 = 16;
@@ -51,12 +52,8 @@ pub fn read_texture<'a>(package: &'a Package, file: &'a [u8], export: &Export) -
     let object = object_bytes(file, export)?;
     let mut reader = Reader::at(object, export.serial_offset);
     let properties = read_properties(&mut reader, package)?;
-    let byte = |name: &str| find(&properties, name).and_then(|value| value.first().copied());
-    let format = TextureFormat::from_byte(byte("Format").unwrap_or(0))?;
-    let palette = match find(&properties, "Palette") {
-        Some(value) => package.object_at(Reader::at(value, 0).compact()?)?,
-        None => ObjectRef::Null,
-    };
+    let format = TextureFormat::from_byte(find(&properties, "Format").and_then(Property::byte).unwrap_or(0))?;
+    let palette = find(&properties, "Palette").and_then(|palette| palette.object(package)).unwrap_or(ObjectRef::Null);
 
     // Lineage 2 puts a material block of its own between the properties and the mips, and its
     // layout changes between licensees. Its contents (object name, fixed-function shader) are not
@@ -150,10 +147,6 @@ pub fn decode_rgba(format: TextureFormat, mip: &Mip<'_>, palette: Option<&[[u8; 
 fn object_bytes<'a>(file: &'a [u8], export: &Export) -> Result<&'a [u8], Error> {
     let end = export.serial_offset.checked_add(export.serial_size).ok_or(Error::ExportOutOfRange)?;
     file.get(..end).ok_or(Error::ExportOutOfRange)
-}
-
-fn find<'a>(properties: &[Property<'a>], name: &str) -> Option<&'a [u8]> {
-    properties.iter().find(|property| property.name.eq_ignore_ascii_case(name)).map(|property| property.value)
 }
 
 fn finish(reader: &Reader<'_>) -> Result<(), Error> {
