@@ -97,6 +97,13 @@ name = "ue2-core"
 version = "0.1.0"
 
 [[package]]
+name = "ue2-package"
+version = "0.1.0"
+dependencies = [
+ "ue2-core",
+]
+
+[[package]]
 name = "zlib-rs"
 version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

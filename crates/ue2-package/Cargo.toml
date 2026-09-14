@@ -1,0 +1,11 @@
+[package]
+name = "ue2-package"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ue2-core.workspace = true
+
+[lints]
+workspace = true
