@@ -48,3 +48,5 @@ button { padding: 12px 0; font-size: 14px; font-weight: 700; text-align: center;
 .quiet:hover { color: #d6dae3; background: #ffffff0a }
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #4d5363 }
+
+input, button { transition: 160ms }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use canastra_ui::{Element, Frame, Hit, StyleSheet, TextMeasure, UiState};
+use canastra_ui::{Element, Frame, Hit, StyleSheet, TextMeasure, Transitions, UiState};
 
 const MARKUP: &str = "login.ui";
 const STYLESHEET: &str = "theme.css";
@@ -24,6 +24,9 @@ pub(crate) struct Screen {
     values: HashMap<String, String>,
     /// When the caret last turned on; typing restarts the blink so the caret stays visible.
     caret_since: Instant,
+    transitions: Transitions,
+    /// Zero of the clock transitions run on.
+    opened: Instant,
 }
 
 impl Screen {
@@ -39,6 +42,8 @@ impl Screen {
             status: String::new(),
             values: HashMap::new(),
             caret_since: Instant::now(),
+            transitions: Transitions::default(),
+            opened: Instant::now(),
         })
     }
 
@@ -46,7 +51,7 @@ impl Screen {
     pub(crate) fn reload(&mut self) {
         match read(&self.folder) {
             Ok((ui, sheet)) => {
-                (self.ui, self.sheet) = (ui, sheet);
+                (self.ui, self.sheet, self.transitions) = (ui, sheet, Transitions::default());
                 self.status = "UI reloaded".into();
             }
             Err(error) => self.status = error,
@@ -56,13 +61,14 @@ impl Screen {
     /// Lays the screen out for a `viewport` in logical pixels.
     pub(crate) fn layout(&mut self, viewport: [f32; 2], text: &mut dyn TextMeasure) {
         self.state.caret = self.blinks().is_multiple_of(2);
+        self.state.time = self.opened.elapsed().as_secs_f32();
         let (status, values) = (&self.status, &self.values);
         let bindings = |key: &str| match key {
             "app.version" => Some(concat!("v", env!("CARGO_PKG_VERSION")).to_owned()),
             "app.status" => Some(status.clone()),
             _ => values.get(key).cloned(),
         };
-        match canastra_ui::build(&self.ui, &self.sheet, viewport, self.state, text, &bindings) {
+        match canastra_ui::build(&self.ui, &self.sheet, viewport, self.state, &mut self.transitions, text, &bindings) {
             Ok(frame) => self.frame = frame,
             Err(error) => eprintln!("layout: {error}"),
         }

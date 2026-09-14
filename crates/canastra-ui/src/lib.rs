@@ -6,12 +6,14 @@
 mod css;
 mod layout;
 mod markup;
+mod transition;
 
 use std::fmt;
 
 pub use css::{StyleSheet, parse_stylesheet};
 pub use layout::build;
 pub use markup::{Element, Tag, parse_markup};
+pub use transition::Transitions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rgba(pub [u8; 4]);
@@ -110,7 +112,7 @@ pub struct Hit {
 }
 
 /// Interaction that restyles a screen between frames without changing its markup.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct UiState {
     /// Pre-order index of the element under the pointer, for `:hover`.
     pub hovered: Option<usize>,
@@ -118,6 +120,8 @@ pub struct UiState {
     pub focused: Option<usize>,
     /// Whether the focused input's blinking caret is visible this frame.
     pub caret: bool,
+    /// Seconds on any steady clock, for transitions.
+    pub time: f32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -125,6 +129,8 @@ pub struct Frame {
     /// Back to front.
     pub draws: Vec<Draw>,
     hits: Vec<Hit>,
+    /// A transition is still running, so the next frame will differ.
+    pub animating: bool,
 }
 
 impl Frame {

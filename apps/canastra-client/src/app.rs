@@ -58,6 +58,9 @@ impl Running {
             Ok(commands) => {
                 self.gpu.queue.submit([commands]);
                 self.gpu.queue.present(frame);
+                if self.screen.frame.animating {
+                    self.gpu.window.request_redraw();
+                }
             }
             Err(error) => eprintln!("render: {error}"),
         }

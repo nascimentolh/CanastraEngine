@@ -94,6 +94,8 @@ pub(crate) enum Declaration {
     TextAlign(TextAlign),
     /// Texture path and the inset, in texture pixels, kept unstretched at each edge.
     BorderImage(String, f32),
+    /// Seconds over which paint changes ease in.
+    Transition(f32),
 }
 
 impl StyleSheet {
@@ -204,6 +206,7 @@ fn declaration(text: &str) -> Result<Declaration, UiError> {
             &[("left", TextAlign::Left), ("center", TextAlign::Center), ("right", TextAlign::Right)],
         )?),
         "border-image" => border_image(value)?,
+        "transition" => Declaration::Transition(seconds(value)?),
         other => return Err(css(&format!("unsupported property `{other}`"))),
     })
 }
@@ -239,6 +242,17 @@ fn edges(value: &str) -> Result<[f32; 4], UiError> {
         [top, right, bottom, left] => [top, right, bottom, left],
         _ => return Err(css(&format!("expected one to four lengths, found `{value}`"))),
     })
+}
+
+/// `none`, `<n>ms` or `<n>s`.
+fn seconds(value: &str) -> Result<f32, UiError> {
+    let invalid = || css(&format!("expected none, <n>ms or <n>s, found `{value}`"));
+    match (value, value.strip_suffix("ms"), value.strip_suffix('s')) {
+        ("none", ..) => Ok(0.0),
+        (_, Some(millis), _) => Ok(number(millis).map_err(|_| invalid())?.max(0.0) / 1000.0),
+        (_, None, Some(seconds)) => Ok(number(seconds).map_err(|_| invalid())?.max(0.0)),
+        _ => Err(invalid()),
+    }
 }
 
 /// `normal`, `bold` or a multiple of 100 from 100 to 900.
@@ -372,6 +386,8 @@ mod tests {
         assert_eq!(fill("radial-gradient(#fff, #000)").unwrap(), Fill::Radial(Rgba([255; 4]), Rgba([0, 0, 0, 255])));
         assert_eq!((weight("bold").unwrap(), weight("300").unwrap()), (700, 300));
         assert!(weight("350").is_err() && weight("1000").is_err());
+        assert_eq!((seconds("150ms").unwrap(), seconds("0.5s").unwrap(), seconds("none").unwrap()), (0.15, 0.5, 0.0));
+        assert!(seconds("150").is_err());
         assert_eq!(border("1px solid #fff").unwrap(), Some((1.0, Rgba([255; 4]))));
         assert_eq!(
             shadows("0 -4px 12px #0008, inset 0 1px 0 #fff").unwrap(),

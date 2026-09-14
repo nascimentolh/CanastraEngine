@@ -7,7 +7,8 @@ use taffy::prelude::{
 
 use crate::css::{Align, Declaration, Length, States, StyleSheet};
 use crate::markup::{Element, Tag};
-use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextAlign, TextMeasure, TextStyle, UiError, UiState};
+use crate::transition::{Paint, Transitions};
+use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, TextAlign, TextMeasure, TextStyle, UiError, UiState};
 
 const DEFAULT_FONT_SIZE: f32 = 13.0;
 /// Width of an input's caret in logical pixels.
@@ -16,25 +17,22 @@ const CARET_WIDTH: f32 = 1.5;
 /// What an element looks like after the cascade.
 #[derive(Debug, Clone)]
 struct Computed {
-    fill: Option<Fill>,
-    border: Option<(f32, Rgba)>,
+    paint: Paint,
     radius: f32,
-    shadows: Vec<Shadow>,
-    color: Rgba,
     text: TextStyle,
     border_image: Option<(String, f32)>,
     padding: [f32; 4],
+    /// Seconds paint changes take; 0 applies them at once.
+    transition: f32,
 }
 
 const ROOT: Computed = Computed {
-    fill: None,
-    border: None,
+    paint: Paint { fill: None, border: None, shadows: Vec::new(), color: Rgba([255; 4]) },
     radius: 0.0,
-    shadows: Vec::new(),
-    color: Rgba([255; 4]),
     text: TextStyle { size: DEFAULT_FONT_SIZE, weight: 400, letter_spacing: 0.0, align: TextAlign::Left },
     border_image: None,
     padding: [0.0; 4],
+    transition: 0.0,
 };
 
 /// Text measured by taffy while laying out leaves.
@@ -54,19 +52,31 @@ struct Node<'a> {
     children: Vec<Node<'a>>,
 }
 
+/// What styling one frame reads and records, shared by every element.
+struct Pass<'s> {
+    sheet: &'s StyleSheet,
+    state: UiState,
+    transitions: &'s mut Transitions,
+    bindings: &'s dyn Fn(&str) -> Option<String>,
+    next_index: usize,
+    animating: bool,
+}
+
 /// Lays out `ui` for a viewport and returns what to draw and where clicks land.
+/// `transitions` carries running animations from frame to frame; start a new one for a new `ui`.
 pub fn build(
     ui: &Element,
     sheet: &StyleSheet,
     viewport: [f32; 2],
     state: UiState,
+    transitions: &mut Transitions,
     text: &mut dyn TextMeasure,
     bindings: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Frame, UiError> {
     // ponytail: the layout tree is rebuilt every frame; cache it when screens get large.
     let mut tree: TaffyTree<Measured> = TaffyTree::new();
-    let mut next_index = 0;
-    let root = node(&mut tree, ui, sheet, state, &ROOT, &mut next_index, bindings).map_err(layout_error)?;
+    let mut pass = Pass { sheet, state, transitions, bindings, next_index: 0, animating: false };
+    let root = pass.node(&mut tree, ui, &ROOT).map_err(layout_error)?;
     let available =
         Size { width: AvailableSpace::Definite(viewport[0]), height: AvailableSpace::Definite(viewport[1]) };
     tree.compute_layout_with_measure(root.id, available, |input, _, context, style| {
@@ -90,57 +100,63 @@ pub fn build(
     })
     .map_err(layout_error)?;
 
-    let mut frame = Frame::default();
+    let mut frame = Frame { animating: pass.animating, ..Frame::default() };
     emit(&tree, &root, [0.0, 0.0], state, text, &mut frame).map_err(layout_error)?;
     Ok(frame)
 }
 
-fn node<'a>(
-    tree: &mut TaffyTree<Measured>,
-    element: &'a Element,
-    sheet: &StyleSheet,
-    state: UiState,
-    parent: &Computed,
-    next_index: &mut usize,
-    bindings: &dyn Fn(&str) -> Option<String>,
-) -> taffy::TaffyResult<Node<'a>> {
-    let index = *next_index;
-    *next_index += 1;
-    let value = (element.tag == Tag::Input).then(|| {
-        let value = element.bind.as_deref().and_then(bindings).unwrap_or_default();
-        if element.password { "\u{2022}".repeat(value.chars().count()) } else { value }
-    });
-    let states = States {
-        hover: state.hovered == Some(index),
-        focus: state.focused == Some(index),
-        empty: value.as_ref().is_some_and(String::is_empty),
-    };
-    let mut style = default_style(element.tag);
-    // Only text color and style inherit; everything else starts over.
-    let mut computed = Computed { color: parent.color, text: parent.text, ..ROOT };
-    for declaration in sheet.cascade(element, states) {
-        apply(declaration, &mut style, &mut computed);
-    }
+impl Pass<'_> {
+    fn node<'a>(
+        &mut self,
+        tree: &mut TaffyTree<Measured>,
+        element: &'a Element,
+        parent: &Computed,
+    ) -> taffy::TaffyResult<Node<'a>> {
+        let index = self.next_index;
+        self.next_index += 1;
+        let bindings = self.bindings;
+        let value = (element.tag == Tag::Input).then(|| {
+            let value = element.bind.as_deref().and_then(bindings).unwrap_or_default();
+            if element.password { "\u{2022}".repeat(value.chars().count()) } else { value }
+        });
+        let states = States {
+            hover: self.state.hovered == Some(index),
+            focus: self.state.focused == Some(index),
+            empty: value.as_ref().is_some_and(String::is_empty),
+        };
+        let mut style = default_style(element.tag);
+        // Only text color and style inherit; everything else starts over.
+        let mut computed =
+            Computed { paint: Paint { color: parent.paint.color, ..ROOT.paint }, text: parent.text, ..ROOT };
+        for declaration in self.sheet.cascade(element, states) {
+            apply(declaration, &mut style, &mut computed);
+        }
+        let (paint, moving) = self.transitions.paint(index, &computed.paint, computed.transition, self.state.time);
+        computed.paint = paint;
+        self.animating |= moving;
 
-    let text = match (element.tag, &value) {
-        (Tag::Label | Tag::Button, _) => element.bind.as_deref().and_then(bindings).or_else(|| element.text.clone()),
-        (Tag::Input, Some(value)) if value.is_empty() => Some(element.placeholder.clone().unwrap_or_default()),
-        (Tag::Input, value) => value.clone(),
-        _ => None,
-    };
-    let (id, children) = if let Some(text) = &text {
-        let measured = Measured { text: text.clone(), style: computed.text };
-        (tree.new_leaf_with_context(style, measured)?, Vec::new())
-    } else {
-        let children = element
-            .children
-            .iter()
-            .map(|child| node(tree, child, sheet, state, &computed, next_index, bindings))
-            .collect::<taffy::TaffyResult<Vec<_>>>()?;
-        let ids: Vec<NodeId> = children.iter().map(|child| child.id).collect();
-        (tree.new_with_children(style, &ids)?, children)
-    };
-    Ok(Node { element, index, id, computed, text, value, children })
+        let text = match (element.tag, &value) {
+            (Tag::Label | Tag::Button, _) => {
+                element.bind.as_deref().and_then(bindings).or_else(|| element.text.clone())
+            }
+            (Tag::Input, Some(value)) if value.is_empty() => Some(element.placeholder.clone().unwrap_or_default()),
+            (Tag::Input, value) => value.clone(),
+            _ => None,
+        };
+        let (id, children) = if let Some(text) = &text {
+            let measured = Measured { text: text.clone(), style: computed.text };
+            (tree.new_leaf_with_context(style, measured)?, Vec::new())
+        } else {
+            let children = element
+                .children
+                .iter()
+                .map(|child| self.node(tree, child, &computed))
+                .collect::<taffy::TaffyResult<Vec<_>>>()?;
+            let ids: Vec<NodeId> = children.iter().map(|child| child.id).collect();
+            (tree.new_with_children(style, &ids)?, children)
+        };
+        Ok(Node { element, index, id, computed, text, value, children })
+    }
 }
 
 fn default_style(tag: Tag) -> Style {
@@ -181,16 +197,17 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::Top(value) => style.inset.top = inset(*value),
         Declaration::Right(value) => style.inset.right = inset(*value),
         Declaration::Bottom(value) => style.inset.bottom = inset(*value),
-        Declaration::Background(fill) => computed.fill = Some(*fill),
-        Declaration::Border(border) => computed.border = *border,
+        Declaration::Background(fill) => computed.paint.fill = Some(*fill),
+        Declaration::Border(border) => computed.paint.border = *border,
         Declaration::BorderRadius(radius) => computed.radius = *radius,
-        Declaration::BoxShadow(shadows) => computed.shadows.clone_from(shadows),
-        Declaration::Color(color) => computed.color = *color,
+        Declaration::BoxShadow(shadows) => computed.paint.shadows.clone_from(shadows),
+        Declaration::Color(color) => computed.paint.color = *color,
         Declaration::FontSize(size) => computed.text.size = *size,
         Declaration::FontWeight(weight) => computed.text.weight = *weight,
         Declaration::LetterSpacing(spacing) => computed.text.letter_spacing = *spacing,
         Declaration::TextAlign(align) => computed.text.align = *align,
         Declaration::BorderImage(source, inset) => computed.border_image = Some((source.clone(), *inset)),
+        Declaration::Transition(seconds) => computed.transition = *seconds,
     }
 }
 
@@ -236,16 +253,17 @@ fn emit(
         height: layout.size.height,
     };
     let computed = &node.computed;
+    let paint = &computed.paint;
     let shadows = |inset: bool| {
-        computed.shadows.iter().filter(move |shadow| shadow.inset == inset).map(|&shadow| Draw::Shadow {
+        paint.shadows.iter().filter(move |shadow| shadow.inset == inset).map(|&shadow| Draw::Shadow {
             rect,
             radius: computed.radius,
             shadow,
         })
     };
     frame.draws.extend(shadows(false));
-    if computed.fill.is_some() || computed.border.is_some() {
-        frame.draws.push(Draw::Rect { rect, fill: computed.fill, border: computed.border, radius: computed.radius });
+    if paint.fill.is_some() || paint.border.is_some() {
+        frame.draws.push(Draw::Rect { rect, fill: paint.fill, border: paint.border, radius: computed.radius });
     }
     if let Some((source, inset)) = &computed.border_image {
         frame.draws.push(Draw::Image { rect, source: source.clone(), inset: *inset });
@@ -262,19 +280,14 @@ fn emit(
             width: rect.width - left - right,
             height: rect.height - top - bottom,
         };
-        frame.draws.push(Draw::Text {
-            rect: content,
-            text: label.clone(),
-            color: computed.color,
-            style: computed.text,
-        });
+        frame.draws.push(Draw::Text { rect: content, text: label.clone(), color: paint.color, style: computed.text });
         // ponytail: the caret sits after the last character; add a cursor position when editing mid-text is needed.
         if let Some(value) = node.value.as_ref().filter(|_| state.caret && state.focused == Some(node.index)) {
             let (width, _) = text.measure(value, &computed.text, None);
             let caret = Rect { x: content.x + width, width: CARET_WIDTH, ..content };
             frame.draws.push(Draw::Rect {
                 rect: caret,
-                fill: Some(Fill::Solid(computed.color)),
+                fill: Some(Fill::Solid(paint.color)),
                 border: None,
                 radius: 0.0,
             });
@@ -326,7 +339,7 @@ mod tests {
         let ui = parse_markup(MARKUP).unwrap();
         let sheet = parse_stylesheet(CSS).unwrap();
         let bindings = |key: &str| (key == "app.version").then(|| "1.0".to_owned());
-        build(&ui, &sheet, [800.0, 600.0], state, &mut Monospace, &bindings).unwrap()
+        build(&ui, &sheet, [800.0, 600.0], state, &mut Transitions::default(), &mut Monospace, &bindings).unwrap()
     }
 
     #[test]
@@ -363,7 +376,16 @@ mod tests {
     fn text_leaves_keep_their_styled_size() {
         let ui = parse_markup(r#"<ui><button text="Go" action="go"/></ui>"#).unwrap();
         let sheet = parse_stylesheet("ui { align-items: start } button { width: 100px; padding: 5px }").unwrap();
-        let frame = build(&ui, &sheet, [800.0, 600.0], UiState::default(), &mut Monospace, &|_| None).unwrap();
+        let frame = build(
+            &ui,
+            &sheet,
+            [800.0, 600.0],
+            UiState::default(),
+            &mut Transitions::default(),
+            &mut Monospace,
+            &|_| None,
+        )
+        .unwrap();
         assert_eq!(frame.hits[0].rect, Rect { x: 0.0, y: 0.0, width: 100.0, height: 26.0 });
     }
 
@@ -378,7 +400,8 @@ mod tests {
                 .unwrap();
         let bindings = |key: &str| (key == "password").then(|| "abc".to_owned());
         let state = UiState { focused: Some(2), caret: true, ..UiState::default() };
-        let frame = build(&ui, &sheet, [800.0, 600.0], state, &mut Monospace, &bindings).unwrap();
+        let frame =
+            build(&ui, &sheet, [800.0, 600.0], state, &mut Transitions::default(), &mut Monospace, &bindings).unwrap();
 
         let Draw::Text { text, color, .. } = &frame.draws[0] else { panic!("{:?}", frame.draws) };
         assert_eq!((text.as_str(), *color), ("Account", Rgba([0x88, 0x88, 0x88, 255])));
