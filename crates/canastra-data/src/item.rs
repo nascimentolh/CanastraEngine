@@ -95,6 +95,8 @@ pub struct Armor {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EtcItem {
     pub etc_type: EtcItemType,
+    /// Some etc items are equipped, e.g. arrows in the left hand.
+    pub slot: EquipSlot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,9 +374,13 @@ pub enum ItemAction {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ItemVisual {
     pub icon: Option<TextureRef>,
+    /// Icons of the individual pieces of paired weapons.
+    pub part_icons: Vec<TextureRef>,
     /// Frame drawn behind the icon, e.g. for player-versus-player or limited-time items.
     pub icon_panel: Option<TextureRef>,
     pub drop: DropVisual,
+    /// Swing, impact or wear sounds.
+    pub sounds: Vec<SoundRef>,
     pub equip_sound: Option<SoundRef>,
     pub model: ItemModel,
 }
@@ -390,22 +396,20 @@ pub struct DropVisual {
 }
 
 /// How the item looks when equipped. Independent of gameplay kind: shields are
-/// armor that render with a weapon model.
+/// armor held like a weapon, and some etc items are worn meshes.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum ItemModel {
     #[default]
     None,
-    Weapon(WeaponModel),
-    Armor(ArmorModel),
+    /// Meshes attached to the character, e.g. weapons, shields and cloaks.
+    Held(HeldModel),
+    /// Meshes authored per body, e.g. armor.
+    Worn(WornModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct WeaponModel {
+pub struct HeldModel {
     pub parts: Vec<ModelPart>,
-    /// Icons of the individual pieces of paired weapons.
-    pub part_icons: Vec<TextureRef>,
-    /// Swing and impact sounds.
-    pub sounds: Vec<SoundRef>,
     pub effect: Option<EffectRef>,
     /// Client animation grip class; meaning is mapped when animation lands.
     pub grip: u32,
@@ -418,8 +422,10 @@ pub struct ModelPart {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct ArmorModel {
+pub struct WornModel {
     pub bodies: BTreeMap<Body, BodyModel>,
+    /// Played on the wearer when hit.
+    pub hit_effect: Option<EffectRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
