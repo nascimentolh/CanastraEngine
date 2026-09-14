@@ -18,19 +18,21 @@ pub struct Skill {
     pub levels: BTreeMap<u32, SkillLevel>,
 }
 
-/// Operate types as named by the reference server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum SkillOperate {
-    A1,
-    A2,
-    A3,
-    A4,
-    Ca1,
-    Ca5,
-    Da1,
-    Da2,
-    Passive,
-    Toggle,
+choices! {
+    /// Operate types as named by the reference server.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum SkillOperate {
+        A1,
+        A2,
+        A3,
+        A4,
+        Ca1,
+        Ca5,
+        Da1,
+        Da2,
+        Passive,
+        Toggle,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

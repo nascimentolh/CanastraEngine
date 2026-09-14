@@ -51,41 +51,45 @@ pub struct NpcFlags {
     pub can_move: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum Race {
-    #[default]
-    None,
-    Human,
-    Elf,
-    DarkElf,
-    Orc,
-    Dwarf,
-    Kamael,
-    Humanoid,
-    Animal,
-    Beast,
-    Bug,
-    Plant,
-    Construct,
-    Undead,
-    Demonic,
-    Divine,
-    Dragon,
-    Elemental,
-    Fairy,
-    Giant,
-    CastleGuard,
-    Mercenary,
-    SiegeWeapon,
-    Etc,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum Race {
+        #[default]
+        None,
+        Human,
+        Elf,
+        DarkElf,
+        Orc,
+        Dwarf,
+        Kamael,
+        Humanoid,
+        Animal,
+        Beast,
+        Bug,
+        Plant,
+        Construct,
+        Undead,
+        Demonic,
+        Divine,
+        Dragon,
+        Elemental,
+        Fairy,
+        Giant,
+        CastleGuard,
+        Mercenary,
+        SiegeWeapon,
+        Etc,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum Sex {
-    Male,
-    Female,
-    #[default]
-    Etc,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum Sex {
+        Male,
+        Female,
+        #[default]
+        Etc,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

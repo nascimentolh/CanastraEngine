@@ -3,6 +3,18 @@
 //! Types here describe what the game means, not how any legacy file stored it.
 //! Gameplay and presentation live together so both sides always agree.
 
+/// Declares a fieldless enum plus `ALL`, its variants in declaration order, so editors offer
+/// every choice from the same list the compiler sees.
+macro_rules! choices {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($(#[$variant_meta:meta])* $variant:ident),+ $(,)? }) => {
+        $(#[$meta])* $vis enum $name { $($(#[$variant_meta])* $variant),+ }
+
+        impl $name {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+        }
+    };
+}
+
 pub mod asset;
 pub mod format;
 pub mod id;

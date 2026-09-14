@@ -154,147 +154,161 @@ pub struct StatModifier {
     pub order: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StatOp {
-    Set,
-    Add,
-    Sub,
-    Mul,
-    /// Bonus applied per enchant level.
-    Enchant,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum StatOp {
+        Set,
+        Add,
+        Sub,
+        Mul,
+        /// Bonus applied per enchant level.
+        Enchant,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum Stat {
-    MaxMp,
-    PAtk,
-    MAtk,
-    PAtkSpeed,
-    PDef,
-    MDef,
-    ShieldDef,
-    ShieldRate,
-    Evasion,
-    CritRate,
-    Accuracy,
-    AttackRange,
-    FireRes,
-    WaterRes,
-    WindRes,
-    EarthRes,
-    HolyRes,
-    DarkRes,
-    HolyPower,
-    MagicSuccessRes,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Stat {
+        MaxMp,
+        PAtk,
+        MAtk,
+        PAtkSpeed,
+        PDef,
+        MDef,
+        ShieldDef,
+        ShieldRate,
+        Evasion,
+        CritRate,
+        Accuracy,
+        AttackRange,
+        FireRes,
+        WaterRes,
+        WindRes,
+        EarthRes,
+        HolyRes,
+        DarkRes,
+        HolyPower,
+        MagicSuccessRes,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum Grade {
-    #[default]
-    None,
-    D,
-    C,
-    B,
-    A,
-    S,
-    S80,
-    S84,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum Grade {
+        #[default]
+        None,
+        D,
+        C,
+        B,
+        A,
+        S,
+        S80,
+        S84,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum Material {
-    Steel,
-    FineSteel,
-    BloodSteel,
-    Bronze,
-    Silver,
-    Gold,
-    Mithril,
-    Oriharukon,
-    Damascus,
-    Adamantaite,
-    Chrysolite,
-    Crystal,
-    Paper,
-    Wood,
-    Cloth,
-    Cotton,
-    Leather,
-    Bone,
-    Horn,
-    Liquid,
-    ScaleOfDragon,
-    Dyestuff,
-    Cobweb,
-    Seed,
-    Fish,
-    RuneXp,
-    RuneSp,
-    RuneRemovePenalty,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Material {
+        Steel,
+        FineSteel,
+        BloodSteel,
+        Bronze,
+        Silver,
+        Gold,
+        Mithril,
+        Oriharukon,
+        Damascus,
+        Adamantaite,
+        Chrysolite,
+        Crystal,
+        Paper,
+        Wood,
+        Cloth,
+        Cotton,
+        Leather,
+        Bone,
+        Horn,
+        Liquid,
+        ScaleOfDragon,
+        Dyestuff,
+        Cobweb,
+        Seed,
+        Fish,
+        RuneXp,
+        RuneSp,
+        RuneRemovePenalty,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum WeaponType {
-    #[default]
-    None,
-    Sword,
-    Blunt,
-    Dagger,
-    Bow,
-    Pole,
-    Dual,
-    Etc,
-    Fist,
-    DualFist,
-    FishingRod,
-    Rapier,
-    AncientSword,
-    Crossbow,
-    DualDagger,
-    Flag,
-    OwnThing,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum WeaponType {
+        #[default]
+        None,
+        Sword,
+        Blunt,
+        Dagger,
+        Bow,
+        Pole,
+        Dual,
+        Etc,
+        Fist,
+        DualFist,
+        FishingRod,
+        Rapier,
+        AncientSword,
+        Crossbow,
+        DualDagger,
+        Flag,
+        OwnThing,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum ArmorType {
-    #[default]
-    None,
-    Light,
-    Heavy,
-    Magic,
-    Sigil,
-    Shield,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum ArmorType {
+        #[default]
+        None,
+        Light,
+        Heavy,
+        Magic,
+        Sigil,
+        Shield,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum EquipSlot {
-    #[default]
-    None,
-    RightHand,
-    LeftHand,
-    BothHands,
-    Head,
-    Chest,
-    Legs,
-    Feet,
-    Gloves,
-    Underwear,
-    Back,
-    /// Chest and legs in one piece.
-    FullArmor,
-    AllDress,
-    Neck,
-    Ears,
-    Fingers,
-    Hair,
-    /// Face accessory (`hair2`).
-    Face,
-    /// Covers hair and face.
-    HairAll,
-    LeftBracelet,
-    RightBracelet,
-    Talisman,
-    Belt,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum EquipSlot {
+        #[default]
+        None,
+        RightHand,
+        LeftHand,
+        BothHands,
+        Head,
+        Chest,
+        Legs,
+        Feet,
+        Gloves,
+        Underwear,
+        Back,
+        /// Chest and legs in one piece.
+        FullArmor,
+        AllDress,
+        Neck,
+        Ears,
+        Fingers,
+        Hair,
+        /// Face accessory (`hair2`).
+        Face,
+        /// Covers hair and face.
+        HairAll,
+        LeftBracelet,
+        RightBracelet,
+        Talisman,
+        Belt,
+    }
 }
 
 impl EquipSlot {
@@ -303,73 +317,77 @@ impl EquipSlot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum EtcItemType {
-    #[default]
-    None,
-    Arrow,
-    Bolt,
-    Potion,
-    Elixir,
-    Scroll,
-    EnchantWeapon,
-    EnchantArmor,
-    BlessedEnchantWeapon,
-    BlessedEnchantArmor,
-    AncientCrystalEnchantWeapon,
-    AncientCrystalEnchantArmor,
-    EnchantChanceWeapon,
-    EnchantChanceArmor,
-    EnchantAttribute,
-    Recipe,
-    Material,
-    PetCollar,
-    CastleGuard,
-    Lotto,
-    RaceTicket,
-    Dye,
-    Seed,
-    Seed2,
-    Crop,
-    MatureCrop,
-    Harvest,
-    TicketOfLord,
-    Lure,
-    Coupon,
-    Rune,
-    RuneSelect,
-    Shot,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum EtcItemType {
+        #[default]
+        None,
+        Arrow,
+        Bolt,
+        Potion,
+        Elixir,
+        Scroll,
+        EnchantWeapon,
+        EnchantArmor,
+        BlessedEnchantWeapon,
+        BlessedEnchantArmor,
+        AncientCrystalEnchantWeapon,
+        AncientCrystalEnchantArmor,
+        EnchantChanceWeapon,
+        EnchantChanceArmor,
+        EnchantAttribute,
+        Recipe,
+        Material,
+        PetCollar,
+        CastleGuard,
+        Lotto,
+        RaceTicket,
+        Dye,
+        Seed,
+        Seed2,
+        Crop,
+        MatureCrop,
+        Harvest,
+        TicketOfLord,
+        Lure,
+        Coupon,
+        Rune,
+        RuneSelect,
+        Shot,
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-pub enum ItemAction {
-    #[default]
-    None,
-    Equip,
-    Calc,
-    CallSkill,
-    Capsule,
-    CreateCommandChannel,
-    Dice,
-    FishingShot,
-    Harvest,
-    HideName,
-    KeepExp,
-    NickColor,
-    Peel,
-    Recipe,
-    Seed,
-    ShowAdventurerGuideBook,
-    ShowHtml,
-    ShowSevenSignsStatus,
-    SkillMaintain,
-    SkillReduce,
-    Soulshot,
-    Spiritshot,
-    StartQuest,
-    SummonSoulshot,
-    SummonSpiritshot,
-    ChristmasOpen,
+choices! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+    pub enum ItemAction {
+        #[default]
+        None,
+        Equip,
+        Calc,
+        CallSkill,
+        Capsule,
+        CreateCommandChannel,
+        Dice,
+        FishingShot,
+        Harvest,
+        HideName,
+        KeepExp,
+        NickColor,
+        Peel,
+        Recipe,
+        Seed,
+        ShowAdventurerGuideBook,
+        ShowHtml,
+        ShowSevenSignsStatus,
+        SkillMaintain,
+        SkillReduce,
+        Soulshot,
+        Spiritshot,
+        StartQuest,
+        SummonSoulshot,
+        SummonSpiritshot,
+        ChristmasOpen,
+    }
 }
 
 /// Everything the client needs to show an item.
