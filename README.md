@@ -1,7 +1,8 @@
 # CanastraEngine
 
 Lineage 2 High Five client in Rust. It reads assets straight from an existing H5 client install;
-the `system` tables (`.dat`) are being migrated to Canastra's own data format.
+the `system` tables (`.dat`) are being migrated to Canastra's own data format. See
+[`docs/decisions.md`](docs/decisions.md) for the agreed architecture and build order.
 
 ## Architecture
 
