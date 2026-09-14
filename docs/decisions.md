@@ -60,6 +60,10 @@ Decided on 2026-09-14 through a design interview. Change an entry only with a ne
 - **Look:** H5 remaster. Layout and visual language kept, modernized (sharp at high resolution, better
   typography).
 - **Platforms:** Windows, Linux, macOS, Android. No gamepad support planned.
+- **Graphics backends** (wgpu, chosen automatically, overridable in settings): DX12 then Vulkan on
+  Windows, Vulkan on Linux, Metal on macOS, Vulkan on Android.
+  - *2026-09-14:* old Android devices are not supported: no OpenGL/GLES fallback, so the renderer is
+    not limited to GLES 3 features.
 - **Scale:** automatic by DPI plus a player slider.
 - **Engine:** our own renderer on wgpu. egui is for tools only, never game UI.
 - **Styling:** our own CSS subset: flex/grid layout (taffy), gradients, borders, radius, shadows,
