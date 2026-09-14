@@ -1,6 +1,6 @@
 /* Canastra's own look: drawn from shapes, no client textures. */
 
-ui { align-items: center; justify-content: center; background: linear-gradient(#0d1118, #1c1a22) }
+ui { align-items: center; justify-content: center; background: radial-gradient(#2a2418, #07090d) }
 
 #login {
     padding: 32px 40px;
@@ -9,6 +9,7 @@ ui { align-items: center; justify-content: center; background: linear-gradient(#
     background: linear-gradient(#1d2331f0, #13161ff0);
     border: 1px solid #c9a45c66;
     border-radius: 12px;
+    box-shadow: 0 18px 48px #000000c0;
 }
 .title { font-size: 30px; color: #e9cf8f }
 .subtitle { font-size: 13px; color: #8d93a3 }
@@ -22,9 +23,10 @@ button {
     background: linear-gradient(#2c3344, #222836);
     border: 1px solid #4a5366;
     border-radius: 6px;
+    box-shadow: inset 0 1px 0 #ffffff14;
 }
-button:hover { color: #ffffff; background: linear-gradient(#3a4358, #2b3243); border: 1px solid #6b7690 }
-.primary { color: #1a1408; background: linear-gradient(#e6c47a, #b88c3e); border: 1px solid #f0d89a }
-.primary:hover { color: #000000; background: linear-gradient(#f3d58f, #c99c4c); border: 1px solid #fff0c0 }
+button:hover { color: #ffffff; background: linear-gradient(#3a4358, #2b3243); border: 1px solid #6b7690; box-shadow: inset 0 1px 0 #ffffff26, inset 0 0 14px #8fa0c040 }
+.primary { color: #1a1408; background: linear-gradient(#e6c47a, #b88c3e); border: 1px solid #f0d89a; box-shadow: inset 0 1px 0 #fff6d860 }
+.primary:hover { color: #000000; background: linear-gradient(#f3d58f, #c99c4c); border: 1px solid #fff0c0; box-shadow: inset 0 1px 0 #ffffffa0, inset 0 0 16px #fff2c880 }
 
 #version { position: absolute; right: 12px; bottom: 8px; font-size: 11px; color: #5c6272 }

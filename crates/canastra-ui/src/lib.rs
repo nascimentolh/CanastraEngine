@@ -21,6 +21,19 @@ pub enum Fill {
     Solid(Rgba),
     /// Top color to bottom color.
     Vertical(Rgba, Rgba),
+    /// Center color to the color at the corners.
+    Radial(Rgba, Rgba),
+}
+
+/// One `box-shadow` layer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shadow {
+    pub offset: [f32; 2],
+    /// Distance over which the shadow fades.
+    pub blur: f32,
+    pub color: Rgba,
+    /// Drawn inside the shape, over its background, instead of behind it.
+    pub inset: bool,
 }
 
 /// Logical pixels from the top-left of the viewport.
@@ -40,6 +53,12 @@ impl Rect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Draw {
+    /// A shadow of the rounded rectangle `rect`: outside it, or clipped inside it when inset.
+    Shadow {
+        rect: Rect,
+        radius: f32,
+        shadow: Shadow,
+    },
     Rect {
         rect: Rect,
         fill: Option<Fill>,

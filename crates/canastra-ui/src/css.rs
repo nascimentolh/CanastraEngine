@@ -1,7 +1,7 @@
 //! The CSS subset: simple compound selectors, a fixed set of properties, strict values.
 
 use crate::markup::{Element, Tag};
-use crate::{Fill, Rgba, UiError};
+use crate::{Fill, Rgba, Shadow, UiError};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StyleSheet {
@@ -73,6 +73,7 @@ pub(crate) enum Declaration {
     Background(Fill),
     Border(Option<(f32, Rgba)>),
     BorderRadius(f32),
+    BoxShadow(Vec<Shadow>),
     Color(Rgba),
     FontSize(f32),
     /// Texture path and the inset, in texture pixels, kept unstretched at each edge.
@@ -175,6 +176,7 @@ fn declaration(text: &str) -> Result<Declaration, UiError> {
         "background" => Declaration::Background(fill(value)?),
         "border" => Declaration::Border(border(value)?),
         "border-radius" => Declaration::BorderRadius(px()?),
+        "box-shadow" => Declaration::BoxShadow(shadows(value)?),
         "color" => Declaration::Color(color(value)?),
         "font-size" => Declaration::FontSize(px()?),
         "border-image" => border_image(value)?,
@@ -256,15 +258,43 @@ pub(crate) fn color(value: &str) -> Result<Rgba, UiError> {
     })
 }
 
-/// A color or `linear-gradient(<top>, <bottom>)`.
+/// A color, `linear-gradient(<top>, <bottom>)` or `radial-gradient(<center>, <corners>)`.
 fn fill(value: &str) -> Result<Fill, UiError> {
-    match value.strip_prefix("linear-gradient(").and_then(|inner| inner.strip_suffix(')')) {
-        Some(inner) => {
-            let (top, bottom) = inner.split_once(',').ok_or_else(|| css("linear-gradient takes two colors"))?;
-            Ok(Fill::Vertical(color(top.trim())?, color(bottom.trim())?))
-        }
-        None => Ok(Fill::Solid(color(value)?)),
+    let gradient = |name: &str| value.strip_prefix(name)?.strip_prefix('(')?.strip_suffix(')');
+    let colors = |inner: &str| {
+        let (first, second) = inner.split_once(',').ok_or_else(|| css("a gradient takes two colors"))?;
+        Ok::<_, UiError>((color(first.trim())?, color(second.trim())?))
+    };
+    if let Some(inner) = gradient("linear-gradient") {
+        let (top, bottom) = colors(inner)?;
+        return Ok(Fill::Vertical(top, bottom));
     }
+    if let Some(inner) = gradient("radial-gradient") {
+        let (center, corners) = colors(inner)?;
+        return Ok(Fill::Radial(center, corners));
+    }
+    Ok(Fill::Solid(color(value)?))
+}
+
+/// `none` or comma-separated `[inset] <x> <y> <blur> <color>` layers.
+fn shadows(value: &str) -> Result<Vec<Shadow>, UiError> {
+    if value == "none" {
+        return Ok(Vec::new());
+    }
+    value
+        .split(',')
+        .map(|layer| {
+            let words: Vec<&str> = layer.split_whitespace().collect();
+            let (inset, words) = match words.as_slice() {
+                ["inset", rest @ ..] => (true, rest),
+                rest => (false, rest),
+            };
+            let [x, y, blur, paint] = words else {
+                return Err(css(&format!("expected `[inset] <x> <y> <blur> <color>`, found `{}`", layer.trim())));
+            };
+            Ok(Shadow { offset: [pixels(x)?, pixels(y)?], blur: pixels(blur)?.max(0.0), color: color(paint)?, inset })
+        })
+        .collect()
 }
 
 /// `none` or `<width>px solid <color>`.
@@ -302,7 +332,16 @@ mod tests {
         assert_eq!(edges("1px 2px").unwrap(), [1.0, 2.0, 1.0, 2.0]);
         assert_eq!(length("50%").unwrap(), Length::Percent(0.5));
         assert_eq!(fill("linear-gradient(#000, #fff)").unwrap(), Fill::Vertical(Rgba([0, 0, 0, 255]), Rgba([255; 4])));
+        assert_eq!(fill("radial-gradient(#fff, #000)").unwrap(), Fill::Radial(Rgba([255; 4]), Rgba([0, 0, 0, 255])));
         assert_eq!(border("1px solid #fff").unwrap(), Some((1.0, Rgba([255; 4]))));
+        assert_eq!(
+            shadows("0 -4px 12px #0008, inset 0 1px 0 #fff").unwrap(),
+            [
+                Shadow { offset: [0.0, -4.0], blur: 12.0, color: Rgba([0, 0, 0, 0x88]), inset: false },
+                Shadow { offset: [0.0, 1.0], blur: 0.0, color: Rgba([255; 4]), inset: true },
+            ]
+        );
+        assert!(shadows("none").unwrap().is_empty() && shadows("1px 2px #000").is_err());
         assert_eq!(
             declaration("border-image: url(L2UI_CH3.Button.Btn1_normal) 4").unwrap(),
             Declaration::BorderImage("L2UI_CH3.Button.Btn1_normal".into(), 4.0)

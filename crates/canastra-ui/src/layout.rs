@@ -7,7 +7,7 @@ use taffy::prelude::{
 
 use crate::css::{Align, Declaration, Length, StyleSheet};
 use crate::markup::{Element, Tag};
-use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, TextMeasure, UiError};
+use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextMeasure, UiError};
 
 const DEFAULT_FONT_SIZE: f32 = 13.0;
 
@@ -17,6 +17,7 @@ struct Computed {
     fill: Option<Fill>,
     border: Option<(f32, Rgba)>,
     radius: f32,
+    shadows: Vec<Shadow>,
     color: Rgba,
     font_size: f32,
     border_image: Option<(String, f32)>,
@@ -27,6 +28,7 @@ const ROOT: Computed = Computed {
     fill: None,
     border: None,
     radius: 0.0,
+    shadows: Vec::new(),
     color: Rgba([255; 4]),
     font_size: DEFAULT_FONT_SIZE,
     border_image: None,
@@ -168,6 +170,7 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::Background(fill) => computed.fill = Some(*fill),
         Declaration::Border(border) => computed.border = *border,
         Declaration::BorderRadius(radius) => computed.radius = *radius,
+        Declaration::BoxShadow(shadows) => computed.shadows.clone_from(shadows),
         Declaration::Color(color) => computed.color = *color,
         Declaration::FontSize(size) => computed.font_size = *size,
         Declaration::BorderImage(source, inset) => computed.border_image = Some((source.clone(), *inset)),
@@ -215,6 +218,14 @@ fn emit(
         height: layout.size.height,
     };
     let computed = &node.computed;
+    let shadows = |inset: bool| {
+        computed.shadows.iter().filter(move |shadow| shadow.inset == inset).map(|&shadow| Draw::Shadow {
+            rect,
+            radius: computed.radius,
+            shadow,
+        })
+    };
+    frame.draws.extend(shadows(false));
     if computed.fill.is_some() || computed.border.is_some() {
         frame.draws.push(Draw::Rect { rect, fill: computed.fill, border: computed.border, radius: computed.radius });
     }
@@ -224,6 +235,7 @@ fn emit(
     if let (Tag::Image, Some(source)) = (node.element.tag, &node.element.src) {
         frame.draws.push(Draw::Image { rect, source: source.clone(), inset: 0.0 });
     }
+    frame.draws.extend(shadows(true));
     if let Some(text) = &node.text {
         let [top, right, bottom, left] = computed.padding;
         let content = Rect {

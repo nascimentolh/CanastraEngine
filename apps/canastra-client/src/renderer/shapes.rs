@@ -7,7 +7,7 @@ use canastra_ui::Draw;
 use l2_catalog::Catalog;
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
-use super::quad::{QUAD_BYTES, nine_slice, shape};
+use super::quad::{QUAD_BYTES, nine_slice, shadow, shape};
 
 struct Image {
     group: wgpu::BindGroup,
@@ -142,6 +142,7 @@ impl Shapes {
         self.batches.clear();
         for draw in draws {
             let (key, quads) = match draw {
+                Draw::Shadow { rect, radius, shadow: layer } => (None, vec![shadow(*rect, *radius, *layer, scale)]),
                 Draw::Rect { rect, fill, border, radius } => (None, vec![shape(*rect, *fill, *border, *radius, scale)]),
                 Draw::Image { rect, source, inset } => {
                     let key = source.to_lowercase();

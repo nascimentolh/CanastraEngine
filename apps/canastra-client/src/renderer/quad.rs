@@ -1,8 +1,14 @@
 //! CPU side of `ui.wgsl`: frame rectangles and images as shader quads in physical pixels.
 
-use canastra_ui::{Fill, Rect, Rgba};
+use canastra_ui::{Fill, Rect, Rgba, Shadow};
 
 pub(super) const QUAD_BYTES: u64 = 96;
+
+/// How the shader paints a quad; `params[2]`.
+const VERTICAL: f32 = 0.0;
+const TEXTURED: f32 = 1.0;
+const RADIAL: f32 = 2.0;
+const INSET_SHADOW: f32 = 3.0;
 
 /// One quad as the shader reads it.
 #[derive(Debug, PartialEq)]
@@ -23,15 +29,16 @@ impl Quad {
     }
 
     fn textured(rect: [f32; 4], uv: [f32; 4]) -> Self {
-        Self { rect, uv, top: [0.0; 4], bottom: [0.0; 4], border: [0.0; 4], params: [0.0, 0.0, 1.0, 0.0] }
+        Self { rect, uv, top: [0.0; 4], bottom: [0.0; 4], border: [0.0; 4], params: [0.0, 0.0, TEXTURED, 0.0] }
     }
 }
 
 pub(super) fn shape(rect: Rect, fill: Option<Fill>, border: Option<(f32, Rgba)>, radius: f32, scale: f32) -> Quad {
-    let (top, bottom) = match fill {
-        Some(Fill::Solid(color)) => (linear(color), linear(color)),
-        Some(Fill::Vertical(top, bottom)) => (linear(top), linear(bottom)),
-        None => ([0.0; 4], [0.0; 4]),
+    let (top, bottom, mode) = match fill {
+        Some(Fill::Solid(color)) => (linear(color), linear(color), VERTICAL),
+        Some(Fill::Vertical(top, bottom)) => (linear(top), linear(bottom), VERTICAL),
+        Some(Fill::Radial(center, corners)) => (linear(center), linear(corners), RADIAL),
+        None => ([0.0; 4], [0.0; 4], VERTICAL),
     };
     let (width, color) = border.map_or((0.0, [0.0; 4]), |(width, color)| (width * scale, linear(color)));
     Quad {
@@ -40,7 +47,32 @@ pub(super) fn shape(rect: Rect, fill: Option<Fill>, border: Option<(f32, Rgba)>,
         top,
         bottom,
         border: color,
-        params: [radius * scale, width, 0.0, 0.0],
+        params: [radius * scale, width, mode, 0.0],
+    }
+}
+
+/// An outer shadow's quad grows by `blur` on every side so the fade has room past the shape;
+/// an inset one covers the shape and carries its offset in `uv`.
+pub(super) fn shadow(rect: Rect, radius: f32, shadow: Shadow, scale: f32) -> Quad {
+    let Shadow { offset: [dx, dy], blur, color, inset } = shadow;
+    let (area, uv, mode) = if inset {
+        (rect, [dx * scale, dy * scale, 0.0, 0.0], INSET_SHADOW)
+    } else {
+        let grown = Rect {
+            x: rect.x + dx - blur,
+            y: rect.y + dy - blur,
+            width: rect.width + 2.0 * blur,
+            height: rect.height + 2.0 * blur,
+        };
+        (grown, [0.0; 4], VERTICAL)
+    };
+    Quad {
+        rect: physical(area, scale),
+        uv,
+        top: linear(color),
+        bottom: linear(color),
+        border: [0.0; 4],
+        params: [radius * scale, 0.0, mode, blur * scale],
     }
 }
 
