@@ -1,35 +1,50 @@
-/* Canastra's own look: drawn from shapes, no client textures. */
+/* Canastra's own look: drawn from shapes, no client textures.
+   Control effects stay inside the control; only windows cast shadows. */
 
-ui { align-items: center; justify-content: center; background: radial-gradient(#2a2418, #07090d) }
+ui { align-items: center; justify-content: center; background: radial-gradient(#2b2416, #06080c) }
 
 #login {
-    padding: 32px 40px;
-    gap: 8px;
-    align-items: center;
-    background: linear-gradient(#1d2331f0, #13161ff0);
-    border: 1px solid #c9a45c66;
-    border-radius: 12px;
-    box-shadow: 0 18px 48px #000000c0;
+    width: 360px;
+    padding: 36px 36px 28px 36px;
+    gap: 6px;
+    background: linear-gradient(#1b2130f2, #11141cf2);
+    border: 1px solid #c9a45c55;
+    border-radius: 14px;
+    box-shadow: 0 24px 64px #000000d0, inset 0 1px 0 #ffffff12;
 }
-.title { font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #e9cf8f }
-.subtitle { font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #8d93a3 }
-.status { font-size: 12px; color: #d9c27a }
-.actions { gap: 12px; margin: 16px 0 0 0 }
 
-button {
-    width: 120px;
-    padding: 9px 0;
+.title { font-size: 34px; font-weight: 700; letter-spacing: 8px; color: #ecd296; text-align: center }
+.subtitle { font-size: 11px; font-weight: 600; letter-spacing: 4px; color: #8a8f9c; text-align: center }
+.divider { height: 1px; margin: 18px 40px 14px 40px; background: #c9a45c40 }
+
+.field { gap: 6px; margin: 6px 0 4px 0 }
+.caption { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #9aa0ad }
+
+input {
+    padding: 11px 14px;
     font-size: 14px;
-    font-weight: 600;
-    text-align: center;
-    color: #d8dce6;
-    background: linear-gradient(#2c3344, #222836);
-    border: 1px solid #4a5366;
-    border-radius: 6px;
-    box-shadow: inset 0 1px 0 #ffffff14;
+    color: #eef0f5;
+    background: linear-gradient(#0c0f15, #121620);
+    border: 1px solid #2c3342;
+    border-radius: 8px;
+    box-shadow: inset 0 2px 6px #00000080;
 }
-button:hover { color: #ffffff; background: linear-gradient(#3a4358, #2b3243); border: 1px solid #6b7690; box-shadow: inset 0 1px 0 #ffffff26, inset 0 0 14px #8fa0c040 }
-.primary { color: #1a1408; background: linear-gradient(#e6c47a, #b88c3e); border: 1px solid #f0d89a; box-shadow: inset 0 1px 0 #fff6d860 }
-.primary:hover { color: #000000; background: linear-gradient(#f3d58f, #c99c4c); border: 1px solid #fff0c0; box-shadow: inset 0 1px 0 #ffffffa0, inset 0 0 16px #fff2c880 }
+input:hover { border: 1px solid #3d4659 }
+input:empty { color: #5d6474 }
+input:focus { border: 1px solid #c9a45cc0; box-shadow: inset 0 2px 6px #00000080, inset 0 0 6px #c9a45c1c }
 
-#version { position: absolute; right: 12px; bottom: 8px; font-size: 11px; color: #5c6272 }
+.status { font-size: 12px; color: #d9c27a; text-align: center; margin: 4px 0 }
+
+button { padding: 12px 0; font-size: 14px; font-weight: 700; text-align: center; border-radius: 8px }
+.primary {
+    letter-spacing: 3px;
+    color: #1a1408;
+    background: linear-gradient(#ecca80, #b8893a);
+    border: 1px solid #f3dca4;
+    box-shadow: inset 0 1px 0 #fff6d880, inset 0 -2px 0 #00000030;
+}
+.primary:hover { background: linear-gradient(#f5d690, #c7984a); box-shadow: inset 0 1px 0 #ffffffb0, inset 0 0 18px #fff2c870 }
+.quiet { padding: 8px 0; font-size: 12px; font-weight: 600; color: #7d8494; margin: 2px 0 0 0 }
+.quiet:hover { color: #d6dae3; background: #ffffff0a }
+
+#version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #4d5363 }

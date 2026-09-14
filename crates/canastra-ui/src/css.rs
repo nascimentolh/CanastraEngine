@@ -14,26 +14,39 @@ struct Rule {
     declarations: Vec<Declaration>,
 }
 
-/// `tag`, `.class`, `#id` and `:hover`, combined without spaces, e.g. `button.primary:hover`.
+/// Pseudo-classes an element is in: `:hover`, `:focus` and `:empty` (an input with no value).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct States {
+    pub(crate) hover: bool,
+    pub(crate) focus: bool,
+    pub(crate) empty: bool,
+}
+
+/// `tag`, `.class`, `#id` and pseudo-classes, combined without spaces, e.g. `input.dark:focus`.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Selector {
     tag: Option<Tag>,
     id: Option<String>,
     classes: Vec<String>,
-    hover: bool,
+    /// States the element must be in.
+    states: States,
 }
 
 impl Selector {
-    fn matches(&self, element: &Element, hovered: bool) -> bool {
+    fn matches(&self, element: &Element, states: States) -> bool {
         self.tag.is_none_or(|tag| tag == element.tag)
             && self.id.as_ref().is_none_or(|id| element.id.as_ref() == Some(id))
             && self.classes.iter().all(|class| element.classes.contains(class))
-            && (!self.hover || hovered)
+            && (!self.states.hover || states.hover)
+            && (!self.states.focus || states.focus)
+            && (!self.states.empty || states.empty)
     }
 
     /// Ids, then classes and states, then tags.
     fn specificity(&self) -> (usize, usize, usize) {
-        (usize::from(self.id.is_some()), self.classes.len() + usize::from(self.hover), usize::from(self.tag.is_some()))
+        let States { hover, focus, empty } = self.states;
+        let states = usize::from(hover) + usize::from(focus) + usize::from(empty);
+        (usize::from(self.id.is_some()), self.classes.len() + states, usize::from(self.tag.is_some()))
     }
 }
 
@@ -85,9 +98,9 @@ pub(crate) enum Declaration {
 
 impl StyleSheet {
     /// Declarations that apply to `element`, weakest first, so later ones win when applied in order.
-    pub(crate) fn cascade(&self, element: &Element, hovered: bool) -> Vec<&Declaration> {
+    pub(crate) fn cascade(&self, element: &Element, states: States) -> Vec<&Declaration> {
         let mut matching: Vec<(usize, &Rule)> =
-            self.rules.iter().enumerate().filter(|(_, rule)| rule.selector.matches(element, hovered)).collect();
+            self.rules.iter().enumerate().filter(|(_, rule)| rule.selector.matches(element, states)).collect();
         matching.sort_by_key(|(order, rule)| (rule.selector.specificity(), *order));
         matching.into_iter().flat_map(|(_, rule)| &rule.declarations).collect()
     }
@@ -145,7 +158,9 @@ fn selector(text: &str) -> Result<Selector, UiError> {
         match (marker, name) {
             ('.', _) => selector.classes.push(name.to_owned()),
             ('#', _) => selector.id = Some(name.to_owned()),
-            (':', "hover") => selector.hover = true,
+            (':', "hover") => selector.states.hover = true,
+            (':', "focus") => selector.states.focus = true,
+            (':', "empty") => selector.states.empty = true,
             _ => return Err(css(&format!("unsupported selector `{text}`"))),
         }
         rest = &body[end..];
@@ -389,7 +404,7 @@ mod tests {
         .unwrap();
         let ui = parse_markup(r#"<ui><button id="ok" class="primary"/></ui>"#).unwrap();
         let button = &ui.children[0];
-        let colors: Vec<_> = sheet.cascade(button, false).into_iter().cloned().collect();
+        let colors: Vec<_> = sheet.cascade(button, States::default()).into_iter().cloned().collect();
         assert_eq!(
             colors,
             [
@@ -398,6 +413,6 @@ mod tests {
                 Declaration::Color(Rgba([0, 0, 255, 255])),
             ]
         );
-        assert_eq!(sheet.cascade(button, true).len(), 4);
+        assert_eq!(sheet.cascade(button, States { hover: true, ..States::default() }).len(), 4);
     }
 }

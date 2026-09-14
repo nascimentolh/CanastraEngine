@@ -5,11 +5,13 @@ use taffy::prelude::{
     LengthPercentageAuto, NodeId, Position, Rect as Edges, Size, Style, TaffyTree,
 };
 
-use crate::css::{Align, Declaration, Length, StyleSheet};
+use crate::css::{Align, Declaration, Length, States, StyleSheet};
 use crate::markup::{Element, Tag};
-use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextAlign, TextMeasure, TextStyle, UiError};
+use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, Shadow, TextAlign, TextMeasure, TextStyle, UiError, UiState};
 
 const DEFAULT_FONT_SIZE: f32 = 13.0;
+/// Width of an input's caret in logical pixels.
+const CARET_WIDTH: f32 = 1.5;
 
 /// What an element looks like after the cascade.
 #[derive(Debug, Clone)]
@@ -47,23 +49,24 @@ struct Node<'a> {
     id: NodeId,
     computed: Computed,
     text: Option<String>,
+    /// An input's value as drawn (masked for passwords), which the caret follows.
+    value: Option<String>,
     children: Vec<Node<'a>>,
 }
 
 /// Lays out `ui` for a viewport and returns what to draw and where clicks land.
-/// `hovered` is the pre-order index of the element under the pointer, for `:hover` rules.
 pub fn build(
     ui: &Element,
     sheet: &StyleSheet,
     viewport: [f32; 2],
-    hovered: Option<usize>,
+    state: UiState,
     text: &mut dyn TextMeasure,
     bindings: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Frame, UiError> {
     // ponytail: the layout tree is rebuilt every frame; cache it when screens get large.
     let mut tree: TaffyTree<Measured> = TaffyTree::new();
     let mut next_index = 0;
-    let root = node(&mut tree, ui, sheet, hovered, &ROOT, &mut next_index, bindings).map_err(layout_error)?;
+    let root = node(&mut tree, ui, sheet, state, &ROOT, &mut next_index, bindings).map_err(layout_error)?;
     let available =
         Size { width: AvailableSpace::Definite(viewport[0]), height: AvailableSpace::Definite(viewport[1]) };
     tree.compute_layout_with_measure(root.id, available, |input, _, context, style| {
@@ -88,7 +91,7 @@ pub fn build(
     .map_err(layout_error)?;
 
     let mut frame = Frame::default();
-    emit(&tree, &root, 0.0, 0.0, &mut frame).map_err(layout_error)?;
+    emit(&tree, &root, [0.0, 0.0], state, text, &mut frame).map_err(layout_error)?;
     Ok(frame)
 }
 
@@ -96,22 +99,33 @@ fn node<'a>(
     tree: &mut TaffyTree<Measured>,
     element: &'a Element,
     sheet: &StyleSheet,
-    hovered: Option<usize>,
+    state: UiState,
     parent: &Computed,
     next_index: &mut usize,
     bindings: &dyn Fn(&str) -> Option<String>,
 ) -> taffy::TaffyResult<Node<'a>> {
     let index = *next_index;
     *next_index += 1;
+    let value = (element.tag == Tag::Input).then(|| {
+        let value = element.bind.as_deref().and_then(bindings).unwrap_or_default();
+        if element.password { "\u{2022}".repeat(value.chars().count()) } else { value }
+    });
+    let states = States {
+        hover: state.hovered == Some(index),
+        focus: state.focused == Some(index),
+        empty: value.as_ref().is_some_and(String::is_empty),
+    };
     let mut style = default_style(element.tag);
     // Only text color and style inherit; everything else starts over.
     let mut computed = Computed { color: parent.color, text: parent.text, ..ROOT };
-    for declaration in sheet.cascade(element, hovered == Some(index)) {
+    for declaration in sheet.cascade(element, states) {
         apply(declaration, &mut style, &mut computed);
     }
 
-    let text = match element.tag {
-        Tag::Label | Tag::Button => element.bind.as_deref().and_then(bindings).or_else(|| element.text.clone()),
+    let text = match (element.tag, &value) {
+        (Tag::Label | Tag::Button, _) => element.bind.as_deref().and_then(bindings).or_else(|| element.text.clone()),
+        (Tag::Input, Some(value)) if value.is_empty() => Some(element.placeholder.clone().unwrap_or_default()),
+        (Tag::Input, value) => value.clone(),
         _ => None,
     };
     let (id, children) = if let Some(text) = &text {
@@ -121,12 +135,12 @@ fn node<'a>(
         let children = element
             .children
             .iter()
-            .map(|child| node(tree, child, sheet, hovered, &computed, next_index, bindings))
+            .map(|child| node(tree, child, sheet, state, &computed, next_index, bindings))
             .collect::<taffy::TaffyResult<Vec<_>>>()?;
         let ids: Vec<NodeId> = children.iter().map(|child| child.id).collect();
         (tree.new_with_children(style, &ids)?, children)
     };
-    Ok(Node { element, index, id, computed, text, children })
+    Ok(Node { element, index, id, computed, text, value, children })
 }
 
 fn default_style(tag: Tag) -> Style {
@@ -135,7 +149,7 @@ fn default_style(tag: Tag) -> Style {
         Tag::Ui => style.size = Size { width: Dimension::percent(1.0), height: Dimension::percent(1.0) },
         Tag::Row => style.flex_direction = FlexDirection::Row,
         Tag::Window | Tag::Column => style.flex_direction = FlexDirection::Column,
-        Tag::Label | Tag::Button | Tag::Image => {}
+        Tag::Label | Tag::Button | Tag::Image | Tag::Input => {}
     }
     style
 }
@@ -209,8 +223,9 @@ fn justify(align: Align) -> JustifyContent {
 fn emit(
     tree: &TaffyTree<Measured>,
     node: &Node<'_>,
-    parent_x: f32,
-    parent_y: f32,
+    [parent_x, parent_y]: [f32; 2],
+    state: UiState,
+    text: &mut dyn TextMeasure,
     frame: &mut Frame,
 ) -> taffy::TaffyResult<()> {
     let layout = tree.layout(node.id)?;
@@ -239,7 +254,7 @@ fn emit(
         frame.draws.push(Draw::Image { rect, source: source.clone(), inset: 0.0 });
     }
     frame.draws.extend(shadows(true));
-    if let Some(text) = &node.text {
+    if let Some(label) = &node.text {
         let [top, right, bottom, left] = computed.padding;
         let content = Rect {
             x: rect.x + left,
@@ -247,13 +262,31 @@ fn emit(
             width: rect.width - left - right,
             height: rect.height - top - bottom,
         };
-        frame.draws.push(Draw::Text { rect: content, text: text.clone(), color: computed.color, style: computed.text });
+        frame.draws.push(Draw::Text {
+            rect: content,
+            text: label.clone(),
+            color: computed.color,
+            style: computed.text,
+        });
+        // ponytail: the caret sits after the last character; add a cursor position when editing mid-text is needed.
+        if let Some(value) = node.value.as_ref().filter(|_| state.caret && state.focused == Some(node.index)) {
+            let (width, _) = text.measure(value, &computed.text, None);
+            let caret = Rect { x: content.x + width, width: CARET_WIDTH, ..content };
+            frame.draws.push(Draw::Rect {
+                rect: caret,
+                fill: Some(Fill::Solid(computed.color)),
+                border: None,
+                radius: 0.0,
+            });
+        }
     }
-    if node.element.tag == Tag::Button || node.element.action.is_some() {
-        frame.hits.push(Hit { rect, element: node.index, action: node.element.action.clone() });
+    let element = node.element;
+    if matches!(element.tag, Tag::Button | Tag::Input) || element.action.is_some() {
+        let field = element.bind.clone().filter(|_| element.tag == Tag::Input);
+        frame.hits.push(Hit { rect, element: node.index, action: element.action.clone(), field });
     }
     for child in &node.children {
-        emit(tree, child, rect.x, rect.y, frame)?;
+        emit(tree, child, [rect.x, rect.y], state, text, frame)?;
     }
     Ok(())
 }
@@ -289,16 +322,16 @@ mod tests {
         button:hover { color: #ffd700 }
     ";
 
-    fn frame(hovered: Option<usize>) -> Frame {
+    fn frame(state: UiState) -> Frame {
         let ui = parse_markup(MARKUP).unwrap();
         let sheet = parse_stylesheet(CSS).unwrap();
         let bindings = |key: &str| (key == "app.version").then(|| "1.0".to_owned());
-        build(&ui, &sheet, [800.0, 600.0], hovered, &mut Monospace, &bindings).unwrap()
+        build(&ui, &sheet, [800.0, 600.0], state, &mut Monospace, &bindings).unwrap()
     }
 
     #[test]
     fn lays_out_draws_and_hits() {
-        let frame = frame(None);
+        let frame = frame(UiState::default());
         let window = Rect { x: 100.0, y: 50.0, width: 20.0 + 5.0 * 8.0 + 12.0, height: 20.0 + 16.0 + 4.0 + 20.0 };
         assert_eq!(
             frame.draws[0],
@@ -320,7 +353,9 @@ mod tests {
 
     #[test]
     fn hover_restyles_the_hovered_element() {
-        let Draw::Text { color, .. } = &frame(Some(3)).draws[2] else { panic!() };
+        let Draw::Text { color, .. } = &frame(UiState { hovered: Some(3), ..UiState::default() }).draws[2] else {
+            panic!()
+        };
         assert_eq!(*color, Rgba([255, 215, 0, 255]));
     }
 
@@ -328,7 +363,40 @@ mod tests {
     fn text_leaves_keep_their_styled_size() {
         let ui = parse_markup(r#"<ui><button text="Go" action="go"/></ui>"#).unwrap();
         let sheet = parse_stylesheet("ui { align-items: start } button { width: 100px; padding: 5px }").unwrap();
-        let frame = build(&ui, &sheet, [800.0, 600.0], None, &mut Monospace, &|_| None).unwrap();
+        let frame = build(&ui, &sheet, [800.0, 600.0], UiState::default(), &mut Monospace, &|_| None).unwrap();
         assert_eq!(frame.hits[0].rect, Rect { x: 0.0, y: 0.0, width: 100.0, height: 26.0 });
+    }
+
+    #[test]
+    fn inputs_show_placeholders_masks_and_a_caret() {
+        let ui = parse_markup(
+            r#"<ui><input bind="account" placeholder="Account"/><input bind="password" type="password" action="login"/></ui>"#,
+        )
+        .unwrap();
+        let sheet =
+            parse_stylesheet("ui { align-items: start } input:empty { color: #888 } input:focus { color: #ff0 }")
+                .unwrap();
+        let bindings = |key: &str| (key == "password").then(|| "abc".to_owned());
+        let state = UiState { focused: Some(2), caret: true, ..UiState::default() };
+        let frame = build(&ui, &sheet, [800.0, 600.0], state, &mut Monospace, &bindings).unwrap();
+
+        let Draw::Text { text, color, .. } = &frame.draws[0] else { panic!("{:?}", frame.draws) };
+        assert_eq!((text.as_str(), *color), ("Account", Rgba([0x88, 0x88, 0x88, 255])));
+        let Draw::Text { text, rect, .. } = &frame.draws[1] else { panic!("{:?}", frame.draws) };
+        assert_eq!(text, "\u{2022}\u{2022}\u{2022}");
+        let yellow = Some(Fill::Solid(Rgba([255, 255, 0, 255])));
+        assert_eq!(
+            frame.draws[2],
+            Draw::Rect {
+                rect: Rect { x: rect.x + 24.0, width: CARET_WIDTH, ..*rect },
+                fill: yellow,
+                border: None,
+                radius: 0.0
+            }
+        );
+
+        let fields: Vec<_> =
+            frame.fields().map(|hit| (hit.element, hit.field.as_deref(), hit.action.as_deref())).collect();
+        assert_eq!(fields, [(1, Some("account"), None), (2, Some("password"), Some("login"))]);
     }
 }

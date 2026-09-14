@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use l2_catalog::Catalog;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, MouseButton, WindowEvent};
-use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::{Key, NamedKey};
+use winit::event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
@@ -24,6 +24,7 @@ pub(crate) struct App {
 
 struct Running {
     screen: Screen,
+    modifiers: ModifiersState,
     renderer: Renderer,
     gpu: Gpu,
 }
@@ -41,7 +42,7 @@ impl App {
         let window = Arc::new(event_loop.create_window(attributes).map_err(|error| error.to_string())?);
         let gpu = Gpu::open(event_loop, window)?;
         let renderer = Renderer::new(&gpu.device, &gpu.queue, gpu.config.format, Catalog::open(&self.client_root));
-        Ok(Running { screen, renderer, gpu })
+        Ok(Running { screen, modifiers: ModifiersState::empty(), renderer, gpu })
     }
 }
 
@@ -60,6 +61,35 @@ impl Running {
             }
             Err(error) => eprintln!("render: {error}"),
         }
+    }
+
+    fn key(&mut self, event_loop: &ActiveEventLoop, event: &KeyEvent) {
+        match &event.logical_key {
+            Key::Named(NamedKey::F5) => self.screen.reload(),
+            Key::Named(NamedKey::Tab) => self.screen.focus_next(self.modifiers.shift_key()),
+            Key::Named(NamedKey::Backspace) => self.screen.backspace(),
+            Key::Named(NamedKey::Enter) => {
+                if let Some(action) = self.screen.submit() {
+                    self.run(event_loop, &action);
+                }
+            }
+            _ => {
+                if let Some(text) = &event.text {
+                    self.screen.type_text(text);
+                }
+            }
+        }
+        self.gpu.window.request_redraw();
+    }
+
+    fn run(&mut self, event_loop: &ActiveEventLoop, action: &str) {
+        if action == "exit" {
+            event_loop.exit();
+            return;
+        }
+        println!("action: {action}");
+        self.screen.status = format!("Action: {action}");
+        self.gpu.window.request_redraw();
     }
 }
 
@@ -90,23 +120,28 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                match running.screen.click().map(str::to_owned).as_deref() {
-                    Some("exit") => event_loop.exit(),
-                    Some(action) => {
-                        println!("action: {action}");
-                        running.screen.status = format!("Action: {action}");
-                        running.gpu.window.request_redraw();
-                    }
-                    None => {}
+                if let Some(action) = running.screen.click() {
+                    running.run(event_loop, &action);
                 }
-            }
-            WindowEvent::KeyboardInput { event, .. }
-                if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::F5) =>
-            {
-                running.screen.reload();
                 running.gpu.window.request_redraw();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => running.modifiers = modifiers.state(),
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                running.key(event_loop, &event);
             }
             _ => {}
         }
+    }
+
+    fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
+        if let (StartCause::ResumeTimeReached { .. }, Some(running)) = (cause, &self.running) {
+            running.gpu.window.request_redraw();
+        }
+    }
+
+    /// Sleeps until the next event, or until the focused input's caret blinks.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let blink = self.running.as_ref().and_then(|running| running.screen.next_blink());
+        event_loop.set_control_flow(blink.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
 }

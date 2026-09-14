@@ -2,11 +2,18 @@
     <window id="login">
         <label class="title" text="CANASTRA"/>
         <label class="subtitle" text="LINEAGE II · HIGH FIVE"/>
+        <row class="divider"/>
+        <column class="field">
+            <label class="caption" text="ACCOUNT"/>
+            <input bind="login.account" placeholder="Your account name"/>
+        </column>
+        <column class="field">
+            <label class="caption" text="PASSWORD"/>
+            <input bind="login.password" type="password" placeholder="Your password" action="login"/>
+        </column>
         <label class="status" bind="app.status" text=""/>
-        <row class="actions">
-            <button class="primary" text="Login" action="login"/>
-            <button text="Exit" action="exit"/>
-        </row>
+        <button class="primary" text="LOG IN" action="login"/>
+        <button class="quiet" text="Exit game" action="exit"/>
     </window>
     <label id="version" bind="app.version" text="?"/>
 </ui>

@@ -105,6 +105,19 @@ pub struct Hit {
     pub rect: Rect,
     pub element: usize,
     pub action: Option<String>,
+    /// For an input, the data key it edits.
+    pub field: Option<String>,
+}
+
+/// Interaction that restyles a screen between frames without changing its markup.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UiState {
+    /// Pre-order index of the element under the pointer, for `:hover`.
+    pub hovered: Option<usize>,
+    /// Pre-order index of the input receiving keys, for `:focus` and its caret.
+    pub focused: Option<usize>,
+    /// Whether the focused input's blinking caret is visible this frame.
+    pub caret: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -118,6 +131,11 @@ impl Frame {
     /// The topmost interactive element under the point.
     pub fn hit(&self, x: f32, y: f32) -> Option<&Hit> {
         self.hits.iter().rev().find(|hit| hit.rect.contains(x, y))
+    }
+
+    /// Inputs in document order, for moving focus.
+    pub fn fields(&self) -> impl Iterator<Item = &Hit> {
+        self.hits.iter().filter(|hit| hit.field.is_some())
     }
 }
 

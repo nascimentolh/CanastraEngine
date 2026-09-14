@@ -13,10 +13,11 @@ pub enum Tag {
     Label,
     Button,
     Image,
+    Input,
 }
 
 impl Tag {
-    const ALL: [(&'static str, Self); 7] = [
+    const ALL: [(&'static str, Self); 8] = [
         ("ui", Self::Ui),
         ("window", Self::Window),
         ("row", Self::Row),
@@ -24,6 +25,7 @@ impl Tag {
         ("label", Self::Label),
         ("button", Self::Button),
         ("image", Self::Image),
+        ("input", Self::Input),
     ];
 
     pub(crate) fn from_name(name: &str) -> Option<Self> {
@@ -31,7 +33,7 @@ impl Tag {
     }
 
     fn is_leaf(self) -> bool {
-        matches!(self, Self::Label | Self::Button | Self::Image)
+        matches!(self, Self::Label | Self::Button | Self::Image | Self::Input)
     }
 }
 
@@ -42,10 +44,14 @@ pub struct Element {
     pub classes: Vec<String>,
     /// Literal text of a label or button.
     pub text: Option<String>,
-    /// Data key whose value replaces `text`, e.g. `app.version`.
+    /// Data key whose value replaces `text`, e.g. `app.version`; for an input, the key it edits.
     pub bind: Option<String>,
-    /// Action name reported when the element is clicked.
+    /// Action name reported when the element is clicked, or when Enter is pressed in an input.
     pub action: Option<String>,
+    /// Text an empty input shows.
+    pub placeholder: Option<String>,
+    /// An input whose value is drawn masked (`type="password"`).
+    pub password: bool,
     /// Texture path of an image, e.g. `L2UI_CH3.Button.Btn1_normal`.
     pub src: Option<String>,
     pub children: Vec<Element>,
@@ -70,6 +76,8 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
         text: None,
         bind: None,
         action: None,
+        placeholder: None,
+        password: false,
         src: None,
         children: Vec::new(),
     };
@@ -82,6 +90,14 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "bind" => element.bind = Some(value),
             "action" => element.action = Some(value),
             "src" => element.src = Some(value),
+            "placeholder" => element.placeholder = Some(value),
+            "type" => {
+                element.password = match value.as_str() {
+                    "text" => false,
+                    "password" => true,
+                    _ => return Err(UiError::Markup(format!("<{name}> type must be text or password, not `{value}`"))),
+                }
+            }
             other => return Err(UiError::UnknownAttribute { tag: name.to_owned(), attribute: other.to_owned() }),
         }
     }
@@ -119,5 +135,9 @@ mod tests {
         assert!(parse_markup("<ui><label><row/></label></ui>").is_err());
         assert!(parse_markup("<ui>hello</ui>").is_err());
         assert!(parse_markup("<window/>").is_err());
+        let ui =
+            parse_markup(r#"<ui><input bind="login.password" type="password" placeholder="Password"/></ui>"#).unwrap();
+        assert!(ui.children[0].password && ui.children[0].placeholder.as_deref() == Some("Password"));
+        assert!(parse_markup(r#"<ui><input type="date"/></ui>"#).is_err());
     }
 }
