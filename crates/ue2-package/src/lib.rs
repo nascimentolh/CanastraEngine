@@ -106,22 +106,8 @@ impl Package {
             .map(|_| Ok(Name { text: r.string()?, flags: r.u32()? }))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let name = |raw: i32| match usize::try_from(raw) {
-            Ok(i) if i < names.len() => Ok(i),
-            _ => Err(Error::NameOutOfRange(raw)),
-        };
-        let object = |raw: i32| {
-            if raw == 0 {
-                return Ok(ObjectRef::Null);
-            }
-            let index = raw.unsigned_abs() - 1;
-            let (count, reference): (u32, fn(usize) -> ObjectRef) =
-                if raw < 0 { (import_count, ObjectRef::Import) } else { (export_count, ObjectRef::Export) };
-            if index >= count {
-                return Err(Error::ObjectOutOfRange(raw));
-            }
-            Ok(reference(index as usize))
-        };
+        let name = |raw: i32| name_index(raw, names.len());
+        let object = |raw: i32| object_ref(raw, import_count as usize, export_count as usize);
 
         let mut r = Reader::at(data, import_offset);
         let imports = (0..import_count)
@@ -159,6 +145,16 @@ impl Package {
             .collect::<Result<Vec<_>, Error>>()?;
 
         Ok(Self { version, licensee, flags, names, imports, exports })
+    }
+
+    /// Resolves a name index read from export data.
+    pub fn name_at(&self, raw: i32) -> Result<&str, Error> {
+        Ok(self.name(name_index(raw, self.names.len())?))
+    }
+
+    /// Resolves an object reference read from export data.
+    pub fn object_at(&self, raw: i32) -> Result<ObjectRef, Error> {
+        object_ref(raw, self.imports.len(), self.exports.len())
     }
 
     pub fn names(&self) -> &[Name] {
@@ -215,4 +211,20 @@ impl Package {
         parts.reverse();
         parts.join(".")
     }
+}
+fn name_index(raw: i32, count: usize) -> Result<usize, Error> {
+    usize::try_from(raw).ok().filter(|&index| index < count).ok_or(Error::NameOutOfRange(raw))
+}
+
+fn object_ref(raw: i32, imports: usize, exports: usize) -> Result<ObjectRef, Error> {
+    if raw == 0 {
+        return Ok(ObjectRef::Null);
+    }
+    let index = raw.unsigned_abs() as usize - 1;
+    let (count, reference): (usize, fn(usize) -> ObjectRef) =
+        if raw < 0 { (imports, ObjectRef::Import) } else { (exports, ObjectRef::Export) };
+    if index >= count {
+        return Err(Error::ObjectOutOfRange(raw));
+    }
+    Ok(reference(index))
 }
