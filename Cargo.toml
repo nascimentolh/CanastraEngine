@@ -8,6 +8,7 @@ edition = "2024"
 rust-version = "1.98"
 
 [workspace.dependencies]
+canastra-data = { path = "crates/canastra-data" }
 l2-crypto = { path = "crates/l2-crypto" }
 l2-dat = { path = "crates/l2-dat" }
 l2-dat-h5 = { path = "crates/l2-dat-h5" }

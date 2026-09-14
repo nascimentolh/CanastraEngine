@@ -1,0 +1,9 @@
+[package]
+name = "canastra-data"
+description = "Canastra game data domain model shared by client, server and Studio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,462 @@
+//! Items: gameplay rules and presentation of everything a character can own.
+
+use std::collections::BTreeMap;
+
+use crate::asset::{EffectRef, MeshRef, SoundRef, TextureRef};
+use crate::id::{ItemId, SkillRef};
+use crate::text::Localized;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Item {
+    pub id: ItemId,
+    pub name: Localized,
+    /// Suffix shown after the name, e.g. a special ability.
+    pub additional_name: Localized,
+    pub description: Localized,
+    pub weight: u32,
+    pub material: Material,
+    pub grade: Grade,
+    /// Reference price in adena.
+    pub price: u64,
+    pub crystal_count: u32,
+    pub flags: ItemFlags,
+    /// What using the item does.
+    pub action: ItemAction,
+    /// Server behavior registered under this key; plugins may add their own.
+    pub handler: Option<HandlerKey>,
+    /// Skills granted while equipped or cast on use.
+    pub skills: Vec<SkillRef>,
+    pub stats: Vec<StatModifier>,
+    pub reuse_delay_ms: u32,
+    pub shared_reuse_group: Option<u32>,
+    /// Mana of shadow items, in minutes.
+    pub mana_minutes: Option<u32>,
+    /// Lifetime of limited-time items, in minutes.
+    pub lifetime_minutes: Option<u32>,
+    pub kind: ItemKind,
+    pub visual: ItemVisual,
+}
+
+impl Item {
+    /// A plain item with default rules and no presentation.
+    pub fn new(id: ItemId) -> Self {
+        Self {
+            id,
+            name: Localized::default(),
+            additional_name: Localized::default(),
+            description: Localized::default(),
+            weight: 0,
+            material: Material::Steel,
+            grade: Grade::None,
+            price: 0,
+            crystal_count: 0,
+            flags: ItemFlags::default(),
+            action: ItemAction::None,
+            handler: None,
+            skills: Vec::new(),
+            stats: Vec::new(),
+            reuse_delay_ms: 0,
+            shared_reuse_group: None,
+            mana_minutes: None,
+            lifetime_minutes: None,
+            kind: ItemKind::Etc(EtcItem::default()),
+            visual: ItemVisual::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ItemKind {
+    Weapon(Weapon),
+    Armor(Armor),
+    Etc(EtcItem),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Weapon {
+    pub weapon_type: WeaponType,
+    pub slot: EquipSlot,
+    pub soulshots: u32,
+    pub spiritshots: u32,
+    pub random_damage: u32,
+    pub attack_range: u32,
+    /// Server hit geometry, kept verbatim until combat is designed.
+    pub damage_range: Option<[i32; 4]>,
+    pub mp_consume: u32,
+    pub magic: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Armor {
+    pub armor_type: ArmorType,
+    pub slot: EquipSlot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EtcItem {
+    pub etc_type: EtcItemType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "independent rule switches edited as checkboxes")]
+pub struct ItemFlags {
+    pub stackable: bool,
+    pub sellable: bool,
+    pub droppable: bool,
+    pub destroyable: bool,
+    pub tradable: bool,
+    pub depositable: bool,
+    pub freightable: bool,
+    pub enchantable: bool,
+    pub elementable: bool,
+    pub quest: bool,
+    pub olympiad_restricted: bool,
+    pub for_npc: bool,
+    pub immediate_effect: bool,
+    pub self_resurrection: bool,
+}
+
+impl Default for ItemFlags {
+    fn default() -> Self {
+        Self {
+            stackable: false,
+            sellable: true,
+            droppable: true,
+            destroyable: true,
+            tradable: true,
+            depositable: true,
+            freightable: false,
+            enchantable: false,
+            elementable: false,
+            quest: false,
+            olympiad_restricted: false,
+            for_npc: false,
+            immediate_effect: false,
+            self_resurrection: false,
+        }
+    }
+}
+
+/// Identifier of a server-side item behavior, e.g. `ItemSkills`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HandlerKey(pub String);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StatModifier {
+    pub stat: Stat,
+    pub op: StatOp,
+    pub value: f64,
+    /// Explicit evaluation order; `None` uses the operation's default.
+    pub order: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatOp {
+    Set,
+    Add,
+    Sub,
+    Mul,
+    /// Bonus applied per enchant level.
+    Enchant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Stat {
+    MaxMp,
+    PAtk,
+    MAtk,
+    PAtkSpeed,
+    PDef,
+    MDef,
+    ShieldDef,
+    ShieldRate,
+    Evasion,
+    CritRate,
+    Accuracy,
+    AttackRange,
+    FireRes,
+    WaterRes,
+    WindRes,
+    EarthRes,
+    HolyRes,
+    DarkRes,
+    HolyPower,
+    MagicSuccessRes,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum Grade {
+    #[default]
+    None,
+    D,
+    C,
+    B,
+    A,
+    S,
+    S80,
+    S84,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Material {
+    Steel,
+    FineSteel,
+    BloodSteel,
+    Bronze,
+    Silver,
+    Gold,
+    Mithril,
+    Oriharukon,
+    Damascus,
+    Adamantaite,
+    Chrysolite,
+    Crystal,
+    Paper,
+    Wood,
+    Cloth,
+    Cotton,
+    Leather,
+    Bone,
+    Horn,
+    Liquid,
+    ScaleOfDragon,
+    Dyestuff,
+    Cobweb,
+    Seed,
+    Fish,
+    RuneXp,
+    RuneSp,
+    RuneRemovePenalty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum WeaponType {
+    #[default]
+    None,
+    Sword,
+    Blunt,
+    Dagger,
+    Bow,
+    Pole,
+    Dual,
+    Etc,
+    Fist,
+    DualFist,
+    FishingRod,
+    Rapier,
+    AncientSword,
+    Crossbow,
+    DualDagger,
+    Flag,
+    OwnThing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum ArmorType {
+    #[default]
+    None,
+    Light,
+    Heavy,
+    Magic,
+    Sigil,
+    Shield,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum EquipSlot {
+    #[default]
+    None,
+    RightHand,
+    LeftHand,
+    BothHands,
+    Head,
+    Chest,
+    Legs,
+    Feet,
+    Gloves,
+    Underwear,
+    Back,
+    /// Chest and legs in one piece.
+    FullArmor,
+    AllDress,
+    Neck,
+    Ears,
+    Fingers,
+    Hair,
+    /// Face accessory (`hair2`).
+    Face,
+    /// Covers hair and face.
+    HairAll,
+    LeftBracelet,
+    RightBracelet,
+    Talisman,
+    Belt,
+}
+
+impl EquipSlot {
+    pub fn is_hand(self) -> bool {
+        matches!(self, Self::RightHand | Self::LeftHand | Self::BothHands)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum EtcItemType {
+    #[default]
+    None,
+    Arrow,
+    Bolt,
+    Potion,
+    Elixir,
+    Scroll,
+    EnchantWeapon,
+    EnchantArmor,
+    BlessedEnchantWeapon,
+    BlessedEnchantArmor,
+    AncientCrystalEnchantWeapon,
+    AncientCrystalEnchantArmor,
+    EnchantChanceWeapon,
+    EnchantChanceArmor,
+    EnchantAttribute,
+    Recipe,
+    Material,
+    PetCollar,
+    CastleGuard,
+    Lotto,
+    RaceTicket,
+    Dye,
+    Seed,
+    Seed2,
+    Crop,
+    MatureCrop,
+    Harvest,
+    TicketOfLord,
+    Lure,
+    Coupon,
+    Rune,
+    RuneSelect,
+    Shot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum ItemAction {
+    #[default]
+    None,
+    Equip,
+    Calc,
+    CallSkill,
+    Capsule,
+    CreateCommandChannel,
+    Dice,
+    FishingShot,
+    Harvest,
+    HideName,
+    KeepExp,
+    NickColor,
+    Peel,
+    Recipe,
+    Seed,
+    ShowAdventurerGuideBook,
+    ShowHtml,
+    ShowSevenSignsStatus,
+    SkillMaintain,
+    SkillReduce,
+    Soulshot,
+    Spiritshot,
+    StartQuest,
+    SummonSoulshot,
+    SummonSpiritshot,
+    ChristmasOpen,
+}
+
+/// Everything the client needs to show an item.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ItemVisual {
+    pub icon: Option<TextureRef>,
+    /// Frame drawn behind the icon, e.g. for player-versus-player or limited-time items.
+    pub icon_panel: Option<TextureRef>,
+    pub drop: DropVisual,
+    pub equip_sound: Option<SoundRef>,
+    pub model: ItemModel,
+}
+
+/// The item lying on the ground.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DropVisual {
+    pub meshes: Vec<MeshRef>,
+    pub textures: Vec<TextureRef>,
+    pub radius: u32,
+    pub height: u32,
+    pub sound: Option<SoundRef>,
+}
+
+/// How the item looks when equipped. Independent of gameplay kind: shields are
+/// armor that render with a weapon model.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ItemModel {
+    #[default]
+    None,
+    Weapon(WeaponModel),
+    Armor(ArmorModel),
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct WeaponModel {
+    pub parts: Vec<ModelPart>,
+    /// Icons of the individual pieces of paired weapons.
+    pub part_icons: Vec<TextureRef>,
+    /// Swing and impact sounds.
+    pub sounds: Vec<SoundRef>,
+    pub effect: Option<EffectRef>,
+    /// Client animation grip class; meaning is mapped when animation lands.
+    pub grip: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ModelPart {
+    pub mesh: Option<MeshRef>,
+    pub textures: Vec<TextureRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ArmorModel {
+    pub bodies: BTreeMap<Body, BodyModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BodyModel {
+    pub meshes: Vec<MeshRef>,
+    pub textures: Vec<TextureRef>,
+    pub attachments: Vec<Attachment>,
+    pub attachment_textures: Vec<TextureRef>,
+    pub extra_texture: Option<TextureRef>,
+}
+
+/// Extra mesh worn with an armor piece, e.g. Kamael wings.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    pub mesh: MeshRef,
+    /// Two client parameters kept verbatim until their meaning is mapped.
+    pub params: [i8; 2],
+}
+
+/// Character body a model is authored for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Body {
+    HumanFighterMale,
+    HumanFighterFemale,
+    HumanMysticMale,
+    HumanMysticFemale,
+    ElfMale,
+    ElfFemale,
+    DarkElfMale,
+    DarkElfFemale,
+    OrcFighterMale,
+    OrcFighterFemale,
+    OrcMysticMale,
+    OrcMysticFemale,
+    DwarfMale,
+    DwarfFemale,
+    KamaelMale,
+    KamaelFemale,
+    Npc,
+}
