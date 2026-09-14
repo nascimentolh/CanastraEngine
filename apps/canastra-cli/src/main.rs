@@ -1,6 +1,7 @@
 //! `canastra`: inspection and migration tool for a Lineage 2 High Five client.
 
 mod migrate;
+mod texture;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -17,13 +18,15 @@ const USAGE: &str = "usage:
   canastra decrypt <file> <output>   write the decrypted file
   canastra package <file>            list a package's exports
   canastra dat <file>                decode a .dat table and print its first record
-  canastra scan <client-root>        decrypt and parse every file, report failures
+  canastra texture <package> <object> <output.png>
+                                     decode one texture, e.g. `L2UI_CH3.utx Button.Btn1_normal`
+  canastra scan <client-root>        decrypt and parse every file and texture, report failures
   canastra migrate <client-root> <server-stats-dir> [<output.cana>]
                                      convert items, skills and npcs into game data";
 
 /// What `scan` understood a file to be.
 enum Parsed {
-    Package { exports: usize },
+    Package { exports: usize, textures: usize, texture_failures: Vec<String> },
     Table { records: usize },
     UnknownTable,
     Opaque,
@@ -36,6 +39,7 @@ fn main() -> ExitCode {
         ["decrypt", input, output] => decrypt(Path::new(input), Path::new(output)),
         ["package", input] => package(Path::new(input)),
         ["dat", input] => dat(Path::new(input)),
+        ["texture", input, object, output] => texture::export(Path::new(input), object, Path::new(output)),
         ["scan", root] => scan(Path::new(root)),
         ["migrate", client, server, output @ ..] if output.len() <= 1 => {
             migrate::run(Path::new(client), Path::new(server), output.first().map(Path::new))
@@ -106,13 +110,16 @@ fn scan(root: &Path) -> Result {
 
     let mut schemes = BTreeMap::<Scheme, usize>::new();
     let (mut packages, mut exports, mut tables, mut records) = (0, 0, 0, 0);
+    let (mut textures, mut texture_failures) = (0, 0);
     let mut unknown_tables = Vec::new();
     let mut failures = 0;
     for path in &files {
         let outcome = read_decrypted(path).and_then(|(scheme, plain)| {
             let name = file_name(path);
             let parsed = if plain.starts_with(&TAG.to_le_bytes()) {
-                Parsed::Package { exports: Package::parse(&plain)?.exports().len() }
+                let package = Package::parse(&plain)?;
+                let (textures, texture_failures) = texture::check_all(&package, &plain);
+                Parsed::Package { exports: package.exports().len(), textures, texture_failures }
             } else if let Some(table) = l2_dat_h5::table(name) {
                 Parsed::Table { records: records_of(&l2_dat::decode(table, &plain)?).len() }
             } else if name.to_ascii_lowercase().ends_with(".dat") {
@@ -126,7 +133,13 @@ fn scan(root: &Path) -> Result {
             Ok((scheme, parsed)) => {
                 *schemes.entry(scheme).or_default() += 1;
                 match parsed {
-                    Parsed::Package { exports: n } => (packages, exports) = (packages + 1, exports + n),
+                    Parsed::Package { exports: n, textures: decoded, texture_failures: failed } => {
+                        (packages, exports, textures) = (packages + 1, exports + n, textures + decoded);
+                        texture_failures += failed.len();
+                        for failure in failed {
+                            eprintln!("FAIL {}: {failure}", path.display());
+                        }
+                    }
                     Parsed::Table { records: n } => (tables, records) = (tables + 1, records + n),
                     Parsed::UnknownTable => unknown_tables.push(path.display().to_string()),
                     Parsed::Opaque => {}
@@ -141,12 +154,13 @@ fn scan(root: &Path) -> Result {
 
     println!("{} files: {schemes:?}", files.len());
     println!("{packages} packages parsed, {exports} exports");
+    println!("{textures} textures decoded, {texture_failures} failed");
     println!("{tables} tables decoded, {records} records");
     println!("{} .dat files without a layout: {unknown_tables:#?}", unknown_tables.len());
     println!("{failures} failures");
-    match failures {
+    match failures + texture_failures {
         0 => Ok(()),
-        n => Err(format!("{n} file(s) failed").into()),
+        n => Err(format!("{n} failure(s)").into()),
     }
 }
 

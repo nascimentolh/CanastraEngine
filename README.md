@@ -12,6 +12,7 @@ so they can be tested against synthetic bytes and reused by tools.
 ```
 apps/        canastra-cli        IO, filesystem, user-facing commands
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
+             ue2-assets          textures and palettes read in place, decoded to RGBA on demand
              canastra-data       game data domain model shared by client, server and Studio
              l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
              l2-dat              schema-driven decoder for the legacy system/*.dat tables
@@ -26,6 +27,7 @@ crates/      canastra-migrate    legacy client tables + server XML -> game data,
 cargo run --release -p canastra-cli -- scan    "<H5 client root>"
 cargo run --release -p canastra-cli -- package "<file>.utx"
 cargo run --release -p canastra-cli -- dat     "<file>.dat"
+cargo run --release -p canastra-cli -- texture "<file>.utx" Group.Name out.png
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
 cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```

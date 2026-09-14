@@ -64,8 +64,8 @@ Decided on 2026-09-14 through a design interview. Change an entry only with a ne
 - **Engine:** our own renderer on wgpu. egui is for tools only, never game UI.
 - **Styling:** our own CSS subset: flex/grid layout (taffy), gradients, borders, radius, shadows,
   9-slice textures, light transitions (hover, open/close, cooldowns), which players can disable.
-- **Art:** undecided. L2UI textures are available through migration into our own atlases; styled
-  (CSS) chrome can replace them.
+- **Art:** undecided. L2UI textures are read in place from the client packages; styled (CSS) chrome can
+  replace them.
 - **Source:** markup + CSS as text, editable by hand or in Studio (which reads and writes the same
   text). The build validates it and compiles it to binary for the client.
 - **Widgets are addressed by name**, never by index. Bindings are declared (`bind="player.adena"`),
@@ -109,7 +109,9 @@ Login, then server and character selection, then walking in the world, with a ba
 ## Build order
 
 1. Domain model crate + binary format + `canastra migrate` (dat to binary), verified against the client.
-2. Texture decoding (`.utx`) and conversion into our own atlases.
+2. Texture reading (`.utx`), in place.
+   - *2026-09-14:* textures are not converted or re-encoded. Parsed textures borrow the package bytes
+     untouched, and pixels are decoded to RGBA in memory only when needed (as Fermata does).
 3. Canastra Studio: game data editor.
 4. UI engine: markup + CSS subset, taffy layout, wgpu renderer, text shaping (Cyrillic/CJK), bindings,
    compiler to binary.
