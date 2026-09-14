@@ -17,7 +17,13 @@ Decided on 2026-09-14 through a design interview. Change an entry only with a ne
   `Skill` merges skillname + skillgrp + skillsoundgrp, `Npc` merges npcname + npcgrp. Migration does
   the merge once.
 - **Rust structs are the single source of truth.** Client, server and Studio use the same crate.
-- **Binary on disk**, with magic, format version, schema hash and versioned migrations.
+- **Binary on disk** as `.cana`: `CANASTRA` magic, a `u32` format version, then postcard (serde).
+  - *2026-09-14:* the schema hash is a frozen golden file instead: a sample with every nested type is
+    compared byte for byte, so a layout change fails the tests until the version is bumped.
+  - Readers reject other versions; migrations between versions are written when version 2 exists.
+  - Asset paths are validated again on load, since content packs come from servers.
+  - Uncompressed (31 MB for the H5 data; zlib gets 2.4 MB). Compression belongs to content-pack
+    transport, added with it.
 - **Typed IDs and references** (`ItemId`, `SkillId`, `TextureRef`, `MeshRef`) with referential
   integrity checked on save; a broken reference blocks the save.
 - **Edited only through Canastra Studio**, never by hand.

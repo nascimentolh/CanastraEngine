@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use canastra_data::format;
 use canastra_data::item::{ItemKind, ItemModel};
 use canastra_migrate::{Report, Severity, Sources};
 use l2_dat::Value;
@@ -14,7 +15,7 @@ use crate::{Result, read_decrypted, records_of};
 const EXAMPLES: usize = 3;
 
 /// `server_stats` holds the reference server's `items`, `skills` and `npcs` XML folders.
-pub(crate) fn run(client_root: &Path, server_stats: &Path) -> Result {
+pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>) -> Result {
     let table = |file: &str| -> Result<Vec<Value>> {
         let (_, plain) = read_decrypted(&client_root.join("system").join(file))?;
         let layout = l2_dat_h5::table(file).ok_or_else(|| format!("no H5 layout for {file}"))?;
@@ -65,10 +66,20 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path) -> Result {
     for issue in issues.iter().take(EXAMPLES) {
         println!("  {:?}: {:?}", issue.subject, issue.problem);
     }
-    match report.count(Severity::Error) {
-        0 => Ok(()),
-        n => Err(format!("{n} migration error(s)").into()),
+    let errors = report.count(Severity::Error);
+    if errors > 0 {
+        return Err(format!("{errors} migration error(s); nothing written").into());
     }
+    if let Some(output) = output {
+        fs::write(output, format::encode(&data))?;
+        // Read the file back so what landed on disk is what was migrated.
+        let written = fs::read(output)?;
+        if format::decode(&written)? != data {
+            return Err(format!("{} does not read back as the migrated data", output.display()).into());
+        }
+        println!("wrote {} ({} bytes, verified)", output.display(), written.len());
+    }
+    Ok(())
 }
 
 fn xml_documents(dir: &Path) -> Result<Vec<(String, String)>> {

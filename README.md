@@ -27,7 +27,7 @@ cargo run --release -p canastra-cli -- scan    "<H5 client root>"
 cargo run --release -p canastra-cli -- package "<file>.utx"
 cargo run --release -p canastra-cli -- dat     "<file>.dat"
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
-cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats"
+cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```
 
 `scan` on a real H5 client: 3020 of 3021 files decrypt, 1244 packages parse, and all 54 `system`

@@ -18,7 +18,7 @@ const USAGE: &str = "usage:
   canastra package <file>            list a package's exports
   canastra dat <file>                decode a .dat table and print its first record
   canastra scan <client-root>        decrypt and parse every file, report failures
-  canastra migrate <client-root> <server-stats-dir>
+  canastra migrate <client-root> <server-stats-dir> [<output.cana>]
                                      convert items, skills and npcs into game data";
 
 /// What `scan` understood a file to be.
@@ -37,7 +37,9 @@ fn main() -> ExitCode {
         ["package", input] => package(Path::new(input)),
         ["dat", input] => dat(Path::new(input)),
         ["scan", root] => scan(Path::new(root)),
-        ["migrate", client, server] => migrate::run(Path::new(client), Path::new(server)),
+        ["migrate", client, server, output @ ..] if output.len() <= 1 => {
+            migrate::run(Path::new(client), Path::new(server), output.first().map(Path::new))
+        }
         _ => Err(USAGE.into()),
     };
     match result {
