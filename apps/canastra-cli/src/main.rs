@@ -18,8 +18,8 @@ const USAGE: &str = "usage:
   canastra package <file>            list a package's exports
   canastra dat <file>                decode a .dat table and print its first record
   canastra scan <client-root>        decrypt and parse every file, report failures
-  canastra migrate <client-root> <server-items-dir>
-                                     convert items into game data and report the result";
+  canastra migrate <client-root> <server-stats-dir>
+                                     convert items, skills and npcs into game data";
 
 /// What `scan` understood a file to be.
 enum Parsed {

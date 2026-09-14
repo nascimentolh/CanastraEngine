@@ -1,54 +1,31 @@
 //! Items: server gameplay merged with client presentation and names.
 
+mod client;
+mod server;
+
 use std::collections::BTreeMap;
 
 use canastra_data::id::ItemId;
 use canastra_data::item::{Item, ItemKind};
-use l2_dat::Value;
+use canastra_data::text::Locale;
 
-use crate::client::{self, ClientItem, ClientName, ClientTable};
-use crate::{Report, Severity, server};
+use crate::{Report, Severity, Sources, index, server_index};
+use client::{ClientItem, ClientName, ClientTable};
 
-/// Decoded legacy inputs. Client lists are the records of each table.
-pub struct ItemSources<'a> {
-    pub weapons: &'a [Value],
-    pub armors: &'a [Value],
-    pub etc_items: &'a [Value],
-    pub names: &'a [Value],
-    /// `(file name, XML text)` for every server item document.
-    pub server_documents: &'a [(String, String)],
-}
+pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<ItemId, Item> {
+    let mut items = server_index(sources.server_items, "item", report, server::item);
 
-/// The server decides what exists and how it plays; the client supplies names
-/// and presentation. Client-only items are not playable and are left out.
-pub fn migrate_items(sources: &ItemSources<'_>) -> (BTreeMap<ItemId, Item>, Report) {
-    let mut report = Report::default();
-    let mut items = BTreeMap::new();
-    for (file, xml) in sources.server_documents {
-        match server::parse(xml, file, &mut report) {
-            Ok(parsed) => {
-                for mut server_item in parsed {
-                    let id = server_item.item.id;
-                    server_item.item.visual.icon = server_item.icon;
-                    if items.insert(id, server_item.item).is_some() {
-                        report.push(Severity::Error, subject(id), format!("{file}: defined more than once"));
-                    }
-                }
-            }
-            Err(error) => report.push(Severity::Error, file.clone(), error),
-        }
-    }
-
-    let visuals = client_items(sources, &mut report);
-    let names = client_records("ItemName", sources.names, client::name, |name: &ClientName| name.id, &mut report);
+    let visuals = client_items(sources, report);
+    let id = |name: &ClientName| name.id;
+    let names = index("ItemName", sources.item_names, client::name, id, Severity::Error, report);
 
     for (&id, item) in &mut items {
         match visuals.get(&id) {
-            Some(client) => apply_visual(item, client, &mut report),
+            Some(client) => apply_visual(item, client, report),
             None => report.push(Severity::Warning, subject(id), "no client presentation"),
         }
         if let Some(name) = names.get(&id) {
-            if name.name.get(canastra_data::text::Locale::En).is_some() {
+            if name.name.get(Locale::En).is_some() {
                 item.name = name.name.clone();
             }
             item.additional_name = name.additional_name.clone();
@@ -58,45 +35,23 @@ pub fn migrate_items(sources: &ItemSources<'_>) -> (BTreeMap<ItemId, Item>, Repo
     for id in visuals.keys().filter(|id| !items.contains_key(id)) {
         report.push(Severity::Warning, subject(*id), "only in the client; not migrated");
     }
-    (items, report)
+    items
 }
 
-fn client_items(sources: &ItemSources<'_>, report: &mut Report) -> BTreeMap<ItemId, ClientItem> {
+fn client_items(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<ItemId, ClientItem> {
     let id = |item: &ClientItem| item.id;
-    let mut visuals = client_records("Weapongrp", sources.weapons, client::weapon, id, report);
+    let mut visuals = index("Weapongrp", sources.weapons, client::weapon, id, Severity::Error, report);
     for (table, records, map) in [
-        ("Armorgrp", sources.armors, client::armor as fn(&Value) -> _),
+        ("Armorgrp", sources.armors, client::armor as fn(&_) -> _),
         ("EtcItemgrp", sources.etc_items, client::etc_item),
     ] {
-        for (item_id, item) in client_records(table, records, map, id, report) {
+        for (item_id, item) in index(table, records, map, id, Severity::Error, report) {
             if visuals.insert(item_id, item).is_some() {
                 report.push(Severity::Error, subject(item_id), format!("{table}: already defined by another table"));
             }
         }
     }
     visuals
-}
-
-fn client_records<T>(
-    table: &str,
-    records: &[Value],
-    map: fn(&Value) -> crate::fields::Result<T>,
-    id: fn(&T) -> ItemId,
-    report: &mut Report,
-) -> BTreeMap<ItemId, T> {
-    let mut out = BTreeMap::new();
-    for (index, record) in records.iter().enumerate() {
-        match map(record) {
-            Ok(entry) => {
-                let entry_id = id(&entry);
-                if out.insert(entry_id, entry).is_some() {
-                    report.push(Severity::Error, subject(entry_id), format!("{table}: duplicate record"));
-                }
-            }
-            Err(error) => report.push(Severity::Error, format!("{table} record {index}"), error),
-        }
-    }
-    out
 }
 
 fn apply_visual(item: &mut Item, client: &ClientItem, report: &mut Report) {

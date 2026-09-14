@@ -1,8 +1,49 @@
 //! Field access over decoded records that tracks what was consumed.
 
+use std::str::FromStr;
+
+use canastra_data::asset::AssetRef;
+use canastra_data::text::Localized;
 use l2_dat::{Record, Value};
 
 pub(crate) type Result<T> = std::result::Result<T, String>;
+
+/// The client writes empty, `none` or `[none]` for "no value".
+fn is_blank(text: &str) -> bool {
+    text.is_empty() || text.eq_ignore_ascii_case("none") || text.eq_ignore_ascii_case("[none]")
+}
+
+pub(crate) fn parse<T: FromStr>(name: &str, value: &str) -> Result<T> {
+    value.trim().parse().map_err(|_| format!("invalid {name} `{value}`"))
+}
+
+/// A client code such as an animation or icon id, empty when blank.
+pub(crate) fn code(text: &str) -> String {
+    if is_blank(text) { String::new() } else { text.to_owned() }
+}
+
+pub(crate) fn localized(text: &str) -> Localized {
+    if is_blank(text) { Localized::default() } else { Localized::en(text) }
+}
+
+/// Collects asset references and notes what had to be dropped or repaired.
+#[derive(Default)]
+pub(crate) struct Assets {
+    pub(crate) notes: Vec<String>,
+}
+
+impl Assets {
+    pub(crate) fn one<K>(&mut self, path: &str) -> Option<AssetRef<K>> {
+        if is_blank(path) {
+            return None;
+        }
+        AssetRef::parse(path).map_err(|error| self.notes.push(format!("dropped asset reference: {error}"))).ok()
+    }
+
+    pub(crate) fn many<K>(&mut self, paths: &[&str]) -> Vec<AssetRef<K>> {
+        paths.iter().filter_map(|path| self.one(path)).collect()
+    }
+}
 
 pub(crate) struct Fields<'a> {
     record: &'a Record,
@@ -41,6 +82,22 @@ impl<'a> Fields<'a> {
         match self.take(name)? {
             Value::Int(int) => i8::try_from(*int).map_err(|_| format!("`{name}` = {int} is out of range")),
             other => Err(format!("`{name}` should be an integer, found {other:?}")),
+        }
+    }
+
+    pub(crate) fn float(&mut self, name: &str) -> Result<f32> {
+        match self.take(name)? {
+            Value::Float(float) => Ok(*float),
+            other => Err(format!("`{name}` should be a float, found {other:?}")),
+        }
+    }
+
+    /// A 0/1 integer.
+    pub(crate) fn flag(&mut self, name: &str) -> Result<bool> {
+        match self.uint(name)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            other => Err(format!("`{name}` = {other} is not 0 or 1")),
         }
     }
 

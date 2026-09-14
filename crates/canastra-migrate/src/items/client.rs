@@ -1,12 +1,11 @@
 //! Item presentation and names from the H5 client tables.
 
-use canastra_data::asset::AssetRef;
 use canastra_data::id::ItemId;
 use canastra_data::item::{Attachment, Body, BodyModel, HeldModel, ItemModel, ItemVisual, ModelPart, WornModel};
 use canastra_data::text::Localized;
 use l2_dat::Value;
 
-use crate::fields::{Fields, Result};
+use crate::fields::{Assets, Fields, Result, localized};
 
 /// Client copies of gameplay values; the server definition is authoritative.
 const GAMEPLAY_COPIES: &[&str] = &[
@@ -121,25 +120,6 @@ pub(crate) struct ClientName {
     pub(crate) description: Localized,
 }
 
-/// Collects references and notes what had to be dropped or repaired.
-#[derive(Default)]
-struct Assets {
-    notes: Vec<String>,
-}
-
-impl Assets {
-    fn one<K>(&mut self, path: &str) -> Option<AssetRef<K>> {
-        if path.is_empty() || path.eq_ignore_ascii_case("[none]") {
-            return None;
-        }
-        AssetRef::parse(path).map_err(|error| self.notes.push(format!("dropped asset reference: {error}"))).ok()
-    }
-
-    fn many<K>(&mut self, paths: &[&str]) -> Vec<AssetRef<K>> {
-        paths.iter().filter_map(|path| self.one(path)).collect()
-    }
-}
-
 pub(crate) fn weapon(value: &Value) -> Result<ClientItem> {
     let mut f = Fields::of(value)?;
     let mut assets = Assets::default();
@@ -213,7 +193,6 @@ pub(crate) fn etc_item(value: &Value) -> Result<ClientItem> {
 
 pub(crate) fn name(value: &Value) -> Result<ClientName> {
     let mut f = Fields::of(value)?;
-    let localized = |text: &str| if text.is_empty() { Localized::default() } else { Localized::en(text) };
     let name = ClientName {
         id: ItemId(f.uint("id")?),
         name: localized(f.text("name")?),
@@ -326,6 +305,8 @@ fn attachments(f: &mut Fields<'_>, model: &mut BodyModel, assets: &mut Assets) -
 
 #[cfg(test)]
 mod tests {
+    use canastra_data::asset::AssetRef;
+
     use super::*;
 
     fn part_textures(parts: &[ModelPart]) -> Vec<Vec<&str>> {

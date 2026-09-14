@@ -13,33 +13,13 @@ use canastra_data::text::Localized;
 use roxmltree::Node;
 
 use crate::Report;
-use crate::fields::Result;
+use crate::fields::{Result, parse};
 
 /// `<set name val>` pairs still to be consumed.
 type Sets<'a> = BTreeMap<&'a str, &'a str>;
 
-pub(crate) struct ServerItem {
-    pub(crate) item: Item,
-    /// Icon named by the server, used when the client has no presentation.
-    pub(crate) icon: Option<TextureRef>,
-}
-
-/// Parses one document; items that fail are reported and skipped.
-pub(crate) fn parse(document: &str, source: &str, report: &mut Report) -> Result<Vec<ServerItem>> {
-    let document = roxmltree::Document::parse(document).map_err(|error| format!("{source}: {error}"))?;
-    let mut items = Vec::new();
-    for node in document.descendants().filter(|node| node.has_tag_name("item")) {
-        let subject = format!("item {}", node.attribute("id").unwrap_or("?"));
-        match item(node, report) {
-            Ok(item) => items.push(item),
-            Err(error) => report.push(crate::Severity::Error, subject, format!("{source}: {error}")),
-        }
-    }
-    Ok(items)
-}
-
-fn item(node: Node<'_, '_>, report: &mut Report) -> Result<ServerItem> {
-    let id = ItemId(parse_value("id", node.attribute("id").unwrap_or_default())?);
+pub(crate) fn item(node: Node<'_, '_>, report: &mut Report) -> Result<(ItemId, Item)> {
+    let id = ItemId(parse("id", node.attribute("id").unwrap_or_default())?);
     let mut sets: Sets<'_> = node
         .children()
         .filter(|child| child.has_tag_name("set"))
@@ -48,7 +28,8 @@ fn item(node: Node<'_, '_>, report: &mut Report) -> Result<ServerItem> {
 
     let mut item = Item::new(id);
     item.name = Localized::en(node.attribute("name").unwrap_or_default());
-    let icon = sets.remove("icon").and_then(|path| TextureRef::parse(path).ok());
+    // Used when the client has no presentation for the item.
+    item.visual.icon = sets.remove("icon").and_then(|path| TextureRef::parse(path).ok());
     rules(&mut item, &mut sets)?;
     item.kind = kind(node.attribute("type").unwrap_or_default(), &mut sets)?;
 
@@ -63,7 +44,7 @@ fn item(node: Node<'_, '_>, report: &mut Report) -> Result<ServerItem> {
     for name in sets.keys() {
         report.unmodeled(format!("set:{name} on {item_type}"));
     }
-    Ok(ServerItem { item, icon })
+    Ok((id, item))
 }
 
 fn rules(item: &mut Item, sets: &mut Sets<'_>) -> Result<()> {
@@ -146,8 +127,8 @@ fn stats(node: Node<'_, '_>) -> Result<Vec<StatModifier>> {
             Ok(StatModifier {
                 stat: stat(name).ok_or_else(|| format!("unknown stat `{name}`"))?,
                 op,
-                value: parse_value("val", modifier.attribute("val").unwrap_or_default())?,
-                order: modifier.attribute("order").map(|order| parse_value("order", order)).transpose()?,
+                value: parse("val", modifier.attribute("val").unwrap_or_default())?,
+                order: modifier.attribute("order").map(|order| parse("order", order)).transpose()?,
             })
         })
         .collect()
@@ -159,27 +140,23 @@ fn skills(list: &str) -> Result<Vec<SkillRef>> {
         .filter(|entry| !entry.trim().is_empty())
         .map(|entry| {
             let (id, level) = entry.trim().split_once('-').ok_or_else(|| format!("skill `{entry}` is not id-level"))?;
-            Ok(SkillRef { id: SkillId(parse_value("skill id", id)?), level: parse_value("skill level", level)? })
+            Ok(SkillRef { id: SkillId(parse("skill id", id)?), level: parse("skill level", level)? })
         })
         .collect()
 }
 
 /// `0;0;40;120`
 fn damage_range(text: &str) -> Result<[i32; 4]> {
-    let values: Vec<i32> = text.split(';').map(|part| parse_value("damage_range", part)).collect::<Result<_>>()?;
+    let values: Vec<i32> = text.split(';').map(|part| parse("damage_range", part)).collect::<Result<_>>()?;
     values.try_into().map_err(|_| format!("damage_range `{text}` needs four values"))
 }
 
 fn take<T: FromStr>(sets: &mut Sets<'_>, key: &str) -> Result<Option<T>> {
-    sets.remove(key).map(|value| parse_value(key, value)).transpose()
+    sets.remove(key).map(|value| parse(key, value)).transpose()
 }
 
 fn take_enum<T>(sets: &mut Sets<'_>, key: &str, parse: fn(&str) -> Option<T>) -> Result<Option<T>> {
     sets.remove(key).map(|value| parse(value).ok_or_else(|| format!("unknown {key} `{value}`"))).transpose()
-}
-
-fn parse_value<T: FromStr>(key: &str, value: &str) -> Result<T> {
-    value.trim().parse().map_err(|_| format!("invalid {key} `{value}`"))
 }
 
 fn material(name: &str) -> Option<Material> {
@@ -416,11 +393,12 @@ mod tests {
 
     #[test]
     fn maps_gameplay_and_reports_the_rest() {
+        let document = roxmltree::Document::parse(SHORT_SWORD).unwrap();
+        let nodes: Vec<_> = document.root_element().children().filter(|node| node.has_tag_name("item")).collect();
         let mut report = Report::default();
-        let items = parse(SHORT_SWORD, "test.xml", &mut report).unwrap();
-        let [ServerItem { item, icon }] = items.as_slice() else { panic!("{}", items.len()) };
+        let (_, item) = item(nodes[0], &mut report).unwrap();
 
-        assert_eq!(icon.as_ref().map(TextureRef::path), Some("icon.weapon_small_sword_i00"));
+        assert_eq!(item.visual.icon.as_ref().map(TextureRef::path), Some("icon.weapon_small_sword_i00"));
         assert_eq!((item.weight, item.price, item.action), (1600, 590, ItemAction::Equip));
         assert!(!item.flags.tradable && item.flags.sellable);
         assert_eq!(item.skills[1], SkillRef { id: SkillId(3552), level: 2 });
@@ -430,9 +408,9 @@ mod tests {
             (weapon.weapon_type, weapon.slot, weapon.damage_range),
             (WeaponType::Sword, EquipSlot::RightHand, Some([0, 0, 40, 120]))
         );
-
         assert_eq!(report.unmodeled.keys().collect::<Vec<_>>(), ["<conditions>", "set:change_weaponId on Weapon"]);
-        assert_eq!(report.diagnostics.len(), 1);
-        assert!(report.diagnostics[0].message.contains("unknown weapon_type `LASER`"));
+
+        let Err(error) = super::item(nodes[1], &mut report) else { panic!("LASER is not a weapon type") };
+        assert!(error.contains("unknown weapon_type `LASER`"), "{error}");
     }
 }
