@@ -21,7 +21,7 @@ const MTX3: Kind = Group(&[
     f("extra_texture", UNICODE),
 ]);
 
-pub const TABLES: &[Table] = &[
+pub(crate) const TABLES: &[Table] = &[
     ACTIONNAME,
     ADDITIONALEFFECT,
     ADDITIONALITEMGRP,

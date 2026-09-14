@@ -9,8 +9,6 @@ use std::borrow::Cow;
 use std::fmt;
 use std::path::Path;
 
-pub use ver413::{KNOWN_413_KEYS, RsaKey};
-
 /// `Lineage2VerXXX` as UTF-16LE.
 const HEADER_LEN: usize = 28;
 /// Optional footer `[0, ?, ?, crc32, 0]` as little-endian u32s. On XOR files the CRC

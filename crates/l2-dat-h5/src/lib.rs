@@ -9,7 +9,7 @@ mod tables;
 
 use l2_dat::schema::Table;
 
-pub use tables::TABLES;
+use tables::TABLES;
 
 /// The layout for a file name such as `ItemName-e.dat`.
 pub fn table(file_name: &str) -> Option<&'static Table> {

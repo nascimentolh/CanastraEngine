@@ -1,7 +1,6 @@
 //! References to assets by package path, typed by what they point at.
 
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 /// Marker types: a `MeshRef` can never be used where a `TextureRef` is expected.
@@ -50,10 +49,6 @@ impl<K> AssetRef<K> {
     pub fn path(&self) -> &str {
         &self.path
     }
-
-    pub fn package(&self) -> &str {
-        self.path.split('.').next().unwrap_or_default()
-    }
 }
 
 impl<K> Clone for AssetRef<K> {
@@ -70,23 +65,9 @@ impl<K> PartialEq for AssetRef<K> {
 
 impl<K> Eq for AssetRef<K> {}
 
-impl<K> Hash for AssetRef<K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        for byte in self.path.bytes() {
-            state.write_u8(byte.to_ascii_lowercase());
-        }
-    }
-}
-
 impl<K> fmt::Debug for AssetRef<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.path)
-    }
-}
-
-impl<K> fmt::Display for AssetRef<K> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.path)
     }
 }
 
@@ -97,7 +78,6 @@ mod tests {
     #[test]
     fn parses_package_paths() {
         let mesh = MeshRef::parse("LineageWeapons.small_sword_m00_wp").unwrap();
-        assert_eq!(mesh.package(), "LineageWeapons");
         assert!(TextureRef::parse("L2UI_CH3.Button.Btn1_normal").is_ok());
         assert_eq!(mesh, MeshRef::parse("lineageweapons.SMALL_SWORD_M00_WP").unwrap());
         for bad in ["", "NoPackage", "A..B", "A.B.C.D", "A.has space"] {
