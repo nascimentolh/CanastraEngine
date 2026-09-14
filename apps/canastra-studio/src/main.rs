@@ -25,7 +25,7 @@ fn main() -> ExitCode {
         Ok(data) => data,
         Err(error) => return fail(&format!("{}: {error}", data_path.display())),
     };
-    let icons = icons::Icons::new(client_root.as_deref());
+    let icons = icons::Icons::new(client_root.as_deref().map(l2_catalog::Catalog::open).unwrap_or_default());
 
     let mut viewport = egui::ViewportBuilder::default().with_title("Canastra Studio").with_inner_size([1280.0, 800.0]);
     if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../../../icon.png")) {

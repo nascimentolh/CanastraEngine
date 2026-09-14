@@ -601,9 +601,7 @@ version = "0.1.0"
 dependencies = [
  "canastra-data",
  "eframe",
- "l2-crypto",
- "ue2-assets",
- "ue2-package",
+ "l2-catalog",
 ]
 
 [[package]]
@@ -1695,6 +1693,15 @@ dependencies = [
  "euclid",
  "polycool",
  "smallvec",
+]
+
+[[package]]
+name = "l2-catalog"
+version = "0.1.0"
+dependencies = [
+ "l2-crypto",
+ "ue2-assets",
+ "ue2-package",
 ]
 
 [[package]]

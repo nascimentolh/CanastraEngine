@@ -1,0 +1,14 @@
+[package]
+name = "l2-catalog"
+description = "Finds and decodes textures by path across an installed Lineage 2 client."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+l2-crypto.workspace = true
+ue2-assets.workspace = true
+ue2-package.workspace = true
+
+[lints]
+workspace = true
