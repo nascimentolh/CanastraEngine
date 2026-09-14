@@ -20,11 +20,15 @@ ue2-core = { path = "crates/ue2-core" }
 ue2-package = { path = "crates/ue2-package" }
 eframe = "0.36"
 flate2 = "1"
+glyphon = "0.12"
 num-bigint = "0.4"
+pollster = "0.4"
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 roxmltree = "0.20"
 serde = { version = "1", features = ["derive"] }
 taffy = "0.14"
+wgpu = "30"
+winit = "0.30"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

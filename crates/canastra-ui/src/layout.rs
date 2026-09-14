@@ -4,7 +4,6 @@ use taffy::prelude::{
     AlignItems, AvailableSpace, Dimension, Display, FlexDirection, JustifyContent, LengthPercentage,
     LengthPercentageAuto, NodeId, Position, Rect as Edges, Size, Style, TaffyTree,
 };
-use taffy::tree::LayoutOutput;
 
 use crate::css::{Align, Declaration, Length, StyleSheet};
 use crate::markup::{Element, Tag};
@@ -38,8 +37,6 @@ const ROOT: Computed = Computed {
 struct Measured {
     text: String,
     size: f32,
-    /// Top, right, bottom, left: the measure result is the whole box, so padding is added here.
-    padding: [f32; 4],
 }
 
 struct Node<'a> {
@@ -67,17 +64,24 @@ pub fn build(
     let root = node(&mut tree, ui, sheet, hovered, &ROOT, &mut next_index, bindings).map_err(layout_error)?;
     let available =
         Size { width: AvailableSpace::Definite(viewport[0]), height: AvailableSpace::Definite(viewport[1]) };
-    tree.compute_layout_with_measure(root.id, available, |input, _, context, _| match context {
-        Some(measured) => {
-            let [top, right, bottom, left] = measured.padding;
-            let max_width = input.known_dimensions.width.or(match input.available_space.width {
-                AvailableSpace::Definite(width) => Some(width),
-                _ => None,
-            });
-            let (width, height) = text.measure(&measured.text, measured.size, max_width.map(|w| w - left - right));
-            LayoutOutput::from_outer_size(Size { width: width + left + right, height: height + top + bottom })
-        }
-        None => LayoutOutput::from_outer_size(Size::ZERO),
+    tree.compute_layout_with_measure(root.id, available, |input, _, context, style| {
+        // Taffy applies the style's size, padding and limits; only the text content is measured here.
+        taffy::compute_leaf_layout(
+            input,
+            style,
+            |_, _| 0.0,
+            |known, available| match &context {
+                Some(measured) => {
+                    let max_width = known.width.or(match available.width {
+                        AvailableSpace::Definite(width) => Some(width),
+                        _ => None,
+                    });
+                    let (width, height) = text.measure(&measured.text, measured.size, max_width);
+                    Size { width, height }
+                }
+                None => Size::ZERO,
+            },
+        )
     })
     .map_err(layout_error)?;
 
@@ -109,7 +113,7 @@ fn node<'a>(
         _ => None,
     };
     let (id, children) = if let Some(text) = &text {
-        let measured = Measured { text: text.clone(), size: computed.font_size, padding: computed.padding };
+        let measured = Measured { text: text.clone(), size: computed.font_size };
         (tree.new_leaf_with_context(style, measured)?, Vec::new())
     } else {
         let children = element
@@ -308,5 +312,13 @@ mod tests {
     fn hover_restyles_the_hovered_element() {
         let Draw::Text { color, .. } = &frame(Some(3)).draws[2] else { panic!() };
         assert_eq!(*color, Rgba([255, 215, 0, 255]));
+    }
+
+    #[test]
+    fn text_leaves_keep_their_styled_size() {
+        let ui = parse_markup(r#"<ui><button text="Go" action="go"/></ui>"#).unwrap();
+        let sheet = parse_stylesheet("ui { align-items: start } button { width: 100px; padding: 5px }").unwrap();
+        let frame = build(&ui, &sheet, [800.0, 600.0], None, &mut Monospace, &|_| None).unwrap();
+        assert_eq!(frame.hits[0].rect, Rect { x: 0.0, y: 0.0, width: 100.0, height: 26.0 });
     }
 }

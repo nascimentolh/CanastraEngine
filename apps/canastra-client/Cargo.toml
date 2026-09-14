@@ -1,0 +1,17 @@
+[package]
+name = "canastra-client"
+description = "The Canastra game client."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+canastra-ui.workspace = true
+glyphon.workspace = true
+l2-catalog.workspace = true
+pollster.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+
+[lints]
+workspace = true

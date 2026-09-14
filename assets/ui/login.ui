@@ -1,0 +1,12 @@
+<ui>
+    <window id="login">
+        <label class="title" text="Canastra"/>
+        <label class="subtitle" text="Lineage II High Five"/>
+        <label class="status" bind="app.status" text=""/>
+        <row class="actions">
+            <button class="primary" text="Login" action="login"/>
+            <button text="Exit" action="exit"/>
+        </row>
+    </window>
+    <label id="version" bind="app.version" text="?"/>
+</ui>
