@@ -12,7 +12,11 @@ pub enum Texture {}
 pub enum Sound {}
 #[derive(Debug)]
 pub enum Effect {}
+/// Script class that drives an actor, e.g. an NPC's animation set.
+#[derive(Debug)]
+pub enum Class {}
 
+pub type ClassRef = AssetRef<Class>;
 pub type MeshRef = AssetRef<Mesh>;
 pub type TextureRef = AssetRef<Texture>;
 pub type SoundRef = AssetRef<Sound>;
