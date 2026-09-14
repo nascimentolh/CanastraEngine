@@ -1,0 +1,12 @@
+[package]
+name = "l2-crypto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+flate2.workspace = true
+num-bigint.workspace = true
+
+[lints]
+workspace = true
