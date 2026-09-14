@@ -9,6 +9,7 @@ rust-version = "1.98"
 
 [workspace.dependencies]
 l2-crypto = { path = "crates/l2-crypto" }
+l2-dat = { path = "crates/l2-dat" }
 ue2-core = { path = "crates/ue2-core" }
 ue2-package = { path = "crates/ue2-package" }
 flate2 = "1"

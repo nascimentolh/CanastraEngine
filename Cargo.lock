@@ -49,6 +49,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "l2-dat"
+version = "0.1.0"
+dependencies = [
+ "ue2-core",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
