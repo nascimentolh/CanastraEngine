@@ -1,5 +1,7 @@
 //! Text through glyphon: one font system measures for layout and shapes for drawing.
 
+use std::path::Path;
+
 use canastra_ui::{Rect, Rgba, TextAlign, TextMeasure, TextStyle};
 use glyphon::cosmic_text::Align;
 use glyphon::{
@@ -15,19 +17,26 @@ pub(super) struct Label<'a> {
     pub(super) rect: Rect,
     pub(super) text: &'a str,
     pub(super) color: Rgba,
-    pub(super) style: TextStyle,
+    pub(super) style: &'a TextStyle,
 }
 
 pub(crate) struct Fonts(FontSystem);
 
 impl Fonts {
+    /// Adds every `.ttf` and `.otf` in `folder` to the system fonts; returns how many faces loaded.
+    pub(crate) fn load_folder(&mut self, folder: &Path) -> usize {
+        let before = self.0.db().len();
+        self.0.db_mut().load_fonts_dir(folder);
+        self.0.db().len() - before
+    }
+
     /// Shapes `text` in `style` scaled by `scale`, wrapping at `width` physical pixels.
     fn buffer(&mut self, text: &str, style: &TextStyle, scale: f32, width: Option<f32>) -> Buffer {
         let size = style.size * scale;
         let mut buffer = Buffer::new(&mut self.0, Metrics::new(size, size * LINE_HEIGHT));
         buffer.set_size(width, None);
         let attrs = Attrs::new()
-            .family(Family::SansSerif)
+            .family(style.family.as_deref().map_or(Family::SansSerif, Family::Name))
             .weight(glyphon::Weight(style.weight))
             .letter_spacing(style.letter_spacing / style.size.max(1.0));
         let align = match style.align {
@@ -79,7 +88,7 @@ impl Text {
         let buffers: Vec<Buffer> = labels
             .iter()
             .map(|label| {
-                let mut buffer = self.fonts.buffer(label.text, &label.style, scale, Some(label.rect.width * scale));
+                let mut buffer = self.fonts.buffer(label.text, label.style, scale, Some(label.rect.width * scale));
                 buffer.set_size(Some(label.rect.width * scale), Some(label.rect.height * scale));
                 buffer
             })

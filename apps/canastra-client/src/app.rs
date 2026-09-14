@@ -41,7 +41,10 @@ impl App {
             .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
         let window = Arc::new(event_loop.create_window(attributes).map_err(|error| error.to_string())?);
         let gpu = Gpu::open(event_loop, window)?;
-        let renderer = Renderer::new(&gpu.device, &gpu.queue, gpu.config.format, Catalog::open(&self.client_root));
+        let mut renderer = Renderer::new(&gpu.device, &gpu.queue, gpu.config.format, Catalog::open(&self.client_root));
+        // ponytail: fonts load once at start; F5 reloads markup and CSS but not new font files.
+        let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
+        println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
         Ok(Running { screen, modifiers: ModifiersState::empty(), renderer, gpu })
     }
 }

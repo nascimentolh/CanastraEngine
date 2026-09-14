@@ -9,6 +9,7 @@ mod markup;
 mod transition;
 
 use std::fmt;
+use std::sync::Arc;
 
 pub use css::{StyleSheet, parse_stylesheet};
 pub use layout::build;
@@ -36,8 +37,10 @@ pub enum TextAlign {
 }
 
 /// How text is shaped; inherited from parent to child like in CSS.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextStyle {
+    /// Font family name; `None` is the platform's sans-serif.
+    pub family: Option<Arc<str>>,
     /// Font size in logical pixels.
     pub size: f32,
     /// 100 to 900; 400 is normal, 700 bold.

@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.cana binary
+*.ttf binary
+*.otf binary
+*.bat text eol=crlf

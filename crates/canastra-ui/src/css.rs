@@ -1,5 +1,7 @@
 //! The CSS subset: simple compound selectors, a fixed set of properties, strict values.
 
+use std::sync::Arc;
+
 use crate::markup::{Element, Tag};
 use crate::{Fill, Rgba, Shadow, TextAlign, UiError};
 
@@ -88,6 +90,7 @@ pub(crate) enum Declaration {
     BorderRadius(f32),
     BoxShadow(Vec<Shadow>),
     Color(Rgba),
+    FontFamily(Arc<str>),
     FontSize(f32),
     FontWeight(u16),
     LetterSpacing(f32),
@@ -198,6 +201,7 @@ fn declaration(text: &str) -> Result<Declaration, UiError> {
         "border-radius" => Declaration::BorderRadius(px()?),
         "box-shadow" => Declaration::BoxShadow(shadows(value)?),
         "color" => Declaration::Color(color(value)?),
+        "font-family" => Declaration::FontFamily(family(value)?),
         "font-size" => Declaration::FontSize(px()?),
         "font-weight" => Declaration::FontWeight(weight(value)?),
         "letter-spacing" => Declaration::LetterSpacing(px()?),
@@ -242,6 +246,15 @@ fn edges(value: &str) -> Result<[f32; 4], UiError> {
         [top, right, bottom, left] => [top, right, bottom, left],
         _ => return Err(css(&format!("expected one to four lengths, found `{value}`"))),
     })
+}
+
+/// One family name, optionally quoted: `Inter` or `"Noto Sans"`.
+fn family(value: &str) -> Result<Arc<str>, UiError> {
+    let name = value.trim_matches(|c| c == '"' || c == '\'');
+    if name.is_empty() || name.contains([',', '"', '\'']) {
+        return Err(css(&format!("expected one font family name, found `{value}`")));
+    }
+    Ok(name.into())
 }
 
 /// `none`, `<n>ms` or `<n>s`.
@@ -388,6 +401,8 @@ mod tests {
         assert!(weight("350").is_err() && weight("1000").is_err());
         assert_eq!((seconds("150ms").unwrap(), seconds("0.5s").unwrap(), seconds("none").unwrap()), (0.15, 0.5, 0.0));
         assert!(seconds("150").is_err());
+        assert_eq!(&*family("\"Noto Sans\"").unwrap(), "Noto Sans");
+        assert!(family("Inter, sans-serif").is_err());
         assert_eq!(border("1px solid #fff").unwrap(), Some((1.0, Rgba([255; 4]))));
         assert_eq!(
             shadows("0 -4px 12px #0008, inset 0 1px 0 #fff").unwrap(),

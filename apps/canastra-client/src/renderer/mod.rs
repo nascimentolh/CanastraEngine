@@ -49,7 +49,7 @@ impl Renderer {
             .iter()
             .filter_map(|draw| match draw {
                 Draw::Text { rect, text, color, style } => {
-                    Some(text::Label { rect: *rect, text, color: *color, style: *style })
+                    Some(text::Label { rect: *rect, text, color: *color, style })
                 }
                 _ => None,
             })

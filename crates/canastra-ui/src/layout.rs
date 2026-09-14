@@ -29,7 +29,7 @@ struct Computed {
 const ROOT: Computed = Computed {
     paint: Paint { fill: None, border: None, shadows: Vec::new(), color: Rgba([255; 4]) },
     radius: 0.0,
-    text: TextStyle { size: DEFAULT_FONT_SIZE, weight: 400, letter_spacing: 0.0, align: TextAlign::Left },
+    text: TextStyle { family: None, size: DEFAULT_FONT_SIZE, weight: 400, letter_spacing: 0.0, align: TextAlign::Left },
     border_image: None,
     padding: [0.0; 4],
     transition: 0.0,
@@ -127,7 +127,7 @@ impl Pass<'_> {
         let mut style = default_style(element.tag);
         // Only text color and style inherit; everything else starts over.
         let mut computed =
-            Computed { paint: Paint { color: parent.paint.color, ..ROOT.paint }, text: parent.text, ..ROOT };
+            Computed { paint: Paint { color: parent.paint.color, ..ROOT.paint }, text: parent.text.clone(), ..ROOT };
         for declaration in self.sheet.cascade(element, states) {
             apply(declaration, &mut style, &mut computed);
         }
@@ -144,7 +144,7 @@ impl Pass<'_> {
             _ => None,
         };
         let (id, children) = if let Some(text) = &text {
-            let measured = Measured { text: text.clone(), style: computed.text };
+            let measured = Measured { text: text.clone(), style: computed.text.clone() };
             (tree.new_leaf_with_context(style, measured)?, Vec::new())
         } else {
             let children = element
@@ -202,6 +202,7 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::BorderRadius(radius) => computed.radius = *radius,
         Declaration::BoxShadow(shadows) => computed.paint.shadows.clone_from(shadows),
         Declaration::Color(color) => computed.paint.color = *color,
+        Declaration::FontFamily(family) => computed.text.family = Some(family.clone()),
         Declaration::FontSize(size) => computed.text.size = *size,
         Declaration::FontWeight(weight) => computed.text.weight = *weight,
         Declaration::LetterSpacing(spacing) => computed.text.letter_spacing = *spacing,
@@ -280,7 +281,12 @@ fn emit(
             width: rect.width - left - right,
             height: rect.height - top - bottom,
         };
-        frame.draws.push(Draw::Text { rect: content, text: label.clone(), color: paint.color, style: computed.text });
+        frame.draws.push(Draw::Text {
+            rect: content,
+            text: label.clone(),
+            color: paint.color,
+            style: computed.text.clone(),
+        });
         // ponytail: the caret sits after the last character; add a cursor position when editing mid-text is needed.
         if let Some(value) = node.value.as_ref().filter(|_| state.caret && state.focused == Some(node.index)) {
             let (width, _) = text.measure(value, &computed.text, None);
