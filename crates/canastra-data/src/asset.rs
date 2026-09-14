@@ -3,6 +3,9 @@
 use std::fmt;
 use std::marker::PhantomData;
 
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 /// Marker types: a `MeshRef` can never be used where a `TextureRef` is expected.
 #[derive(Debug)]
 pub enum Mesh {}
@@ -68,6 +71,19 @@ impl<K> PartialEq for AssetRef<K> {
 }
 
 impl<K> Eq for AssetRef<K> {}
+
+impl<K> Serialize for AssetRef<K> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.path)
+    }
+}
+
+/// Data files can come from servers, so every path is validated again on load.
+impl<'de, K> Deserialize<'de> for AssetRef<K> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::parse(&String::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
+}
 
 impl<K> fmt::Debug for AssetRef<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

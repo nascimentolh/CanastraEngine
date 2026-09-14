@@ -4,6 +4,7 @@
 //! Gameplay and presentation live together so both sides always agree.
 
 pub mod asset;
+pub mod format;
 pub mod id;
 pub mod item;
 pub mod npc;
@@ -12,13 +13,15 @@ pub mod text;
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use id::{ItemId, NpcId, SkillId, SkillRef};
 use item::{Item, ItemKind};
 use npc::Npc;
 use skill::Skill;
 use text::Locale;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GameData {
     pub items: BTreeMap<ItemId, Item>,
     pub skills: BTreeMap<SkillId, Skill>,

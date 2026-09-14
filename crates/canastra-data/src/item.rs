@@ -1,12 +1,14 @@
 //! Items: gameplay rules and presentation of everything a character can own.
 
+use serde::{Deserialize, Serialize};
+
 use std::collections::BTreeMap;
 
 use crate::asset::{EffectRef, MeshRef, SoundRef, TextureRef};
 use crate::id::{ItemId, SkillRef};
 use crate::text::Localized;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Item {
     pub id: ItemId,
     pub name: Localized,
@@ -65,14 +67,14 @@ impl Item {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ItemKind {
     Weapon(Weapon),
     Armor(Armor),
     Etc(EtcItem),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Weapon {
     pub weapon_type: WeaponType,
     pub slot: EquipSlot,
@@ -86,20 +88,20 @@ pub struct Weapon {
     pub magic: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Armor {
     pub armor_type: ArmorType,
     pub slot: EquipSlot,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct EtcItem {
     pub etc_type: EtcItemType,
     /// Some etc items are equipped, e.g. arrows in the left hand.
     pub slot: EquipSlot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[expect(clippy::struct_excessive_bools, reason = "independent rule switches edited as checkboxes")]
 pub struct ItemFlags {
     pub stackable: bool,
@@ -140,10 +142,10 @@ impl Default for ItemFlags {
 }
 
 /// Identifier of a server-side item behavior, e.g. `ItemSkills`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct HandlerKey(pub String);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StatModifier {
     pub stat: Stat,
     pub op: StatOp,
@@ -152,7 +154,7 @@ pub struct StatModifier {
     pub order: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatOp {
     Set,
     Add,
@@ -162,7 +164,7 @@ pub enum StatOp {
     Enchant,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Stat {
     MaxMp,
     PAtk,
@@ -186,7 +188,7 @@ pub enum Stat {
     MagicSuccessRes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum Grade {
     #[default]
     None,
@@ -199,7 +201,7 @@ pub enum Grade {
     S84,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Material {
     Steel,
     FineSteel,
@@ -231,7 +233,7 @@ pub enum Material {
     RuneRemovePenalty,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum WeaponType {
     #[default]
     None,
@@ -253,7 +255,7 @@ pub enum WeaponType {
     OwnThing,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum ArmorType {
     #[default]
     None,
@@ -264,7 +266,7 @@ pub enum ArmorType {
     Shield,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum EquipSlot {
     #[default]
     None,
@@ -301,7 +303,7 @@ impl EquipSlot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum EtcItemType {
     #[default]
     None,
@@ -339,7 +341,7 @@ pub enum EtcItemType {
     Shot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum ItemAction {
     #[default]
     None,
@@ -371,7 +373,7 @@ pub enum ItemAction {
 }
 
 /// Everything the client needs to show an item.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ItemVisual {
     pub icon: Option<TextureRef>,
     /// Icons of the individual pieces of paired weapons.
@@ -386,7 +388,7 @@ pub struct ItemVisual {
 }
 
 /// The item lying on the ground.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct DropVisual {
     pub meshes: Vec<MeshRef>,
     pub textures: Vec<TextureRef>,
@@ -397,7 +399,7 @@ pub struct DropVisual {
 
 /// How the item looks when equipped. Independent of gameplay kind: shields are
 /// armor held like a weapon, and some etc items are worn meshes.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum ItemModel {
     #[default]
     None,
@@ -407,7 +409,7 @@ pub enum ItemModel {
     Worn(WornModel),
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct HeldModel {
     pub parts: Vec<ModelPart>,
     pub effect: Option<EffectRef>,
@@ -415,20 +417,20 @@ pub struct HeldModel {
     pub grip: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ModelPart {
     pub mesh: Option<MeshRef>,
     pub textures: Vec<TextureRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct WornModel {
     pub bodies: BTreeMap<Body, BodyModel>,
     /// Played on the wearer when hit.
     pub hit_effect: Option<EffectRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct BodyModel {
     pub meshes: Vec<MeshRef>,
     pub textures: Vec<TextureRef>,
@@ -438,7 +440,7 @@ pub struct BodyModel {
 }
 
 /// Extra mesh worn with an armor piece, e.g. Kamael wings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attachment {
     pub mesh: MeshRef,
     /// Two client parameters kept verbatim until their meaning is mapped.
@@ -446,7 +448,7 @@ pub struct Attachment {
 }
 
 /// Character body a model is authored for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Body {
     HumanFighterMale,
     HumanFighterFemale,

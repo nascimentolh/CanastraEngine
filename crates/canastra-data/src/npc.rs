@@ -1,10 +1,12 @@
 //! NPCs: identity, body and presentation. Combat, AI and drops arrive with the server design.
 
+use serde::{Deserialize, Serialize};
+
 use crate::asset::{ClassRef, EffectRef, MeshRef, SoundRef, TextureRef};
 use crate::id::{NpcId, SkillRef};
 use crate::text::Localized;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Npc {
     pub id: NpcId,
     pub name: Localized,
@@ -26,10 +28,10 @@ pub struct Npc {
 }
 
 /// Server behavior registered under this key, e.g. `Merchant`; plugins may add their own.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NpcType(pub String);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Collision {
     pub radius: f64,
     pub height: f64,
@@ -37,7 +39,7 @@ pub struct Collision {
     pub grown: Option<(f64, f64)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[expect(clippy::struct_excessive_bools, reason = "independent rule switches edited as checkboxes")]
 pub struct NpcFlags {
     pub attackable: bool,
@@ -49,7 +51,7 @@ pub struct NpcFlags {
     pub can_move: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum Race {
     #[default]
     None,
@@ -78,7 +80,7 @@ pub enum Race {
     Etc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub enum Sex {
     Male,
     Female,
@@ -86,7 +88,7 @@ pub enum Sex {
     Etc,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct NpcVisual {
     pub class: Option<ClassRef>,
     pub mesh: Option<MeshRef>,
@@ -108,7 +110,7 @@ pub struct NpcVisual {
     pub social: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Decoration {
     pub effect: EffectRef,
     pub scale: f32,

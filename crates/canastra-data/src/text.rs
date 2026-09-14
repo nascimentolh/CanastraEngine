@@ -1,8 +1,10 @@
 //! Player-facing text in every supported language.
 
+use serde::{Deserialize, Serialize};
+
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Locale {
     En,
     PtBr,
@@ -14,7 +16,7 @@ pub enum Locale {
 }
 
 /// Text per locale.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Localized(BTreeMap<Locale, String>);
 
 impl Localized {

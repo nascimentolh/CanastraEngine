@@ -1,6 +1,8 @@
 //! Skills: what each level is called and how it looks and sounds.
 //! Mechanics (costs, effects, conditions) arrive with the server design.
 
+use serde::{Deserialize, Serialize};
+
 use std::collections::BTreeMap;
 
 use crate::asset::{SoundRef, TextureRef};
@@ -8,7 +10,7 @@ use crate::id::SkillId;
 use crate::item::Body;
 use crate::text::Localized;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Skill {
     pub id: SkillId,
     pub operate: SkillOperate,
@@ -17,7 +19,7 @@ pub struct Skill {
 }
 
 /// Operate types as named by the reference server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SkillOperate {
     A1,
     A2,
@@ -31,7 +33,7 @@ pub enum SkillOperate {
     Toggle,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SkillLevel {
     pub name: Localized,
     pub description: Localized,
@@ -48,7 +50,7 @@ pub struct SkillLevel {
     pub sounds: SkillSounds,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SkillSounds {
     pub spell: Vec<SoundCue>,
     pub shot: Vec<SoundCue>,
@@ -61,7 +63,7 @@ pub struct SkillSounds {
     pub cast_radius: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SoundCue {
     pub sound: SoundRef,
     pub volume: f32,
