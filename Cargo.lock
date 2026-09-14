@@ -18,6 +18,8 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "canastra-cli"
 version = "0.1.0"
 dependencies = [
+ "canastra-data",
+ "canastra-migrate",
  "l2-crypto",
  "l2-dat",
  "l2-dat-h5",
@@ -27,6 +29,15 @@ dependencies = [
 [[package]]
 name = "canastra-data"
 version = "0.1.0"
+
+[[package]]
+name = "canastra-migrate"
+version = "0.1.0"
+dependencies = [
+ "canastra-data",
+ "l2-dat",
+ "roxmltree",
+]
 
 [[package]]
 name = "cfg-if"
@@ -113,6 +124,12 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "simd-adler32"

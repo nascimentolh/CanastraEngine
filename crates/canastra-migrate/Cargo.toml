@@ -1,20 +1,14 @@
 [package]
-name = "canastra-cli"
+name = "canastra-migrate"
+description = "Converts legacy Lineage 2 client tables and server XML into Canastra game data."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "canastra"
-path = "src/main.rs"
-
 [dependencies]
 canastra-data.workspace = true
-canastra-migrate.workspace = true
-l2-crypto.workspace = true
 l2-dat.workspace = true
-l2-dat-h5.workspace = true
-ue2-package.workspace = true
+roxmltree.workspace = true
 
 [lints]
 workspace = true

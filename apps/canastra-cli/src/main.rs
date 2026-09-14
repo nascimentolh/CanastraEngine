@@ -1,4 +1,6 @@
-//! `canastra`: inspection tool for a Lineage 2 High Five client.
+//! `canastra`: inspection and migration tool for a Lineage 2 High Five client.
+
+mod migrate;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -15,7 +17,9 @@ const USAGE: &str = "usage:
   canastra decrypt <file> <output>   write the decrypted file
   canastra package <file>            list a package's exports
   canastra dat <file>                decode a .dat table and print its first record
-  canastra scan <client-root>        decrypt and parse every file, report failures";
+  canastra scan <client-root>        decrypt and parse every file, report failures
+  canastra migrate <client-root> <server-items-dir>
+                                     convert items into game data and report the result";
 
 /// What `scan` understood a file to be.
 enum Parsed {
@@ -33,6 +37,7 @@ fn main() -> ExitCode {
         ["package", input] => package(Path::new(input)),
         ["dat", input] => dat(Path::new(input)),
         ["scan", root] => scan(Path::new(root)),
+        ["migrate", client, server] => migrate::run(Path::new(client), Path::new(server)),
         _ => Err(USAGE.into()),
     };
     match result {
