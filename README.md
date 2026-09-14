@@ -12,11 +12,15 @@ Dependencies only point downward. Format crates are pure (`&[u8]` in, types out,
 so they can be tested against synthetic bytes and reused by tools.
 
 ```
-apps/        canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
+apps/        canastra-client     game client: winit + wgpu window drawing the UI (login screen for now)
+             canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
              canastra-cli        IO, filesystem, user-facing commands
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
-             ue2-assets          textures and palettes read in place, decoded to RGBA on demand
+             ue2-assets          tagged properties, textures and palettes read in place, RGBA on demand
+             ue2-level           placed actors and scene cameras of a map
              canastra-data       game data domain model shared by client, server and Studio
+             canastra-ui         UI markup + CSS subset laid out into draw commands (no GPU, no fonts)
+             l2-catalog          finds and decodes client textures by Package.Group.Name
              l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
              l2-dat              schema-driven decoder for the legacy system/*.dat tables
              ue2-package         UE2 package tables: names, imports, exports, object paths
@@ -32,6 +36,7 @@ cargo run --release -p canastra-cli -- package "<file>.utx"
 cargo run --release -p canastra-cli -- dat     "<file>.dat"
 cargo run --release -p canastra-cli -- texture "<file>.utx" Group.Name out.png
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
+cargo run --release -p canastra-cli -- level   "<client>/MAPS/lobby01.unr"
 cargo run --release -p canastra-studio -- gamedata.cana "<H5 client root>"
 cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```

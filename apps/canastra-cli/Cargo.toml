@@ -16,6 +16,7 @@ l2-crypto.workspace = true
 l2-dat.workspace = true
 l2-dat-h5.workspace = true
 ue2-assets.workspace = true
+ue2-level.workspace = true
 ue2-package.workspace = true
 
 [lints]

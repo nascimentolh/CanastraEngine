@@ -35,8 +35,9 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
 
 ## Rendering plan, each step checked against a screenshot of the H5 login
 
-1. Public tagged-property reading in `ue2-assets` and level actor extraction (class, mesh, location,
-   rotation, DrawScale/DrawScale3D, group, emitter lists).
+1. Public tagged-property reading in `ue2-assets` and level actor extraction in `ue2-level` (class,
+   mesh, location, rotation, scale, groups, skins, scene warps). **Done:** `canastra level` reads 616
+   actors and 62 distinct meshes from lobby01 and finds `Logon_Warp` at the camera above.
 2. Static meshes (`.usx`) with their textures, drawn from the fixed camera behind the login UI.
 3. Materials the scene uses (shaders, panners, blending) so the sky and clouds animate.
 4. Terrain.

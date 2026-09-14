@@ -575,6 +575,7 @@ dependencies = [
  "l2-dat",
  "l2-dat-h5",
  "ue2-assets",
+ "ue2-level",
  "ue2-package",
 ]
 
@@ -3457,6 +3458,14 @@ dependencies = [
 [[package]]
 name = "ue2-core"
 version = "0.1.0"
+
+[[package]]
+name = "ue2-level"
+version = "0.1.0"
+dependencies = [
+ "ue2-assets",
+ "ue2-package",
+]
 
 [[package]]
 name = "ue2-package"

@@ -20,6 +20,7 @@ const USAGE: &str = "usage:
   canastra dat <file>                decode a .dat table and print its first record
   canastra texture <package> <object> <output.png>
                                      decode one texture, e.g. `L2UI_CH3.utx Button.Btn1_normal`
+  canastra level <map.unr>           count a map's actors and list where its scenes warp the camera
   canastra scan <client-root>        decrypt and parse every file and texture, report failures
   canastra migrate <client-root> <server-stats-dir> [<output.cana>]
                                      convert items, skills and npcs into game data";
@@ -39,6 +40,7 @@ fn main() -> ExitCode {
         ["decrypt", input, output] => decrypt(Path::new(input), Path::new(output)),
         ["package", input] => package(Path::new(input)),
         ["dat", input] => dat(Path::new(input)),
+        ["level", input] => level(Path::new(input)),
         ["texture", input, object, output] => texture::export(Path::new(input), object, Path::new(output)),
         ["scan", root] => scan(Path::new(root)),
         ["migrate", client, server, output @ ..] if output.len() <= 1 => {
@@ -87,6 +89,29 @@ fn package(input: &Path) -> Result {
             export.serial_size,
             export.serial_offset
         );
+    }
+    Ok(())
+}
+
+fn level(input: &Path) -> Result {
+    let (_, plain) = read_decrypted(input)?;
+    let package = Package::parse(&plain)?;
+    let level = ue2_level::read_level(&package, &plain)?;
+    let mut classes: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut meshes: BTreeMap<&str, usize> = BTreeMap::new();
+    for actor in &level.actors {
+        *classes.entry(&actor.class).or_default() += 1;
+        if let Some(mesh) = &actor.static_mesh {
+            *meshes.entry(mesh).or_default() += 1;
+        }
+    }
+    println!("{} actors, {} distinct static meshes", level.actors.len(), meshes.len());
+    for (class, count) in classes {
+        println!("{count:>6}  {class}");
+    }
+    for (tag, warp) in &level.warps {
+        let ([x, y, z], [pitch, yaw, roll]) = (warp.location, warp.rotation);
+        println!("warp {tag:<24} ({x:.1}, {y:.1}, {z:.1})  pitch {pitch} yaw {yaw} roll {roll}");
     }
     Ok(())
 }
