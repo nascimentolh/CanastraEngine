@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" alt="Canastra Engine" width="560"></p>
+
 # CanastraEngine
 
 Lineage 2 High Five client in Rust. It reads assets straight from an existing H5 client install;
@@ -10,7 +12,8 @@ Dependencies only point downward. Format crates are pure (`&[u8]` in, types out,
 so they can be tested against synthetic bytes and reused by tools.
 
 ```
-apps/        canastra-cli        IO, filesystem, user-facing commands
+apps/        canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
+             canastra-cli        IO, filesystem, user-facing commands
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
              ue2-assets          textures and palettes read in place, decoded to RGBA on demand
              canastra-data       game data domain model shared by client, server and Studio
@@ -29,6 +32,7 @@ cargo run --release -p canastra-cli -- package "<file>.utx"
 cargo run --release -p canastra-cli -- dat     "<file>.dat"
 cargo run --release -p canastra-cli -- texture "<file>.utx" Group.Name out.png
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
+cargo run --release -p canastra-studio -- gamedata.cana "<H5 client root>"
 cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```
 
