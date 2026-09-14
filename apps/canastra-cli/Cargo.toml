@@ -1,0 +1,17 @@
+[package]
+name = "canastra-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "canastra"
+path = "src/main.rs"
+
+[dependencies]
+l2-crypto.workspace = true
+l2-dat.workspace = true
+ue2-package.workspace = true
+
+[lints]
+workspace = true
