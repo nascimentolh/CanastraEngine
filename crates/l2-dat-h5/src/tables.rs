@@ -1,10 +1,8 @@
-//! High Five table layouts.
-//!
-//! Initially generated from the `L2ClientDat` (GPL) `HighFive` descriptors, then verified
-//! byte-for-byte against a real H5 client with `canastra scan`. Maintained by hand.
+// Initially generated from the `L2ClientDat` (GPL) `HighFive` descriptors, then verified
+// byte-for-byte against a real H5 client with `canastra scan`. Maintained by hand.
 
-use crate::schema::Kind::{Array, Group, If};
-use crate::schema::{ASCF, COMPACT, F32, I8, I32, Kind, Len, RGBA, Table, U8, U32, UNICODE, counter, f};
+use l2_dat::schema::Kind::{Array, Group, If};
+use l2_dat::schema::{ASCF, COMPACT, F32, I8, I32, Kind, Len, RGBA, Table, U8, U32, UNICODE, counter, f};
 
 /// Mesh and texture name lists.
 const MTX: Kind = Group(&[

@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "l2-crypto",
  "l2-dat",
+ "l2-dat-h5",
  "ue2-package",
 ]
 
@@ -62,6 +63,13 @@ name = "l2-dat"
 version = "0.1.0"
 dependencies = [
  "ue2-core",
+]
+
+[[package]]
+name = "l2-dat-h5"
+version = "0.1.0"
+dependencies = [
+ "l2-dat",
 ]
 
 [[package]]

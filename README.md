@@ -10,7 +10,8 @@ so they can be tested against synthetic bytes and reused by tools.
 
 ```
 apps/        canastra-cli        IO, filesystem, user-facing commands
-crates/      l2-dat              schema-driven decoder for the legacy system/*.dat tables
+crates/      l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
+             l2-dat              schema-driven decoder for the legacy system/*.dat tables
              ue2-package         UE2 package tables: names, imports, exports, object paths
              ue2-core            bounds-checked binary reader (compact index, FString, UTF-16)
              l2-crypto           Lineage2Ver111 / 121 (XOR) and 413 (RSA + zlib)
@@ -50,4 +51,9 @@ workspace `Cargo.toml`: `unsafe` is forbidden, clippy `all` is denied, `pedantic
   concatenating to `u32 size` + zlib. Block alignment tells whether the trailer exists.
 - Packages: tag `0x9E2A83C1`, versions 117 to 128. An export's offset is present when `SerialSize != 0`.
 - Tables: a `u32` record count, records, then the `FString` `SafePackage`. H5 layouts live in
-  `crates/l2-dat/src/h5.rs`; `RideData` had no public layout and was derived from the file.
+  `crates/l2-dat-h5`; `RideData` had no public layout and was derived from the file.
+
+## Licensing boundary
+
+53 of the H5 layouts derive from the GPL-licensed L2ClientDat descriptors. They are isolated in
+`l2-dat-h5`, which only migration tooling may depend on; the client, server and Studio must not.

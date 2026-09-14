@@ -83,7 +83,7 @@ fn package(input: &Path) -> Result {
 fn dat(input: &Path) -> Result {
     let (_, plain) = read_decrypted(input)?;
     let name = file_name(input);
-    let table = l2_dat::h5_table(name).ok_or_else(|| format!("no H5 layout for {name}"))?;
+    let table = l2_dat_h5::table(name).ok_or_else(|| format!("no H5 layout for {name}"))?;
     let records = l2_dat::decode(table, &plain)?;
     let items = records_of(&records);
     println!("{}: {} records", table.name, items.len());
@@ -106,7 +106,7 @@ fn scan(root: &Path) -> Result {
             let name = file_name(path);
             let parsed = if plain.starts_with(&TAG.to_le_bytes()) {
                 Parsed::Package { exports: Package::parse(&plain)?.exports().len() }
-            } else if let Some(table) = l2_dat::h5_table(name) {
+            } else if let Some(table) = l2_dat_h5::table(name) {
                 Parsed::Table { records: records_of(&l2_dat::decode(table, &plain)?).len() }
             } else if name.to_ascii_lowercase().ends_with(".dat") {
                 Parsed::UnknownTable

@@ -1,10 +1,9 @@
 //! Schema-driven decoder for decrypted Lineage 2 `.dat` tables (see `l2-crypto`).
 //!
 //! This layer exists to migrate the legacy `system` tables; field names follow
-//! the on-disk layout, not the game's domain model.
+//! the on-disk layout, not the game's domain model. Chronicle layouts live in
+//! separate crates (see `l2-dat-h5`).
 
-#[rustfmt::skip]
-mod h5;
 pub mod schema;
 
 use std::collections::HashMap;
@@ -12,8 +11,6 @@ use std::fmt;
 
 use schema::{Field, Kind, Len, Scalar, Table};
 use ue2_core::{ReadError, Reader};
-
-pub use h5::TABLES as H5_TABLES;
 
 /// `FString` `SafePackage` written after the last record.
 const SAFE_PACKAGE: &[u8] = b"\x0cSafePackage\0";
@@ -49,11 +46,6 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-/// The H5 table layout for a file name such as `ItemName-e.dat`.
-pub fn h5_table(file_name: &str) -> Option<&'static Table> {
-    H5_TABLES.iter().find(|table| table.matches(file_name))
-}
 
 /// Decodes a whole table; every byte must belong to a field or the trailing marker.
 pub fn decode(table: &Table, data: &[u8]) -> Result<Record, Error> {

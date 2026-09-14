@@ -1,18 +1,12 @@
 [package]
-name = "canastra-cli"
+name = "l2-dat-h5"
+description = "High Five .dat table layouts. Derived from GPL-licensed L2ClientDat descriptors; used only by migration tooling."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "canastra"
-path = "src/main.rs"
-
 [dependencies]
-l2-crypto.workspace = true
 l2-dat.workspace = true
-l2-dat-h5.workspace = true
-ue2-package.workspace = true
 
 [lints]
 workspace = true
