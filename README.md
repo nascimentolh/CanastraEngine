@@ -43,6 +43,7 @@ cargo run --release -p canastra-cli -- dat     "<file>.dat"
 cargo run --release -p canastra-cli -- texture "<file>.utx" Group.Name out.png
 cargo run --release -p canastra-cli -- decrypt "<file>.dat" out.bin
 cargo run --release -p canastra-cli -- level   "<client>/MAPS/lobby01.unr"
+cargo run --release -p canastra-cli -- mesh    "<client>/Animations/Fighter.ukx" MFighter_anim
 cargo run --release -p canastra-studio -- gamedata.cana "<H5 client root>"
 cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```

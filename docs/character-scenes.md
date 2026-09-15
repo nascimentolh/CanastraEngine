@@ -31,6 +31,11 @@ Each step is checked against the real client: a dump of the files, or a screensh
 1. **Skeletal meshes and animations in `ue2-assets`.** Read `SkeletalMesh` (vertices, wedges, faces,
    materials, reference skeleton, weights) and `MeshAnimation` (bones, sequences, tracks), with a
    `canastra` command that prints a mesh's counts and bone names.
+   *2026-09-15:* done. `canastra mesh` reads every skeletal mesh and animation in the client's own packages
+   to their last byte: 7318 meshes and 1129 animations. The 3887 objects in custom packages saved with
+   other package versions are skipped. Parts store their first level of detail either as Lineage soft
+   and rigid streams or in the older wedge layout, and both are read. Animations without bone indices
+   give one track per bone, in order. The lobby idle is `Wait_Hand_<Body>`.
 2. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 3. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the

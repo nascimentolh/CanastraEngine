@@ -1,8 +1,8 @@
 //! `StaticMesh` objects: the vertex, UV and index streams a renderer needs, plus section materials.
 
-use ue2_core::Reader;
 use ue2_package::{Export, ObjectRef, Package};
 
+use super::{array, count, vector};
 use crate::Error;
 use crate::properties::{Property, find, object_properties_reader};
 
@@ -93,26 +93,6 @@ fn materials(package: &Package, property: Option<&Property<'_>>) -> Vec<ObjectRe
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn count(reader: &mut Reader<'_>) -> Result<usize, Error> {
-    usize::try_from(reader.compact()?).map_err(|_| Error::BadMesh)
-}
-
-fn array<'a, T>(
-    reader: &mut Reader<'a>,
-    mut item: impl FnMut(&mut Reader<'a>) -> Result<T, Error>,
-) -> Result<Vec<T>, Error> {
-    let len = count(reader)?;
-    // A count larger than the bytes left is a misread, not a reason to allocate.
-    if len > reader.remaining().len() {
-        return Err(Error::BadMesh);
-    }
-    (0..len).map(|_| item(reader)).collect()
-}
-
-fn vector(reader: &mut Reader<'_>) -> Result<[f32; 3], Error> {
-    Ok([reader.f32()?, reader.f32()?, reader.f32()?])
 }
 
 #[cfg(test)]

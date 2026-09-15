@@ -1,5 +1,6 @@
 //! `canastra`: inspection and migration tool for a Lineage 2 High Five client.
 
+mod mesh;
 mod migrate;
 mod texture;
 
@@ -20,6 +21,7 @@ const USAGE: &str = "usage:
   canastra dat <file>                decode a .dat table and print its first record
   canastra texture <package> <object> <output.png>
                                      decode one texture, e.g. `L2UI_CH3.utx Button.Btn1_normal`
+  canastra mesh <package> [<object>]  read every skeletal mesh, or print one, e.g. `Fighter.ukx MFighter_m002_u`
   canastra level <map.unr>           count a map's actors and list where its scenes warp the camera
   canastra scan <client-root>        decrypt and parse every file and texture, report failures
   canastra migrate <client-root> <server-stats-dir> [<output.cana>]
@@ -40,6 +42,7 @@ fn main() -> ExitCode {
         ["decrypt", input, output] => decrypt(Path::new(input), Path::new(output)),
         ["package", input] => package(Path::new(input)),
         ["dat", input] => dat(Path::new(input)),
+        ["mesh", input, object @ ..] if object.len() <= 1 => mesh::run(Path::new(input), object.first().copied()),
         ["level", input] => level(Path::new(input)),
         ["texture", input, object, output] => texture::export(Path::new(input), object, Path::new(output)),
         ["scan", root] => scan(Path::new(root)),
@@ -140,6 +143,7 @@ fn scan(root: &Path) -> Result {
     let mut schemes = BTreeMap::<Scheme, usize>::new();
     let (mut packages, mut exports, mut tables, mut records) = (0, 0, 0, 0);
     let (mut textures, mut meshes, mut object_failures) = (0, 0, 0);
+    let (mut skeletal, mut animations, mut other_layouts) = (0, 0, 0);
     let mut unknown_tables = Vec::new();
     let mut failures = 0;
     for path in &files {
@@ -164,6 +168,8 @@ fn scan(root: &Path) -> Result {
                     Parsed::Package { exports: n, checked } => {
                         (packages, exports) = (packages + 1, exports + n);
                         (textures, meshes) = (textures + checked.textures, meshes + checked.meshes);
+                        (skeletal, animations) = (skeletal + checked.skeletal, animations + checked.animations);
+                        other_layouts += checked.other_layouts;
                         object_failures += checked.failures.len();
                         for failure in checked.failures {
                             eprintln!("FAIL {}: {failure}", path.display());
@@ -184,6 +190,7 @@ fn scan(root: &Path) -> Result {
     println!("{} files: {schemes:?}", files.len());
     println!("{packages} packages parsed, {exports} exports");
     println!("{textures} textures and {meshes} static meshes decoded, {object_failures} failed");
+    println!("{skeletal} skeletal meshes and {animations} animations read, {other_layouts} in other layouts skipped");
     println!("{tables} tables decoded, {records} records");
     println!("{} .dat files without a layout: {unknown_tables:#?}", unknown_tables.len());
     println!("{failures} failures");
@@ -198,6 +205,10 @@ fn scan(root: &Path) -> Result {
 struct Checked {
     textures: usize,
     meshes: usize,
+    skeletal: usize,
+    animations: usize,
+    /// Skeletal objects saved by other tools, as custom content often is, in layouts the readers do not follow.
+    other_layouts: usize,
     failures: Vec<String>,
 }
 
@@ -212,11 +223,16 @@ fn check_objects(package: &Package, file: &[u8]) -> Checked {
             ue2_assets::decode_texture(package, file, index).map(|_| &mut checked.textures)
         } else if class.eq_ignore_ascii_case("StaticMesh") {
             ue2_assets::read_static_mesh(package, file, export).map(|_| &mut checked.meshes)
+        } else if class.eq_ignore_ascii_case("SkeletalMesh") {
+            ue2_assets::read_skeletal_mesh(package, file, export).map(|_| &mut checked.skeletal)
+        } else if class.eq_ignore_ascii_case("MeshAnimation") {
+            ue2_assets::read_mesh_animation(package, file, export).map(|_| &mut checked.animations)
         } else {
             continue;
         };
         match outcome {
             Ok(count) => *count += 1,
+            Err(ue2_assets::Error::UnsupportedLayout { .. }) => checked.other_layouts += 1,
             Err(error) => checked.failures.push(format!("{}: {error}", package.object_path(ObjectRef::Export(index)))),
         }
     }
