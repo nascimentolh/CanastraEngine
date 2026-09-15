@@ -44,6 +44,13 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    tree where a 50° horizontal field of view does. Still missing, for step 3: blending, so the
    opaque star layers of `BloodLobbySky_S` hide its purple sky and the moon shows only its outline.
 3. Materials the scene uses (shaders, panners, blending) so the sky and clouds animate.
+   **Done:** `l2-catalog` reduces Texture, Shader, FinalBlend, ColorModifier, Combiner (select,
+   multiply, add) and TexPanner/TexScaler/TexRotator chains to one or two texture stages with a tint,
+   a blend mode (opaque, masked, alpha, additive, modulate, brighten) and time-based UV transforms.
+   The sky's two panned layers multiply ×4 in gamma space, the stars add over it and the moon blends,
+   and the sky moves. Still different from H5: colors are more saturated and orange low in the sky
+   (zone fog is not applied), the hills are missing (terrain), and Shader self-illumination, masks,
+   oscillators and distance sorting of blended batches are not modeled.
 4. Terrain.
 5. Emitters: sprite particles.
 6. Movers, sway and ambient sound as the comparison shows they matter.

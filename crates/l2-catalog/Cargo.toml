@@ -1,6 +1,6 @@
 [package]
 name = "l2-catalog"
-description = "Finds textures, static meshes and material textures by path across an installed Lineage 2 client."
+description = "Finds textures, static meshes and materials by path across an installed Lineage 2 client."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

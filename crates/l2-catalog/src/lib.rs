@@ -2,6 +2,8 @@
 //! place: textures, static meshes and the texture a material draws with. Packages load on first use
 //! and stay loaded.
 
+mod material;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,11 +11,10 @@ use std::path::{Path, PathBuf};
 use ue2_assets::{Image, StaticMesh};
 use ue2_package::{ObjectRef, Package};
 
+pub use material::{Blend, Combine, IDENTITY, Material, Stage, UvMatrix, UvModifier};
+
 /// Folders of the client that hold asset packages, with the extension used there.
 const FOLDERS: [(&str, &str); 3] = [("SysTextures", "utx"), ("Textures", "utx"), ("StaticMeshes", "usx")];
-
-/// Material properties that lead towards a base texture, most telling first.
-const MATERIAL_INPUTS: [&str; 5] = ["Diffuse", "Material", "Material1", "Material2", "SelfIllumination"];
 
 /// Deeper material chains than this are treated as cycles.
 const MAX_MATERIAL_DEPTH: usize = 8;
@@ -72,27 +73,6 @@ impl Catalog {
         let materials =
             mesh.materials.iter().map(|&material| full_path(&package_name, &loaded.package, material)).collect();
         Some(Mesh { mesh, materials })
-    }
-
-    /// Path of the base texture `material` draws with, following shaders, combiners and modifiers.
-    // ponytail: only the base texture is resolved; blending and animation come with material support.
-    pub fn material_texture(&mut self, material: &str) -> Option<String> {
-        let mut path = material.to_owned();
-        for _ in 0..MAX_MATERIAL_DEPTH {
-            let package_name = package_name(&path)?;
-            let (loaded, index) = self.object(&path, "")?;
-            let package = &loaded.package;
-            let export = package.exports().get(index)?;
-            if package.class_name(export).eq_ignore_ascii_case("Texture") {
-                return Some(path);
-            }
-            let properties = ue2_assets::object_properties(package, &loaded.file, export).ok()?;
-            path = MATERIAL_INPUTS.iter().find_map(|name| {
-                let object = ue2_assets::find(&properties, name)?.object(package)?;
-                full_path(&package_name, package, object)
-            })?;
-        }
-        None
     }
 
     /// The loaded package and export index of `path`, when its class is `class` (any when empty).

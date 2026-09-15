@@ -6,6 +6,7 @@ use ue2_package::{Export, ObjectRef, Package};
 use crate::Error;
 
 const BYTE: u8 = 1;
+const INT: u8 = 2;
 const BOOL: u8 = 3;
 const FLOAT: u8 = 4;
 const OBJECT: u8 = 5;
@@ -24,11 +25,21 @@ pub struct Property<'a> {
     kind: u8,
     struct_name: Option<&'a str>,
     value: &'a [u8],
+    /// Booleans keep their value in the tag, not in `value`.
+    flag: bool,
 }
 
 impl<'a> Property<'a> {
     pub fn byte(&self) -> Option<u8> {
         (self.kind == BYTE).then(|| self.value.first().copied()).flatten()
+    }
+
+    pub fn int(&self) -> Option<i32> {
+        (self.kind == INT).then(|| Reader::at(self.value, 0).i32().ok()).flatten()
+    }
+
+    pub fn bool(&self) -> Option<bool> {
+        (self.kind == BOOL).then_some(self.flag)
     }
 
     pub fn float(&self) -> Option<f32> {
@@ -47,6 +58,14 @@ impl<'a> Property<'a> {
     pub fn vector(&self) -> Option<[f32; 3]> {
         let mut reader = self.struct_value("Vector")?;
         Some([reader.f32().ok()?, reader.f32().ok()?, reader.f32().ok()?])
+    }
+
+    /// A `Color` struct as RGBA; Unreal stores it blue first.
+    pub fn color(&self) -> Option<[u8; 4]> {
+        match (self.kind, self.struct_name, self.value) {
+            (STRUCT, Some("Color"), &[b, g, r, a]) => Some([r, g, b, a]),
+            _ => None,
+        }
     }
 
     /// Pitch, yaw and roll in Unreal units (65536 to a full turn).
@@ -142,13 +161,14 @@ pub(crate) fn read_properties<'a>(reader: &mut Reader<'a>, package: &'a Package)
             6 => usize::from(reader.u16()?),
             _ => reader.u32()? as usize,
         };
-        // ponytail: fixed-array element indices and boolean values are skipped; keep them when a reader needs one.
         // For booleans the high bit is the value, not an array flag.
-        if info & 0x80 != 0 && kind != BOOL {
+        // ponytail: fixed-array element indices are skipped; keep them when a reader needs one.
+        let flag = info & 0x80 != 0;
+        if flag && kind != BOOL {
             skip_array_index(reader)?;
         }
         let value = if kind == BOOL { &[][..] } else { reader.bytes(size)? };
-        properties.push(Property { name, kind, struct_name, value });
+        properties.push(Property { name, kind, struct_name, value, flag });
     }
 }
 

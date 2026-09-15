@@ -1,10 +1,10 @@
 //! Builds a map's static geometry as seen from one of its scene cameras: every static mesh placed in
-//! world space relative to the camera, merged into one buffer per texture.
+//! world space relative to the camera, merged into one buffer range per material.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use l2_catalog::{Catalog, Mesh};
+use l2_catalog::{Blend, Catalog, Material, Mesh};
 use ue2_assets::Image;
 use ue2_level::{Level, Placement};
 use ue2_package::Package;
@@ -15,7 +15,7 @@ use super::camera;
 pub(crate) type Vertex = [f32; 5];
 
 pub(crate) struct Batch {
-    pub(crate) texture: Image,
+    pub(crate) material: Material,
     pub(crate) indices: std::ops::Range<u32>,
 }
 
@@ -23,10 +23,13 @@ pub(crate) struct SceneData {
     pub(crate) camera: Placement,
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
+    /// Opaque batches first, then blended ones, in drawing order.
     pub(crate) batches: Vec<Batch>,
+    /// Decoded textures by path, for every stage of every batch.
+    pub(crate) textures: HashMap<String, Image>,
 }
 
-/// Geometry that draws with one texture.
+/// Geometry that draws with one material.
 #[derive(Default)]
 struct Group {
     vertices: Vec<Vertex>,
@@ -39,13 +42,13 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let camera = *level.warps.get(camera_tag).ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
     let mut catalog = Catalog::open(client_root);
     let mut meshes: HashMap<String, Option<Mesh>> = HashMap::new();
-    let mut textures: HashMap<String, Option<String>> = HashMap::new();
+    let mut materials: HashMap<String, Option<Material>> = HashMap::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
 
     for actor in &level.actors {
         let Some(path) = &actor.static_mesh else { continue };
         let mesh = meshes.entry(path.clone()).or_insert_with(|| catalog.static_mesh(path));
-        let Some(Mesh { mesh, materials }) = mesh.as_ref() else { continue };
+        let Some(Mesh { mesh, materials: slots }) = mesh.as_ref() else { continue };
         let axes = camera::axes(actor.placement.rotation);
         let relative = |position: [f32; 3]| {
             let mut world = camera::place(position, actor.scale, &axes, actor.placement.location);
@@ -57,13 +60,13 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         // Where each of this actor's mesh vertices landed in each group, so shared vertices stay shared.
         let mut remaps: HashMap<String, HashMap<u16, u32>> = HashMap::new();
         for (slot, section) in mesh.sections.iter().enumerate() {
-            let material = actor.skins.get(slot).or(materials.get(slot).and_then(Option::as_ref));
-            let Some(material) = material else { continue };
-            let texture = textures.entry(material.clone()).or_insert_with(|| catalog.material_texture(material));
-            // ponytail: sections without a resolvable base texture are skipped; material support replaces this.
-            let Some(texture) = texture.clone() else { continue };
-            let group = groups.entry(texture.clone()).or_default();
-            let remap = remaps.entry(texture).or_default();
+            let Some(path) = actor.skins.get(slot).or(slots.get(slot).and_then(Option::as_ref)) else { continue };
+            // ponytail: sections whose material does not resolve are skipped.
+            if materials.entry(path.clone()).or_insert_with(|| catalog.material(path)).is_none() {
+                continue;
+            }
+            let group = groups.entry(path.clone()).or_default();
+            let remap = remaps.entry(path.clone()).or_default();
             let first = section.first_index as usize;
             for &index in mesh.indices.get(first..first + section.triangles as usize * 3).unwrap_or_default() {
                 let placed = *remap.entry(index).or_insert_with(|| {
@@ -78,15 +81,34 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         }
     }
 
-    let mut data = SceneData { camera, vertices: Vec::new(), indices: Vec::new(), batches: Vec::new() };
-    for (path, group) in groups {
-        let Some(texture) = catalog.texture(&path) else { continue };
+    let mut groups: Vec<(Material, Group)> =
+        groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))).collect();
+    // ponytail: blended batches draw by kind, not sorted by distance; sort them when overlaps show.
+    groups.sort_by_key(|(material, _)| match material.blend {
+        Blend::Opaque | Blend::Masked => 0,
+        Blend::Alpha => 1,
+        Blend::Modulate | Blend::Brighten | Blend::Additive => 2,
+    });
+    let mut data =
+        SceneData { camera, vertices: Vec::new(), indices: Vec::new(), batches: Vec::new(), textures: HashMap::new() };
+    for (material, group) in groups {
+        let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
+        for stage in stages {
+            if !data.textures.contains_key(&stage.texture)
+                && let Some(image) = catalog.texture(&stage.texture)
+            {
+                data.textures.insert(stage.texture.clone(), image);
+            }
+        }
+        if !data.textures.contains_key(&material.base.texture) {
+            continue;
+        }
         let base = u32::try_from(data.vertices.len()).map_err(|_| "scene has too many vertices")?;
         let start = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
         data.indices.extend(group.indices.iter().map(|index| base + index));
         data.vertices.extend(group.vertices);
         let end = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
-        data.batches.push(Batch { texture, indices: start..end });
+        data.batches.push(Batch { material, indices: start..end });
     }
     Ok(data)
 }

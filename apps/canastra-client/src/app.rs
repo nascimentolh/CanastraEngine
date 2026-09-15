@@ -73,7 +73,8 @@ impl Running {
             Ok(ui) => {
                 self.gpu.queue.submit(scene.into_iter().chain([ui]));
                 self.gpu.queue.present(frame);
-                if self.screen.frame.animating {
+                // The scene's materials move every frame; the UI only while a transition runs.
+                if self.scene.is_some() || self.screen.frame.animating {
                     self.gpu.window.request_redraw();
                 }
             }
