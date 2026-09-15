@@ -1,4 +1,5 @@
 use canastra_data::id::ItemId;
+use canastra_data::text::Locale;
 
 use super::*;
 
@@ -32,7 +33,12 @@ fn migrate_with(templates: &[(String, String)]) -> (BTreeMap<ClassId, PlayerClas
         <item id="2369" count="1" equipped="true" />
         <item id="68" count="1" minutes="2880" equipped="true" />
     </equipment></list>"#;
+    let info = |class: i64, text: &str| {
+        Value::Record(vec![("class", Value::Int(class)), ("description", Value::Text(text.into()))])
+    };
+    let class_info = [info(0, "Select a race and occupation."), info(1, "\"My sword and honor!\"\r\n\r\nFighters...")];
     let sources = Sources {
+        class_info: &class_info,
         server_class_list: class_list,
         server_class_templates: templates,
         server_initial_equipment: equipment,
@@ -50,6 +56,7 @@ fn starting_classes_keep_the_shared_data_once() {
 
     let Origin::Starting(start) = &classes[&ClassId(0)].origin else { panic!("class 0 starts a line") };
     assert_eq!((start.race, start.archetype, start.sex), (Race::Human, Archetype::Fighter, None));
+    assert_eq!(start.description.get(Locale::En), Some("\"My sword and honor!\"\n\nFighters..."));
     assert_eq!(start.template.attributes.str, 40);
     assert_eq!(start.creation_points, [[-71_338, 258_271, -3104]]);
     let kit: Vec<_> = start.initial_items.iter().map(|item| (item.item, item.lasts_minutes)).collect();

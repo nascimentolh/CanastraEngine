@@ -37,6 +37,8 @@ pub struct Sources<'a> {
     pub chargrp: &'a [Value],
     pub logongrp: &'a [Value],
     pub charcreategrp: &'a [Value],
+    /// `ClassInfo-e`: each starting class's text on the creation screen, in the screen's order.
+    pub class_info: &'a [Value],
     pub server_items: &'a [(String, String)],
     pub server_skills: &'a [(String, String)],
     pub server_npcs: &'a [(String, String)],

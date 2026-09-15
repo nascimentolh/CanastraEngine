@@ -6,7 +6,7 @@ use crate::GameData;
 
 const MAGIC: [u8; 8] = *b"CANASTRA";
 /// Bump on any change to a serialized type; the `layout_is_frozen` test fails until you do.
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -72,7 +72,7 @@ mod tests {
     use crate::skill::{Skill, SkillLevel, SkillOperate, SkillSounds, SoundCue};
     use crate::text::Localized;
 
-    const FROZEN: &[u8] = include_bytes!("../tests/format_v3.cana");
+    const FROZEN: &[u8] = include_bytes!("../tests/format_v4.cana");
 
     fn asset<K>(path: &str) -> AssetRef<K> {
         AssetRef::parse(path).unwrap()
@@ -235,6 +235,7 @@ mod tests {
                 race: Race::Kamael,
                 archetype: Archetype::Fighter,
                 sex: Some(Sex::Female),
+                description: Localized::en("My wings carry me."),
                 template,
                 creation_points: vec![[-125_607, 38_452, 1152]],
                 initial_items: vec![InitialItem {
@@ -258,7 +259,7 @@ mod tests {
     fn layout_is_frozen() {
         let bytes = encode(&sample());
         if std::env::var_os("CANASTRA_BLESS").is_some() {
-            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v3.cana"), &bytes).unwrap();
+            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v4.cana"), &bytes).unwrap();
         }
         assert!(bytes == FROZEN, "serialized layout changed: bump format::VERSION and rebless the fixture");
     }
@@ -268,8 +269,8 @@ mod tests {
         let bytes = encode(&sample());
         assert!(matches!(decode(b"OggS"), Err(FormatError::NotGameData)));
         let mut newer = bytes.clone();
-        newer[8] = 4;
-        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(4))));
+        newer[8] = 5;
+        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(5))));
         assert!(matches!(decode(&bytes[..bytes.len() - 3]), Err(FormatError::Corrupt(_))));
         assert!(matches!(decode(&[bytes.as_slice(), &[0]].concat()), Err(FormatError::TrailingBytes(1))));
     }

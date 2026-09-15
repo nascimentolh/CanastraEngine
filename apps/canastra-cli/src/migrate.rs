@@ -30,6 +30,7 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
     let (npcs, npc_names) = (table("Npcgrp.dat")?, table("NpcName-e.dat")?);
     let (chargrp, logongrp, charcreategrp) =
         (table("Chargrp.dat")?, table("Logongrp.dat")?, table("Charcreategrp.dat")?);
+    let class_info = table("ClassInfo-e.dat")?;
     let (server_items, server_skills, server_npcs) = (
         xml_documents(&server_stats.join("items"))?,
         xml_documents(&server_stats.join("skills"))?,
@@ -53,6 +54,7 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
         chargrp: &chargrp,
         logongrp: &logongrp,
         charcreategrp: &charcreategrp,
+        class_info: &class_info,
         server_items: &server_items,
         server_skills: &server_skills,
         server_npcs: &server_npcs,

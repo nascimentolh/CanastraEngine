@@ -33,6 +33,8 @@ pub struct StartingClass {
     pub archetype: Archetype,
     /// The only sex characters of this line may be, for lines tied to one.
     pub sex: Option<Sex>,
+    /// What the creation screen tells of the class: a line in its voice, then the path it follows.
+    pub description: Localized,
     pub template: ClassTemplate,
     /// Where new characters appear.
     pub creation_points: Vec<[i32; 3]>,

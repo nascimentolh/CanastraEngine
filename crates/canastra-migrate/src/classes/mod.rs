@@ -15,7 +15,9 @@ use canastra_data::id::ClassId;
 use canastra_data::npc::{Race, Sex};
 use canastra_data::text::Localized;
 
-use crate::fields::{Result, parse};
+use l2_dat::Value;
+
+use crate::fields::{Fields, Result, parse};
 use crate::{Report, Severity, Sources};
 
 pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<ClassId, PlayerClass> {
@@ -40,6 +42,7 @@ pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<Cl
         BTreeMap::new()
     });
 
+    let mut descriptions = descriptions(sources.class_info, report);
     let mut classes = BTreeMap::new();
     for (&id, (name, parent)) in &tree {
         let subject = format!("class {}", id.0);
@@ -65,6 +68,7 @@ pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<Cl
                 race,
                 archetype,
                 sex,
+                description: descriptions.remove(&id).unwrap_or_default(),
                 template: parsed.template,
                 creation_points: parsed.creation_points.clone(),
                 initial_items: equipment.remove(&id).unwrap_or_default(),
@@ -80,6 +84,31 @@ pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<Cl
         );
     }
     classes
+}
+
+/// The starting classes in the order the client's creation screen lists them, which `ClassInfo` numbers from 1.
+const CREATION_ORDER: [u16; 11] = [0, 10, 18, 25, 31, 38, 44, 49, 53, 123, 124];
+
+/// Each starting class's creation screen text from `ClassInfo` records; number 0 is the screen's own prompt.
+fn descriptions(records: &[Value], report: &mut Report) -> BTreeMap<ClassId, Localized> {
+    let mut descriptions = BTreeMap::new();
+    for record in records {
+        let described =
+            Fields::of(record).and_then(|mut fields| Ok((fields.uint("class")?, fields.text("description")?)));
+        match described {
+            Ok((0, _)) => {}
+            Ok((number, text)) => {
+                let class = usize::try_from(number).ok().and_then(|number| CREATION_ORDER.get(number - 1));
+                if let Some(&class) = class {
+                    descriptions.insert(ClassId(class), Localized::en(text.replace("\r\n", "\n")));
+                } else {
+                    report.push(Severity::Warning, "ClassInfo-e", format!("no starting class numbered {number}"));
+                }
+            }
+            Err(error) => report.push(Severity::Error, "ClassInfo-e", error),
+        }
+    }
+    descriptions
 }
 
 /// Each class's name and parent.
