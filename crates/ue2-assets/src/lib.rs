@@ -4,6 +4,7 @@
 //! pixels are decoded to RGBA only when a caller asks for them.
 
 mod properties;
+mod static_mesh;
 mod texture;
 
 use std::fmt;
@@ -11,6 +12,7 @@ use std::fmt;
 use ue2_core::ReadError;
 
 pub use properties::{Property, find, object_properties};
+pub use static_mesh::{Section, StaticMesh, read_static_mesh};
 pub use texture::{Image, Mip, Texture, TextureFormat, decode_rgba, decode_texture, read_palette, read_texture};
 
 #[derive(Debug)]
@@ -23,7 +25,12 @@ pub enum Error {
     UnsupportedFormat(TextureFormat),
     MissingPalette,
     NoMipArray,
-    MipTooShort { needed: usize, actual: usize },
+    /// Static mesh streams that do not fit together.
+    BadMesh,
+    MipTooShort {
+        needed: usize,
+        actual: usize,
+    },
     TrailingBytes(usize),
 }
 
@@ -38,6 +45,7 @@ impl fmt::Display for Error {
             Self::UnsupportedFormat(format) => write!(f, "decoding {format:?} is not supported"),
             Self::MissingPalette => f.write_str("paletted texture without a palette in this package"),
             Self::NoMipArray => f.write_str("no mip array ends at the end of the object"),
+            Self::BadMesh => f.write_str("static mesh streams do not fit together"),
             Self::MipTooShort { needed, actual } => write!(f, "mip needs {needed} bytes, has {actual}"),
             Self::TrailingBytes(len) => write!(f, "{len} unread bytes at the end of the object"),
         }

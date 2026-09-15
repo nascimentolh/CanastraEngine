@@ -1,6 +1,6 @@
 [package]
 name = "ue2-assets"
-description = "Unreal Engine 2 objects read in place from packages: properties and textures."
+description = "Unreal Engine 2 objects read in place from packages: properties, textures and static meshes."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -55,6 +55,17 @@ impl<'a> Property<'a> {
         Some([reader.i32().ok()?, reader.i32().ok()?, reader.i32().ok()?])
     }
 
+    /// A dynamic array of structs, each a property list of its own.
+    pub fn structs(&self, package: &'a Package) -> Option<Vec<Vec<Property<'a>>>> {
+        if self.kind != ARRAY {
+            return None;
+        }
+        let mut reader = Reader::at(self.value, 0);
+        let count = usize::try_from(reader.compact().ok()?).ok()?;
+        let structs = (0..count).map(|_| read_properties(&mut reader, package).ok()).collect::<Option<Vec<_>>>()?;
+        reader.remaining().is_empty().then_some(structs)
+    }
+
     /// A dynamic array of object references; `None` when the bytes are not exactly that.
     pub fn objects(&self, package: &Package) -> Option<Vec<ObjectRef>> {
         if self.kind != ARRAY {
@@ -82,6 +93,15 @@ pub fn object_properties<'a>(
     file: &'a [u8],
     export: &Export,
 ) -> Result<Vec<Property<'a>>, Error> {
+    object_properties_reader(package, file, export).map(|(properties, _)| properties)
+}
+
+/// Properties of `export` and a reader just past them, bounded by the end of the object.
+pub(crate) fn object_properties_reader<'a>(
+    package: &'a Package,
+    file: &'a [u8],
+    export: &Export,
+) -> Result<(Vec<Property<'a>>, Reader<'a>), Error> {
     let end = export.serial_offset.checked_add(export.serial_size).ok_or(Error::ExportOutOfRange)?;
     let object = file.get(..end).ok_or(Error::ExportOutOfRange)?;
     let mut reader = Reader::at(object, export.serial_offset);
@@ -94,7 +114,8 @@ pub fn object_properties<'a>(
             reader.compact()?; // code offset
         }
     }
-    read_properties(&mut reader, package)
+    let properties = read_properties(&mut reader, package)?;
+    Ok((properties, reader))
 }
 
 /// Reads the tagged property list at the reader, up to `None`.

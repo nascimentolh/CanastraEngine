@@ -27,7 +27,7 @@ const USAGE: &str = "usage:
 
 /// What `scan` understood a file to be.
 enum Parsed {
-    Package { exports: usize, textures: usize, texture_failures: Vec<String> },
+    Package { exports: usize, checked: Checked },
     Table { records: usize },
     UnknownTable,
     Opaque,
@@ -135,7 +135,7 @@ fn scan(root: &Path) -> Result {
 
     let mut schemes = BTreeMap::<Scheme, usize>::new();
     let (mut packages, mut exports, mut tables, mut records) = (0, 0, 0, 0);
-    let (mut textures, mut texture_failures) = (0, 0);
+    let (mut textures, mut meshes, mut object_failures) = (0, 0, 0);
     let mut unknown_tables = Vec::new();
     let mut failures = 0;
     for path in &files {
@@ -143,8 +143,7 @@ fn scan(root: &Path) -> Result {
             let name = file_name(path);
             let parsed = if plain.starts_with(&TAG.to_le_bytes()) {
                 let package = Package::parse(&plain)?;
-                let (textures, texture_failures) = texture::check_all(&package, &plain);
-                Parsed::Package { exports: package.exports().len(), textures, texture_failures }
+                Parsed::Package { exports: package.exports().len(), checked: check_objects(&package, &plain) }
             } else if let Some(table) = l2_dat_h5::table(name) {
                 Parsed::Table { records: records_of(&l2_dat::decode(table, &plain)?).len() }
             } else if name.to_ascii_lowercase().ends_with(".dat") {
@@ -158,10 +157,11 @@ fn scan(root: &Path) -> Result {
             Ok((scheme, parsed)) => {
                 *schemes.entry(scheme).or_default() += 1;
                 match parsed {
-                    Parsed::Package { exports: n, textures: decoded, texture_failures: failed } => {
-                        (packages, exports, textures) = (packages + 1, exports + n, textures + decoded);
-                        texture_failures += failed.len();
-                        for failure in failed {
+                    Parsed::Package { exports: n, checked } => {
+                        (packages, exports) = (packages + 1, exports + n);
+                        (textures, meshes) = (textures + checked.textures, meshes + checked.meshes);
+                        object_failures += checked.failures.len();
+                        for failure in checked.failures {
                             eprintln!("FAIL {}: {failure}", path.display());
                         }
                     }
@@ -179,14 +179,44 @@ fn scan(root: &Path) -> Result {
 
     println!("{} files: {schemes:?}", files.len());
     println!("{packages} packages parsed, {exports} exports");
-    println!("{textures} textures decoded, {texture_failures} failed");
+    println!("{textures} textures and {meshes} static meshes decoded, {object_failures} failed");
     println!("{tables} tables decoded, {records} records");
     println!("{} .dat files without a layout: {unknown_tables:#?}", unknown_tables.len());
     println!("{failures} failures");
-    match failures + texture_failures {
+    match failures + object_failures {
         0 => Ok(()),
         n => Err(format!("{n} failure(s)").into()),
     }
+}
+
+/// How many of a package's textures and static meshes decode, and why the others do not.
+#[derive(Default)]
+struct Checked {
+    textures: usize,
+    meshes: usize,
+    failures: Vec<String>,
+}
+
+fn check_objects(package: &Package, file: &[u8]) -> Checked {
+    let mut checked = Checked::default();
+    for (index, export) in package.exports().iter().enumerate() {
+        if export.serial_size == 0 {
+            continue;
+        }
+        let class = package.class_name(export);
+        let outcome = if class.eq_ignore_ascii_case("Texture") {
+            ue2_assets::decode_texture(package, file, index).map(|_| &mut checked.textures)
+        } else if class.eq_ignore_ascii_case("StaticMesh") {
+            ue2_assets::read_static_mesh(package, file, export).map(|_| &mut checked.meshes)
+        } else {
+            continue;
+        };
+        match outcome {
+            Ok(count) => *count += 1,
+            Err(error) => checked.failures.push(format!("{}: {error}", package.object_path(ObjectRef::Export(index)))),
+        }
+    }
+    checked
 }
 
 fn file_name(path: &Path) -> &str {

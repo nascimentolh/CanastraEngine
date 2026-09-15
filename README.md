@@ -16,7 +16,7 @@ apps/        canastra-client     game client: winit + wgpu window drawing the UI
              canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
              canastra-cli        IO, filesystem, user-facing commands
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
-             ue2-assets          tagged properties, textures and palettes read in place, RGBA on demand
+             ue2-assets          tagged properties, textures, palettes and static meshes read in place
              ue2-level           placed actors and scene cameras of a map
              canastra-data       game data domain model shared by client, server and Studio
              canastra-ui         UI markup + CSS subset laid out into draw commands (no GPU, no fonts)

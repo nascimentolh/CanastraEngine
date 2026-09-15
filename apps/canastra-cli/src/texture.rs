@@ -11,21 +11,6 @@ use ue2_package::{ObjectRef, Package};
 use crate::{Result, read_decrypted};
 
 /// Decodes every texture in a package; returns how many decoded and a message per failure.
-pub(crate) fn check_all(package: &Package, file: &[u8]) -> (usize, Vec<String>) {
-    let mut decoded = 0;
-    let mut failures = Vec::new();
-    for (index, export) in package.exports().iter().enumerate() {
-        if export.serial_size == 0 || !package.class_name(export).eq_ignore_ascii_case("Texture") {
-            continue;
-        }
-        match ue2_assets::decode_texture(package, file, index) {
-            Ok(_) => decoded += 1,
-            Err(error) => failures.push(format!("{}: {error}", package.object_path(ObjectRef::Export(index)))),
-        }
-    }
-    (decoded, failures)
-}
-
 pub(crate) fn export(package_path: &Path, object: &str, output: &Path) -> Result {
     let (_, file) = read_decrypted(package_path)?;
     let package = Package::parse(&file)?;
