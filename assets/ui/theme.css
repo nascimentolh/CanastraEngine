@@ -4,7 +4,7 @@
 
 ui { font-family: Inter; align-items: center; justify-content: center }
 
-#login {
+window {
     width: 380px;
     padding: 22px 24px 18px 24px;
     gap: 8px;
@@ -33,7 +33,22 @@ input:focus { border: 1px solid #c9a45c; box-shadow: inset 0 1px 3px #000000c0, 
 
 .status { font-size: 12px; color: #e0c77f; text-align: center }
 
+.heading { font-family: Cinzel; font-size: 15px; font-weight: 700; color: #e6cf98; text-align: center; margin: 0 0 6px 0 }
+.server-list { gap: 4px }
+.server {
+    padding: 8px 12px;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(#1d1811e0, #110e0ae0);
+    border: 1px solid #4f412a;
+    border-radius: 2px;
+}
+.server:hover { border: 1px solid #c9a45c; background: linear-gradient(#2d2517e8, #17130de8) }
+.server-name { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #efdcae }
+.server-load { font-size: 12px; color: #a9987a }
+
 .actions { gap: 10px; margin: 4px 0 0 92px }
+.actions.centered { margin: 4px 0 0 0 }
 button {
     flex-grow: 1;
     padding: 6px 0;
@@ -53,4 +68,4 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 
-input, button { transition: 160ms }
+input, button, .server { transition: 160ms }

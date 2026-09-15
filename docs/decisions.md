@@ -193,5 +193,7 @@ Login, then server and character selection, then walking in the world, with a ba
    - Milestone 1 is login end to end: Postgres plus a CLI that creates accounts. The client connects
      to the login server over Noise, authenticates, sees the registered game servers and receives a
      ticket. There is no world yet.
+     *2026-09-15:* done. With the login and game servers running, the client shows "wrong account or
+     password", then lists the registered server with its population, then receives a ticket for it.
    - Then character selection and creation, entering the world, and click to move.
 8. MVP windows and NPC dialog templates.

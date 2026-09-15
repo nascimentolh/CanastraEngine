@@ -1,0 +1,16 @@
+<ui>
+    <window id="servers">
+        <label class="heading" text="Select Server"/>
+        <column class="server-list" repeat="servers">
+            <row class="server" action="server:{index}">
+                <label class="server-name" bind="item.name" text=""/>
+                <label class="server-load" bind="item.load" text=""/>
+            </row>
+        </column>
+        <label class="status" bind="app.status" text=""/>
+        <row class="actions centered">
+            <button text="Back" action="back"/>
+        </row>
+    </window>
+    <label id="version" bind="app.version" text="?"/>
+</ui>

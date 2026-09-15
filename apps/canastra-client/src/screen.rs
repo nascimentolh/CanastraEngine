@@ -1,4 +1,5 @@
-//! One UI screen: its markup and stylesheet, the laid-out frame, pointer and input focus.
+//! The UI screen shown now: its markup and stylesheet, the laid-out frame, pointer, input focus and the
+//! data the app binds into it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -6,13 +7,14 @@ use std::time::{Duration, Instant};
 
 use canastra_ui::{Element, Frame, Hit, StyleSheet, TextMeasure, Transitions, UiState};
 
-const MARKUP: &str = "login.ui";
 const STYLESHEET: &str = "theme.css";
 /// How long the caret stays on, then off.
 const BLINK: Duration = Duration::from_millis(530);
 
 pub(crate) struct Screen {
     folder: PathBuf,
+    /// File name of the markup shown, e.g. `login.ui`.
+    markup: String,
     ui: Element,
     sheet: StyleSheet,
     pub(crate) frame: Frame,
@@ -20,7 +22,7 @@ pub(crate) struct Screen {
     /// Last pointer position in logical pixels.
     pointer: (f32, f32),
     pub(crate) status: String,
-    /// What was typed into each input, by its data key.
+    /// What was typed into each input and what the app set, by data key.
     values: HashMap<String, String>,
     /// When the caret last turned on; typing restarts the blink so the caret stays visible.
     caret_since: Instant,
@@ -30,10 +32,12 @@ pub(crate) struct Screen {
 }
 
 impl Screen {
-    pub(crate) fn load(folder: PathBuf) -> Result<Self, String> {
-        let (ui, sheet) = read(&folder)?;
+    /// Loads the screen in `markup` from `folder`.
+    pub(crate) fn load(folder: PathBuf, markup: &str) -> Result<Self, String> {
+        let (ui, sheet) = read(&folder, markup)?;
         Ok(Self {
             folder,
+            markup: markup.to_owned(),
             ui,
             sheet,
             frame: Frame::default(),
@@ -49,13 +53,36 @@ impl Screen {
 
     /// Re-reads markup and stylesheet; on failure the old ones stay and the status shows why.
     pub(crate) fn reload(&mut self) {
-        match read(&self.folder) {
+        match read(&self.folder, &self.markup) {
             Ok((ui, sheet)) => {
                 (self.ui, self.sheet, self.transitions) = (ui, sheet, Transitions::default());
                 self.status = "UI reloaded".into();
             }
             Err(error) => self.status = error,
         }
+    }
+
+    /// Switches to the screen in `markup`, keeping values and status; on failure the status shows why.
+    pub(crate) fn show(&mut self, markup: &str) {
+        match read(&self.folder, markup) {
+            Ok((ui, sheet)) => {
+                (self.ui, self.sheet, self.transitions) = (ui, sheet, Transitions::default());
+                markup.clone_into(&mut self.markup);
+                self.state.focused = None;
+                self.state.hovered = None;
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    /// The value typed or set under `key`.
+    pub(crate) fn value(&self, key: &str) -> &str {
+        self.values.get(key).map_or("", String::as_str)
+    }
+
+    /// Sets the data bound under `key`.
+    pub(crate) fn set(&mut self, key: String, value: String) {
+        self.values.insert(key, value);
     }
 
     /// Lays the screen out for a `viewport` in logical pixels.
@@ -143,12 +170,12 @@ impl Screen {
     }
 }
 
-fn read(folder: &Path) -> Result<(Element, StyleSheet), String> {
+fn read(folder: &Path, markup: &str) -> Result<(Element, StyleSheet), String> {
     let read = |name: &str| {
         let path = folder.join(name);
         std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))
     };
-    let ui = canastra_ui::parse_markup(&read(MARKUP)?).map_err(|error| format!("{MARKUP}: {error}"))?;
+    let ui = canastra_ui::parse_markup(&read(markup)?).map_err(|error| format!("{markup}: {error}"))?;
     let sheet = canastra_ui::parse_stylesheet(&read(STYLESHEET)?).map_err(|error| format!("{STYLESHEET}: {error}"))?;
     Ok((ui, sheet))
 }
