@@ -1,6 +1,6 @@
 //! Sprite particles simulated on the CPU the way Unreal Engine 2's sprite emitters behave: spawned in a
-//! box around the emitter, moving with velocity and acceleration, sized and colored by curves over
-//! their life, fading in and out, spinning, and respawning when they die.
+//! box around the emitter, moving with velocity and acceleration, revolving about the emitter, sized
+//! and colored by curves over their life, fading in and out, spinning, and respawning when they die.
 
 use ue2_level::{DrawStyle, Emitter, SpriteEmitter};
 
@@ -29,6 +29,8 @@ struct Particle {
     /// Starting turn and turns per second.
     spin: [f32; 2],
     color: [f32; 3],
+    /// Center relative to the emitter and turns per second about X, Y and Z.
+    revolution: ([f32; 3], [f32; 3]),
     /// Texture cell, row by row.
     cell: u32,
 }
@@ -108,11 +110,17 @@ impl System {
     }
 
     fn origin_plus(&self, particle: &Particle, age: f32) -> [f32; 3] {
-        let mut at = self.origin;
-        for (((at, start), velocity), acceleration) in
-            at.iter_mut().zip(particle.start).zip(particle.velocity).zip(self.sprite.acceleration)
+        let (center, turns) = particle.revolution;
+        let mut offset = [0.0; 3];
+        for ((((offset, start), velocity), acceleration), center) in
+            offset.iter_mut().zip(particle.start).zip(particle.velocity).zip(self.sprite.acceleration).zip(center)
         {
-            *at += start + velocity * age + 0.5 * acceleration * age * age;
+            *offset = start + velocity * age + 0.5 * acceleration * age * age - center;
+        }
+        let offset = revolve(offset, turns, age);
+        let mut at = self.origin;
+        for ((at, offset), center) in at.iter_mut().zip(offset).zip(center) {
+            *at += center + offset;
         }
         at
     }
@@ -121,6 +129,24 @@ impl System {
     pub(crate) fn len(&self) -> usize {
         self.particles.len()
     }
+}
+
+/// `offset` turned about the origin by `turns` per second on X, then Y, then Z, after `age` seconds.
+// ponytail: the whole path turns at once; Unreal turns the location a tick at a time, which differs only for
+// particles that also move.
+fn revolve(mut offset: [f32; 3], turns: [f32; 3], age: f32) -> [f32; 3] {
+    for (axis, turns) in turns.iter().enumerate() {
+        let (sin, cos) = (turns * age * std::f32::consts::TAU).sin_cos();
+        let [a, b] = [(axis + 1) % 3, (axis + 2) % 3];
+        let (first, second) = (offset.get(a).copied().unwrap_or(0.0), offset.get(b).copied().unwrap_or(0.0));
+        if let Some(value) = offset.get_mut(a) {
+            *value = first * cos - second * sin;
+        }
+        if let Some(value) = offset.get_mut(b) {
+            *value = first * sin + second * cos;
+        }
+    }
+    offset
 }
 
 #[expect(clippy::cast_sign_loss, reason = "the random unit is never negative")]
@@ -141,6 +167,9 @@ fn spawn(sprite: &SpriteEmitter, random: &mut Random, born: f32, lifetime: f32) 
         size: random.range(sprite.start_size),
         spin: sprite.spin.map_or([0.0; 2], |(start, rate)| [random.range(start), random.range(rate)]),
         color: sprite.color_multiplier.map(|range| random.range(range)),
+        revolution: sprite.revolution.map_or(([0.0; 3], [0.0; 3]), |(center, turns)| {
+            (center.map(|range| random.range(range)), turns.map(|range| random.range(range)))
+        }),
         cell: first + (random.unit() * span as f32) as u32 % span,
     }
 }
@@ -158,17 +187,31 @@ pub(crate) fn blend(style: DrawStyle) -> l2_catalog::Blend {
     }
 }
 
-/// Right and up axes of the plane perpendicular to `normal`, or `None` for a zero normal.
+/// Right and up axes of the plane perpendicular to `normal`, or `None` for a zero normal. As Unreal's
+/// sprite emitter builds them (recovered by Fermata): up is `normal × normal.GetNonParallel()`, which
+/// keeps its length and so shortens sprites on tilted planes, and right is `normal × up`, normalized.
+/// Fermata writes this in its Y-up viewer space, where Unreal's Y and Z swap, so the math runs there.
 fn plane_axes(normal: [f32; 3]) -> Option<([f32; 3], [f32; 3])> {
     let length = normal.iter().map(|axis| axis * axis).sum::<f32>().sqrt();
     if length < 1e-4 {
         return None;
     }
-    let [x, y, z] = normal.map(|axis| axis / length);
-    // Right lies in the ground plane unless the normal points straight up.
-    let right = if x.abs() + y.abs() < 1e-4 { [1.0, 0.0, 0.0] } else { normalized([-y, x, 0.0]) };
-    let up = normalized([y * right[2] - z * right[1], z * right[0] - x * right[2], x * right[1] - y * right[0]]);
-    Some((right, up))
+    let swap = |[x, y, z]: [f32; 3]| [x, z, y];
+    let n = swap(normal.map(|axis| axis / length));
+    let non_parallel = if n[0].abs() > 0.57 {
+        [0.0, 0.0, 1.0]
+    } else if n[2].abs() > 0.57 {
+        [0.0, 1.0, 0.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    let up = cross(n, non_parallel);
+    let right = normalized(cross(n, up));
+    Some((swap(right), swap(up)))
+}
+
+fn cross([ax, ay, az]: [f32; 3], [bx, by, bz]: [f32; 3]) -> [f32; 3] {
+    [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx]
 }
 
 fn normalized(vector: [f32; 3]) -> [f32; 3] {
@@ -191,8 +234,16 @@ mod tests {
 
     #[test]
     fn sprite_planes_follow_their_normal() {
+        // A normal along Y: GetNonParallel gives Z, so up runs along -X and right along -Z.
         let (right, up) = plane_axes([0.0, 2.0, 0.0]).unwrap();
-        assert_eq!((right, up), ([-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]));
+        assert_eq!((right, up), ([0.0, 0.0, -1.0], [-1.0, 0.0, 0.0]));
         assert!(plane_axes([0.0; 3]).is_none());
+    }
+
+    #[test]
+    fn revolution_turns_about_each_axis() {
+        // A quarter turn about Y carries a point above the emitter onto X.
+        let [x, y, z] = revolve([0.0, 0.0, 128.0], [0.0, 0.25, 0.0], 1.0);
+        assert!((x - 128.0).abs() < 1e-3 && y.abs() < 1e-3 && z.abs() < 1e-3);
     }
 }

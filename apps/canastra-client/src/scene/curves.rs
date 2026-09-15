@@ -92,6 +92,7 @@ mod tests {
             fogged: true,
             cloud_color: false,
             soft: false,
+            revolution: None,
             projection_normal: None,
         };
         assert_eq!(fade(&sprite, 1.0, 10.0), 0.5);

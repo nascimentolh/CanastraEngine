@@ -73,8 +73,10 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    on the CPU starting warmed up, respawns them as they die, and draws them over the level. Only the
    camera zone's emitters draw, since other zones are closed off. Styles that ignore alpha fade through
    the vertex color, and modulate and darken output gamma-space factors so mid gray stays neutral.
-   The purple haze over the hills and around the tree now matches the H5 screenshot. Not modeled:
-   sphere and polar start shapes, revolution, the emitter's DrawScale (scaling sizes by it blew the
+   The purple haze over the hills and around the tree now matches the H5 screenshot. Particles now
+   revolve (`UseRevolution`), and sprites laid in a plane take Unreal's axes as Fermata recovered
+   them. Stacked on one spot, SpriteEmitter18's twelve `eva_effect_map15` sprites had drawn an
+   edge-on vertical beam that H5 does not show. Not modeled: sphere and polar start shapes, the emitter's DrawScale (scaling sizes by it blew the
    clouds up to screen size), BSP portal visibility and particle depth sorting.
    **Blending, checked against Fermata:** the scene now writes and blends gamma-space colors through a
    non-sRGB view of the window, as the original client's framebuffer did; linear blending had crushed

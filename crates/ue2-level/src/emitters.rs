@@ -47,6 +47,8 @@ pub struct SpriteEmitter {
     pub fade_out_start: Option<f32>,
     /// Starting turn and turns per second, when spinning.
     pub spin: Option<(Range, Range)>,
+    /// Center offset and turns per second about X, Y and Z, when particles revolve about the emitter.
+    pub revolution: Option<([Range; 3], [Range; 3])>,
     pub texture: Option<String>,
     /// Texture cells across and down, and the cells picked from (`end` 0 means all).
     pub subdivisions: [u32; 2],
@@ -141,6 +143,8 @@ fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
         opacity: float("Opacity", 1.0),
         fade_in_end: flag("FadeIn", false).then(|| float("FadeInEndTime", 0.0)),
         fade_out_start: flag("FadeOut", false).then(|| float("FadeOutStartTime", 0.0)),
+        revolution: flag("UseRevolution", false)
+            .then(|| (ranges("RevolutionCenterOffsetRange", 0.0), ranges("RevolutionsPerSecondRange", 0.0))),
         spin: flag("SpinParticles", false)
             .then(|| (ranges("StartSpinRange", 0.0)[0], ranges("SpinsPerSecondRange", 0.0)[0])),
         texture: get("Texture").and_then(|texture| texture.object(package)).and_then(|texture| match texture {
