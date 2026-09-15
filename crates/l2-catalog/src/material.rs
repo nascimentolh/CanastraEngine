@@ -139,8 +139,10 @@ impl Catalog {
                 };
                 material.blend = match node.output_blending {
                     // ponytail: an Opacity map is taken to be the diffuse texture's own alpha, as foliage shaders set it.
-                    0 if node.alpha_test.is_some() => Blend::Masked,
+                    // With an Opacity map the shader blends, and its alpha test only keeps clear texels out of the
+                    // depth buffer: foliage stays soft instead of turning into solid cards.
                     0 if node.opacity => Blend::Alpha,
+                    0 if node.alpha_test.is_some() => Blend::Masked,
                     0 => material.blend,
                     1 => Blend::Masked,
                     2 => Blend::Modulate,

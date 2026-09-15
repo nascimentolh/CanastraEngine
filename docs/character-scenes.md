@@ -155,3 +155,10 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - Leaf materials with `AlphaRef` 0 kept their fully clear texels, which showed as grey cards. Unreal's
      alpha test passes only texels above the reference. Masked edges now follow Fermata: 4× MSAA with the
      alpha turned into sample coverage, sharpened to about a pixel, so leaves and grass come out smooth.
+   *2026-09-15:* the trees still looked like solid green sheets. Their leaf materials are Shaders with an Opacity
+   map, `AlphaTest` and `AlphaRef` 1, which were read as cut-outs. Cut at 1, box-filtered mips fill whole leaf
+   cards in (the client's stored mips are filtered the same way). Cut at half, the leaves turn lacy but the
+   login's bushes, the same kind of shader, vanish. A Shader with an Opacity map blends, and its alpha test
+   only keeps clear texels out of the depth buffer: read that way, a capture at the screenshot's resolution
+   shows the Talking Island trees with H5's shapes, and the login keeps its bushes. What still differs is the
+   whole scene's warmer grade in H5, not the trees.
