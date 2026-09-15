@@ -74,7 +74,7 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
 
     let issues = data.validate();
     println!("validation: {} issues", issues.len());
-    for issue in issues.iter().take(EXAMPLES) {
+    for issue in &issues {
         println!("  {:?}: {:?}", issue.subject, issue.problem);
     }
     let errors = report.count(Severity::Error);
@@ -93,13 +93,24 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
     Ok(())
 }
 
+/// The XML files in `dir`, then those in its `custom` folder, each group sorted by name. The reference server
+/// loads custom data last so it replaces base entries with the same id, and the migration keeps the last one.
 fn xml_documents(dir: &Path) -> Result<Vec<(String, String)>> {
+    let mut documents = xml_files(dir, "")?;
+    let custom = dir.join("custom");
+    if custom.is_dir() {
+        documents.extend(xml_files(&custom, "custom/")?);
+    }
+    Ok(documents)
+}
+
+fn xml_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>> {
     let mut documents = Vec::new();
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("xml")) {
             let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-            documents.push((name, fs::read_to_string(&path)?));
+            documents.push((format!("{prefix}{name}"), fs::read_to_string(&path)?));
         }
     }
     documents.sort();

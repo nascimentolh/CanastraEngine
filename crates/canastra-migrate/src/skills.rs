@@ -29,7 +29,7 @@ const UNKNOWN: &[&str] = &[
 ];
 
 /// Enchant route `r` owns levels `100 * r + 1 ..= 100 * r + 30`.
-const ENCHANT_ROUTE_SPAN: u32 = 100;
+pub(crate) const ENCHANT_ROUTE_SPAN: u32 = 100;
 const ENCHANT_ROUTE_LEVELS: u32 = 30;
 
 type LevelKey = (SkillId, u32);

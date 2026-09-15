@@ -16,6 +16,7 @@ use std::collections::btree_map::Entry;
 use std::fmt::Debug;
 
 use canastra_data::GameData;
+use canastra_data::id::SkillId;
 use l2_dat::Value;
 use roxmltree::Node;
 
@@ -44,13 +45,38 @@ pub struct Sources<'a> {
 
 pub fn migrate(sources: &Sources<'_>) -> (GameData, Report) {
     let mut report = Report::default();
-    let data = GameData {
+    let mut data = GameData {
         items: items::migrate(sources, &mut report),
         skills: skills::migrate(sources, &mut report),
         npcs: npcs::migrate(sources, &mut report),
         classes: classes::migrate(sources, &mut report),
     };
+    cap_skill_levels(&mut data, &mut report);
     (data, report)
+}
+
+/// An item or NPC asking for a skill level above the skill's highest regular level gets that highest level, as
+/// the reference server does when it looks the skill up.
+fn cap_skill_levels(data: &mut GameData, report: &mut Report) {
+    let highest: BTreeMap<SkillId, u32> = data
+        .skills
+        .values()
+        .filter_map(|skill| Some((skill.id, *skill.levels.keys().rfind(|&&level| level < skills::ENCHANT_ROUTE_SPAN)?)))
+        .collect();
+    let items = data.items.values_mut().map(|item| (format!("item {}", item.id.0), &mut item.skills));
+    let npcs = data.npcs.values_mut().map(|npc| (format!("npc {}", npc.id.0), &mut npc.skills));
+    for (subject, list) in items.chain(npcs) {
+        for skill in list {
+            if let Some(&max) = highest.get(&skill.id)
+                && (max + 1..skills::ENCHANT_ROUTE_SPAN).contains(&skill.level)
+            {
+                let message =
+                    format!("skill {} level {} is above its highest, {max}; uses {max}", skill.id.0, skill.level);
+                report.push(Severity::Warning, subject.clone(), message);
+                skill.level = max;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -149,4 +175,30 @@ fn server_index<K: Ord, T>(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use canastra_data::id::{ItemId, SkillRef};
+    use canastra_data::item::Item;
+    use canastra_data::skill::{Skill, SkillLevel, SkillOperate};
+
+    use super::*;
+
+    #[test]
+    fn skill_levels_above_the_highest_use_the_highest() {
+        let mut data = GameData::default();
+        let levels = [1, 2, 101].map(|level| (level, SkillLevel::default())).into();
+        data.skills.insert(SkillId(7), Skill { id: SkillId(7), operate: SkillOperate::A1, levels });
+        let mut item = Item::new(ItemId(1));
+        item.skills = [5, 2, 101].map(|level| SkillRef { id: SkillId(7), level }).into();
+        data.items.insert(item.id, item);
+        let mut report = Report::default();
+
+        cap_skill_levels(&mut data, &mut report);
+
+        let levels: Vec<u32> = data.items[&ItemId(1)].skills.iter().map(|skill| skill.level).collect();
+        assert_eq!(levels, [2, 2, 101]);
+        assert_eq!(report.count(Severity::Warning), 1);
+    }
 }

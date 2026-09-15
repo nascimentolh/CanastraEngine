@@ -66,6 +66,11 @@ pub(crate) fn migrate(sources: &Sources<'_>, report: &mut Report) -> BTreeMap<Np
     npcs
 }
 
+/// What the reference server assumes for an NPC that leaves these out, as custom NPCs often do.
+const DEFAULT_LEVEL: u32 = 85;
+const DEFAULT_WALK_SPEED: f64 = 50.0;
+const DEFAULT_RUN_SPEED: f64 = 120.0;
+
 fn server_npc(node: Node<'_, '_>, report: &mut Report) -> Result<(NpcId, Npc)> {
     let npc_type = node.attribute("type").unwrap_or_default();
     let child = |tag: &str| node.children().find(|child| child.has_tag_name(tag));
@@ -83,17 +88,17 @@ fn server_npc(node: Node<'_, '_>, report: &mut Report) -> Result<(NpcId, Npc)> {
         title: localized(node.attribute("title").unwrap_or_default()),
         title_color: 0,
         npc_type: NpcType(npc_type.to_owned()),
-        level: optional(node, "level")?.unwrap_or(0),
+        level: optional(node, "level")?.unwrap_or(DEFAULT_LEVEL),
         race: child("race")
             .and_then(|race| race.text())
             .map_or(Ok(Race::None), |text| race_of(text).ok_or_else(|| format!("unknown race `{text}`")))?,
         sex: child("sex")
             .and_then(|sex| sex.text())
             .map_or(Ok(Sex::Etc), |text| sex_of(text).ok_or_else(|| format!("unknown sex `{text}`")))?,
-        hp: required(path(&["stats", "vitals"]), "hp")?,
-        mp: required(path(&["stats", "vitals"]), "mp")?,
-        walk_speed: required(path(&["stats", "speed", "walk"]), "ground")?,
-        run_speed: required(path(&["stats", "speed", "run"]), "ground")?,
+        hp: defaulted(path(&["stats", "vitals"]), "hp", 0.0)?,
+        mp: defaulted(path(&["stats", "vitals"]), "mp", 0.0)?,
+        walk_speed: defaulted(path(&["stats", "speed", "walk"]), "ground", DEFAULT_WALK_SPEED)?,
+        run_speed: defaulted(path(&["stats", "speed", "run"]), "ground", DEFAULT_RUN_SPEED)?,
         collision: Collision {
             radius: required(path(&["collision", "radius"]), "normal")?,
             height: required(path(&["collision", "height"]), "normal")?,
@@ -166,6 +171,11 @@ fn skill_list(list: Node<'_, '_>) -> Result<Vec<SkillRef>> {
 fn required<T: FromStr>(node: Option<Node<'_, '_>>, attribute: &str) -> Result<T> {
     let node = node.ok_or_else(|| format!("missing element for `{attribute}`"))?;
     optional(node, attribute)?.ok_or_else(|| format!("missing `{attribute}` on <{}>", node.tag_name().name()))
+}
+
+/// The attribute, or what the reference server assumes when the element or attribute is left out.
+fn defaulted<T: FromStr>(node: Option<Node<'_, '_>>, attribute: &str, default: T) -> Result<T> {
+    Ok(node.map(|node| optional(node, attribute)).transpose()?.flatten().unwrap_or(default))
 }
 
 fn optional<T: FromStr>(node: Node<'_, '_>, attribute: &str) -> Result<Option<T>> {
