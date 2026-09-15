@@ -4,6 +4,8 @@
 # This server's id, as the login server authorizes it.
 id = 1
 name = "Canastra"
+# Where this server listens for players.
+players = "0.0.0.0:7777"
 # Where players reach this server.
 public_address = "127.0.0.1:7777"
 capacity = 1000
@@ -13,6 +15,8 @@ capacity = 1000
 address = "127.0.0.1:2107"
 # The login server's noise_public key.
 public_key = ""
+# The login server's ticket_public key, from its keygen output.
+ticket_public = ""
 
 [keys]
 noise_private = ""

@@ -1,20 +1,24 @@
-//! The client's network thread: a tokio runtime that talks to the login server and hands replies back to
-//! the window's event loop.
+//! The client's network thread: a tokio runtime that talks to the login server, then to the chosen game
+//! server, and hands replies back to the window's event loop.
 
 use std::net::SocketAddr;
 
 use canastra_net::Connection;
+use canastra_protocol::VERSION;
+use canastra_protocol::game::{GameClient, GameServer, Refusal};
 use canastra_protocol::login::{AuthFailure, LoginClient, LoginServer, ServerEntry, TicketRefusal};
-use canastra_protocol::ticket::SignedTicket;
-use canastra_protocol::{ServerId, VERSION};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use winit::event_loop::EventLoopProxy;
 
 /// What the game loop asks of the network.
 pub(crate) enum Request {
-    Login { account: String, password: String },
-    Ticket(ServerId),
+    Login {
+        account: String,
+        password: String,
+    },
+    /// Asks the login server for a ticket to `server`, then joins it.
+    Join(ServerEntry),
 }
 
 /// What the network reports back, as window events.
@@ -25,8 +29,10 @@ pub(crate) enum Reply {
     UpdateRequired,
     AuthFailed(AuthFailure),
     Servers(Vec<ServerEntry>),
-    Ticket(ServerId, SignedTicket),
     TicketRefused(TicketRefusal),
+    /// The game server admitted the player.
+    Admitted,
+    GameRefused(Refusal),
 }
 
 /// Where the login server is and the key it must prove it holds.
@@ -74,12 +80,12 @@ impl Network {
 }
 
 async fn run(server: LoginAddress, mut requests: mpsc::UnboundedReceiver<Request>, proxy: EventLoopProxy<Reply>) {
-    let mut connection = None;
+    let mut session = Session::default();
     while let Some(request) = requests.recv().await {
-        let reply = match handle(&server, &mut connection, request).await {
+        let reply = match handle(&server, &mut session, request).await {
             Ok(reply) => reply,
             Err(error) => {
-                connection = None;
+                session = Session::default();
                 Reply::Failed(error)
             }
         };
@@ -89,11 +95,14 @@ async fn run(server: LoginAddress, mut requests: mpsc::UnboundedReceiver<Request
     }
 }
 
-async fn handle(
-    server: &LoginAddress,
-    connection: &mut Option<Connection<TcpStream>>,
-    request: Request,
-) -> Result<Reply, String> {
+/// The connections a player holds: to the login server after authenticating, then to a game server.
+#[derive(Default)]
+struct Session {
+    login: Option<Connection<TcpStream>>,
+    game: Option<Connection<TcpStream>>,
+}
+
+async fn handle(server: &LoginAddress, session: &mut Session, request: Request) -> Result<Reply, String> {
     let error = |error: canastra_net::Error| error.to_string();
     match request {
         Request::Login { account, password } => {
@@ -112,16 +121,27 @@ async fn handle(
                 LoginServer::Servers(servers) => Reply::Servers(servers),
                 other => return Err(format!("unexpected reply to authentication: {other:?}")),
             };
-            *connection = Some(fresh);
+            session.login = Some(fresh);
             Ok(reply)
         }
-        Request::Ticket(id) => {
-            let current = connection.as_mut().ok_or("not logged in")?;
-            current.send(&LoginClient::RequestTicket { server: id }).await.map_err(error)?;
-            match current.recv::<LoginServer>().await.map_err(error)? {
-                LoginServer::Ticket(ticket) => Ok(Reply::Ticket(id, ticket)),
-                LoginServer::TicketRefused(refusal) => Ok(Reply::TicketRefused(refusal)),
-                other => Err(format!("unexpected reply to a ticket request: {other:?}")),
+        Request::Join(entry) => {
+            let login = session.login.as_mut().ok_or("not logged in")?;
+            login.send(&LoginClient::RequestTicket { server: entry.id }).await.map_err(error)?;
+            let ticket = match login.recv::<LoginServer>().await.map_err(error)? {
+                LoginServer::Ticket(ticket) => ticket,
+                LoginServer::TicketRefused(refusal) => return Ok(Reply::TicketRefused(refusal)),
+                other => return Err(format!("unexpected reply to a ticket request: {other:?}")),
+            };
+            let stream = TcpStream::connect(entry.address.as_str()).await.map_err(|error| error.to_string())?;
+            let mut game = Connection::connect(stream, &entry.key, None).await.map_err(error)?;
+            game.send(&GameClient::Hello { version: VERSION, ticket }).await.map_err(error)?;
+            match game.recv::<GameServer>().await.map_err(error)? {
+                GameServer::Admitted => {
+                    session.game = Some(game);
+                    Ok(Reply::Admitted)
+                }
+                GameServer::UpdateRequired { .. } => Ok(Reply::UpdateRequired),
+                GameServer::Refused(refusal) => Ok(Reply::GameRefused(refusal)),
             }
         }
     }

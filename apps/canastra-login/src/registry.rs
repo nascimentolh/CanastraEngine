@@ -70,7 +70,7 @@ async fn serve(
     servers: &Servers,
 ) -> Result {
     let mut connection = Connection::accept(stream, keys, Pattern::Peer).await?;
-    let Some(&allowed) = connection.remote_key().and_then(|key| authorized.get(&key)) else {
+    let Some((key, allowed)) = connection.remote_key().and_then(|key| Some((key, *authorized.get(&key)?))) else {
         return Err("a game server with an unauthorized key connected".into());
     };
     let GameToLogin::Register { version, id, name, address, capacity } = connection.recv().await? else {
@@ -80,7 +80,7 @@ async fn serve(
         Some(Rejection::UpdateRequired { version: VERSION })
     } else if id != allowed {
         Some(Rejection::WrongId)
-    } else if !servers.insert(ServerEntry { id, name: name.clone(), address, population: 0, capacity }) {
+    } else if !servers.insert(ServerEntry { id, name: name.clone(), address, key, population: 0, capacity }) {
         Some(Rejection::AlreadyRegistered)
     } else {
         None

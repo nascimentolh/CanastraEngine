@@ -1,13 +1,18 @@
-//! `canastra-game`: a game server. For now it only keeps itself registered with the login server, so
-//! players see it listed; the world, character selection and tickets come next.
+//! `canastra-game`: a game server. For now it keeps itself registered with the login server and admits
+//! players by their tickets; characters and the world come next.
 
+mod admission;
 mod config;
 mod registration;
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
+use admission::Admission;
+use canastra_protocol::ServerId;
 use config::{Config, Result};
+use tokio::net::TcpListener;
 
 const USAGE: &str = "usage:
   canastra-game serve [<config.toml>]   run the game server
@@ -39,8 +44,12 @@ async fn main() -> ExitCode {
 async fn serve(path: &Path) -> Result {
     let config = Config::load(path)?;
     let (keys, login_key) = (config.keypair()?, config.login_key()?);
+    let admission = Arc::new(Admission::new(ServerId(config.id), config.capacity, keys.clone(), config.tickets()?));
+    let players = TcpListener::bind(config.players).await?;
+    tracing::info!(players = %config.players, "game server listening");
+    tokio::spawn(admission::listen(players, admission.clone()));
     tokio::select! {
-        result = registration::keep_registered(&config, &keys, &login_key) => result,
+        result = registration::keep_registered(&config, &keys, &login_key, &admission.online) => result,
         signal = tokio::signal::ctrl_c() => {
             tracing::info!("game server stopping");
             signal.map_err(Into::into)

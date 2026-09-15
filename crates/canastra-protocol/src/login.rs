@@ -59,6 +59,8 @@ pub struct ServerEntry {
     pub name: String,
     /// Where clients connect, as `host:port`.
     pub address: String,
+    /// The game server's static Noise key, which clients pin when they connect to it.
+    pub key: [u8; 32],
     pub population: u32,
     pub capacity: u32,
 }

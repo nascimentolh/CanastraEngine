@@ -15,6 +15,8 @@ pub(crate) struct Config {
     /// This server's id, as the login server authorizes it.
     pub(crate) id: u16,
     pub(crate) name: String,
+    /// Where this server listens for players.
+    pub(crate) players: SocketAddr,
     /// Where players reach this server, as `host:port`.
     pub(crate) public_address: String,
     pub(crate) capacity: u32,
@@ -30,6 +32,8 @@ pub(crate) struct Login {
     pub(crate) address: SocketAddr,
     /// The login server's `noise_public` key.
     pub(crate) public_key: String,
+    /// The login server's public ticket key, printed by its keygen.
+    pub(crate) ticket_public: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -61,6 +65,11 @@ impl Config {
             .map_err(|error| format!("keys.noise_private / keys.noise_public: {error}"))?)
     }
 
+    pub(crate) fn tickets(&self) -> Result<canastra_net::ticket::Checker> {
+        Ok(canastra_net::ticket::Checker::from_hex(&self.login.ticket_public)
+            .map_err(|error| format!("login.ticket_public: {error}"))?)
+    }
+
     pub(crate) fn login_key(&self) -> Result<[u8; 32]> {
         Ok(canastra_net::parse_key(&self.login.public_key).map_err(|error| format!("login.public_key: {error}"))?)
     }
@@ -83,12 +92,13 @@ mod tests {
     #[test]
     fn keygen_output_loads_as_keys() {
         let text = format!(
-            "id = 1\nname = \"Canastra\"\npublic_address = \"127.0.0.1:7777\"\ncapacity = 100\n\
-             [login]\naddress = \"127.0.0.1:2107\"\npublic_key = \"{}\"\n{}",
+            "id = 1\nname = \"Canastra\"\nplayers = \"0.0.0.0:7777\"\npublic_address = \"127.0.0.1:7777\"\n\
+             capacity = 100\n[login]\naddress = \"127.0.0.1:2107\"\npublic_key = \"{}\"\nticket_public = \"{}\"\n{}",
             "00".repeat(32),
+            canastra_net::ticket::Issuer::generate().unwrap().public_hex(),
             keygen().unwrap()
         );
         let config: Config = toml::from_str(&text).unwrap();
-        assert!(config.keypair().is_ok() && config.login_key().is_ok());
+        assert!(config.keypair().is_ok() && config.login_key().is_ok() && config.tickets().is_ok());
     }
 }

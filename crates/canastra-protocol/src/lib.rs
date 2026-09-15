@@ -1,6 +1,7 @@
 //! Canastra's network protocol: typed messages, one enum per connection phase and direction, encoded
 //! with postcard. Nothing here does IO; `canastra-net` carries these messages over encrypted frames.
 
+pub mod game;
 pub mod login;
 pub mod registry;
 pub mod ticket;
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bump on any change to a message type; the `layout_is_frozen` tests fail until you do. Peers on other
 /// versions are refused, never adapted to.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// A game server, as the login server and its game servers know it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -48,10 +49,14 @@ mod tests {
             id: ServerId(1),
             name: "A".into(),
             address: "h:1".into(),
+            key: [9; 32],
             population: 2,
             capacity: 300,
         }]);
-        assert_eq!(encode(&servers), [3, 1, 1, 1, b'A', 3, b'h', b':', b'1', 2, 0xAC, 0x02]);
+        let mut expected = vec![3, 1, 1, 1, b'A', 3, b'h', b':', b'1'];
+        expected.extend([9; 32]);
+        expected.extend([2, 0xAC, 0x02]);
+        assert_eq!(encode(&servers), expected);
         let register = GameToLogin::Register {
             version: VERSION,
             id: ServerId(7),
@@ -59,7 +64,9 @@ mod tests {
             address: String::new(),
             capacity: 1,
         };
-        assert_eq!(encode(&register), [0, 1, 7, 0, 0, 1]);
+        assert_eq!(encode(&register), [0, 2, 7, 0, 0, 1]);
+        let refused = game::GameServer::Refused(game::Refusal::Reused);
+        assert_eq!(encode(&refused), [2, 2]);
     }
 
     #[test]

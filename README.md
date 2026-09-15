@@ -16,7 +16,7 @@ apps/        canastra-client     game client: winit + wgpu window drawing the UI
              canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
              canastra-cli        IO, filesystem, user-facing commands
              canastra-login      login server: accounts, rate-limited auth, game server registry, tickets
-             canastra-game       game server: registers with the login server (world to come)
+             canastra-game       game server: registers with the login server, admits players by ticket
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
              ue2-assets          tagged properties, textures, palettes and static meshes read in place
              ue2-level           placed actors and scene cameras of a map

@@ -10,7 +10,7 @@ canastra-net.workspace = true
 canastra-protocol.workspace = true
 hex.workspace = true
 serde.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "time", "signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "time", "signal", "io-util"] }
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

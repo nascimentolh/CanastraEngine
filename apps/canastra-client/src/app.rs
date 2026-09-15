@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use canastra_protocol::game::Refusal;
 use canastra_protocol::login::{AuthFailure, ServerEntry, TicketRefusal};
 use l2_catalog::Catalog;
 use winit::application::ApplicationHandler;
@@ -43,6 +44,8 @@ struct Running {
     network: Result<Network, String>,
     /// The game servers the login server listed.
     servers: Vec<ServerEntry>,
+    /// The name of the server being joined.
+    joining: Option<String>,
     gpu: Gpu,
 }
 
@@ -68,7 +71,16 @@ impl App {
             .inspect_err(|error| eprintln!("scene: {error}"))
             .ok();
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
-        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, renderer, network, servers: Vec::new(), gpu })
+        Ok(Running {
+            screen,
+            modifiers: ModifiersState::empty(),
+            scene,
+            renderer,
+            network,
+            servers: Vec::new(),
+            joining: None,
+            gpu,
+        })
     }
 }
 
@@ -131,7 +143,8 @@ impl Running {
             _ => match action.strip_prefix("server:").and_then(|index| index.parse::<usize>().ok()) {
                 Some(index) => {
                     if let Some(server) = self.servers.get(index) {
-                        self.request(Request::Ticket(server.id), "Joining...");
+                        self.joining = Some(server.name.clone());
+                        self.request(Request::Join(server.clone()), "Joining...");
                     }
                 }
                 None => eprintln!("unknown action `{action}`"),
@@ -170,14 +183,15 @@ impl Running {
                 self.screen.show(SERVERS_SCREEN);
                 status.into()
             }
-            Reply::Ticket(id, _ticket) => {
-                let name =
-                    self.servers.iter().find(|server| server.id == id).map_or("?", |server| server.name.as_str());
-                // ponytail: the ticket is not used until the game server accepts players.
-                format!("Ticket received for {name}.")
-            }
+            // ponytail: joining ends at admission until character selection exists.
+            Reply::Admitted => format!("Joined {}.", self.joining.as_deref().unwrap_or("the server")),
+            Reply::GameRefused(Refusal::InvalidTicket) => "The server did not accept the login ticket.".into(),
+            Reply::GameRefused(Refusal::Expired) => "The login ticket expired. Pick the server again.".into(),
+            Reply::GameRefused(Refusal::Reused) => "That login ticket was already used.".into(),
             Reply::TicketRefused(TicketRefusal::Offline) => "That server is offline.".into(),
-            Reply::TicketRefused(TicketRefusal::Full) => "That server is full.".into(),
+            Reply::TicketRefused(TicketRefusal::Full) | Reply::GameRefused(Refusal::Full) => {
+                "That server is full.".into()
+            }
         };
         self.gpu.window.request_redraw();
     }
