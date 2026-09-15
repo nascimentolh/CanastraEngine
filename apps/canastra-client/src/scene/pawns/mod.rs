@@ -36,6 +36,8 @@ pub(crate) struct Figure {
 pub(crate) struct PartSource {
     pub(crate) mesh: String,
     pub(crate) textures: Vec<String>,
+    /// For a part with a skeleton of its own, the body bone its root hangs from, e.g. back hair from the head.
+    pub(crate) follow: Option<&'static str>,
 }
 
 /// How far above the top of the head a label stands, in world units.
@@ -43,6 +45,8 @@ const LABEL_LIFT: f32 = 6.0;
 
 pub(crate) struct Pawn {
     parts: Vec<Part>,
+    /// The part with the whole body's skeleton, whose bones place those the other parts share with it.
+    body: usize,
     held: Vec<Held>,
     label: Option<String>,
     location: [f32; 3],
@@ -58,6 +62,10 @@ struct Part {
     bind_locals: Vec<Transform>,
     animation: Option<Animation>,
     mesh_axes: [[f32; 3]; 3],
+    /// For each bone, the same bone in the body's skeleton; empty for the body itself.
+    in_body: Vec<Option<usize>>,
+    /// The body bone this part's root hangs from, by index in the body's skeleton.
+    follow: Option<usize>,
 }
 
 /// The sequence a part plays and the track of each of its bones.
@@ -75,7 +83,7 @@ impl Pawn {
             .filter_map(|source| {
                 let skinned = catalog.skeletal_mesh(&source.mesh)?;
                 let sections = sections(catalog, &skinned, &source.textures);
-                Some((skinned, sections))
+                Some((skinned, sections, source.follow))
             })
             .collect();
         // Body parts share the body's skeleton, but only some name its `<Body>_anim`, hair among those that do not;
@@ -83,7 +91,7 @@ impl Pawn {
         // Kamael wings, name their own animation, with sequences of the same names.
         let animation_path = loaded
             .iter()
-            .filter_map(|(skinned, _)| skinned.animation.clone())
+            .filter_map(|(skinned, _, _)| skinned.animation.clone())
             .find(|path| path.to_ascii_lowercase().ends_with("_anim"));
         let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
         let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
@@ -93,25 +101,46 @@ impl Pawn {
         }) {
             eprintln!("pawn: no sequence {sequence} in {}", animation_path.as_deref().unwrap_or_default());
         }
-        let parts: Vec<Part> = loaded
+        // The body is the part naming the body's animation, such as the face; every part is drawn with its scale and
+        // rotation, as parts share the body's instance: some armor meshes store neither.
+        let body = loaded
+            .iter()
+            .position(|(skinned, _, _)| skinned.animation.is_some() && skinned.animation == animation_path);
+        let follows: Vec<_> = loaded.iter().map(|(_, _, follow)| *follow).collect();
+        let mut parts: Vec<Part> = loaded
             .into_iter()
-            .map(|(skinned, sections)| {
+            .map(|(skinned, sections, _)| {
                 let own = skinned.animation.as_deref().filter(|path| Some(*path) != animation_path.as_deref());
                 let own = own.and_then(|path| catalog.mesh_animation(path));
                 Part::new(skinned.mesh, sections, own.as_ref().or(animation.as_ref()), &sequence)
             })
             .collect();
+        // Bones a part shares with the body follow the body's, or their local keys would turn about the wrong parents.
+        let body = body.unwrap_or(0);
+        let names: Vec<String> = parts
+            .get(body)
+            .map(|part| part.mesh.bones.iter().map(|bone| bone.name.clone()).collect())
+            .unwrap_or_default();
+        for ((_, part), follow) in parts.iter_mut().enumerate().zip(follows).filter(|((index, _), _)| *index != body) {
+            part.follow = follow.and_then(|name| names.iter().position(|bone| bone.eq_ignore_ascii_case(name)));
+            part.in_body = part
+                .mesh
+                .bones
+                .iter()
+                .map(|bone| names.iter().position(|name| name.eq_ignore_ascii_case(&bone.name)))
+                .collect();
+        }
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();
-        Self { parts, held, label, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
+        Self { parts, body, held, label, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
     }
 
     /// The pawn's label and where it stands at scene time `time`, above the head, relative to `camera`.
     pub(crate) fn label(&self, time: f32, camera: [f32; 3]) -> Option<(&str, [f32; 3])> {
         let label = self.label.as_deref()?;
-        let part = self.parts.first()?;
+        let part = self.parts.get(self.body)?;
         let bone = part.mesh.bones.iter().position(|bone| bone.name.eq_ignore_ascii_case("Bip01_HeadNub"))?;
-        let head = part.pose(time).get(bone)?.translation;
+        let head = part.pose(time, &[], &[]).get(bone)?.translation;
         let turned = camera::place(head, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
         let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
         at[2] += LABEL_LIFT;
@@ -121,16 +150,26 @@ impl Pawn {
     /// Writes the vertices of every part, then of everything held, at scene time `time`, relative to `camera`
     /// and lit by `daylight` if given.
     pub(crate) fn write(&self, time: f32, camera: [f32; 3], daylight: Option<&Daylight>, out: &mut Vec<Vertex>) {
-        let poses: Vec<Vec<Transform>> = self.parts.iter().map(|part| part.pose(time)).collect();
-        // Places a vertex given in the space of `part`'s skeleton.
-        let mut push = |part: &Part, position: [f32; 3], normal: [f32; 3], uv: [f32; 2]| {
-            let turned = camera::place(position, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+        let body_part = self.parts.get(self.body);
+        let body = body_part.map(|part| part.pose(time, &[], &[])).unwrap_or_default();
+        let body_bind = body_part.map_or(&[][..], |part| &part.bind);
+        let poses: Vec<Vec<Transform>> = self
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(index, part)| if index == self.body { body.clone() } else { part.pose(time, &body, body_bind) })
+            .collect();
+        let Some(body_part) = body_part else { return };
+        let (scale, mesh_axes) = (body_part.mesh.scale, body_part.mesh_axes);
+        // Places a vertex given in the space of the skeleton.
+        let mut push = |position: [f32; 3], normal: [f32; 3], uv: [f32; 2]| {
+            let turned = camera::place(position, scale, &mesh_axes, [0.0; 3]);
             let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
             for (at, camera) in at.iter_mut().zip(camera) {
                 *at -= camera;
             }
             let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
-                let turned = camera::place(normal, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+                let turned = camera::place(normal, scale, &mesh_axes, [0.0; 3]);
                 daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), 1.0)
             });
             out.push([at[0], at[1], at[2], uv[0], uv[1], r, g, b, 1.0]);
@@ -140,17 +179,13 @@ impl Pawn {
                 let skinned = skeleton::skin(vertex, &part.bind, pose);
                 // The normal skins as the offset between the vertex and a point one unit along it.
                 let tip = SkinVertex { position: skeleton::add(vertex.position, vertex.normal), ..*vertex };
-                push(part, skinned, sub(skeleton::skin(&tip, &part.bind, pose), skinned), vertex.uv);
+                push(skinned, sub(skeleton::skin(&tip, &part.bind, pose), skinned), vertex.uv);
             }
         }
         for held in &self.held {
-            let (Some(part), Some(&bone)) =
-                (self.parts.get(held.part), poses.get(held.part).and_then(|pose| pose.get(held.bone)))
-            else {
-                continue;
-            };
+            let Some(&bone) = poses.get(held.part).and_then(|pose| pose.get(held.bone)) else { continue };
             for (position, normal, uv) in held.vertices(bone) {
-                push(part, position, normal, uv);
+                push(position, normal, uv);
             }
         }
     }
@@ -207,19 +242,32 @@ impl Part {
         sequence: &str,
     ) -> Self {
         let bind_locals = skeleton::bind_locals(&mesh.bones);
-        let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent));
+        let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent), |_| None);
         let animation = animation.and_then(|animation| Animation::of(&mesh, animation, sequence));
         let mesh_axes = camera::axes(mesh.rotation);
-        Self { mesh, sections, bind, bind_locals, animation, mesh_axes }
+        Self { mesh, sections, bind, bind_locals, animation, mesh_axes, in_body: Vec::new(), follow: None }
     }
 
-    /// Where each bone stands at scene time `time`, looping the sequence.
-    fn pose(&self, time: f32) -> Vec<Transform> {
-        let Some(animation) = &self.animation else { return self.bind.clone() };
-        let frames = animation.sequence.frames.max(1) as f32;
-        let frame = (time * animation.sequence.rate).rem_euclid(frames);
-        let locals = skeleton::sequence_locals(&animation.sequence, &animation.tracks, &self.bind_locals, frame);
-        skeleton::world(&locals, self.mesh.bones.iter().map(|bone| bone.parent))
+    /// Where each bone stands at scene time `time`, looping the sequence; bones shared with the body stand where
+    /// `body`, the body's pose, puts them, and a following part's root moves with its body bone from `body_bind`.
+    fn pose(&self, time: f32, body: &[Transform], body_bind: &[Transform]) -> Vec<Transform> {
+        let locals = match &self.animation {
+            Some(animation) => {
+                let frames = animation.sequence.frames.max(1) as f32;
+                let frame = (time * animation.sequence.rate).rem_euclid(frames);
+                skeleton::sequence_locals(&animation.sequence, &animation.tracks, &self.bind_locals, frame)
+            }
+            None => self.bind_locals.clone(),
+        };
+        let followed = self.follow.and_then(|bone| {
+            let moved = body.get(bone)?.then(body_bind.get(bone)?.inverse());
+            Some(moved.then(*self.bind.first()?))
+        });
+        let known = |index: usize| match (index, followed) {
+            (0, Some(root)) => Some(root),
+            _ => self.in_body.get(index).copied().flatten().and_then(|bone| body.get(bone)).copied(),
+        };
+        skeleton::world(&locals, self.mesh.bones.iter().map(|bone| bone.parent), known)
     }
 }
 

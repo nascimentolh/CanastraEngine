@@ -197,3 +197,12 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - A Kamael armor lists more textures than meshes (`_t84_u`, `_t84_l`, `_t84_ut`); textures past the meshes
      dress the further sections of the mesh whose texture their name extends.
    - `CANASTRA_AUTOLOGIN=account:password` logs in at start, so captures no longer type into the window.
+   *2026-09-16:* the elves' bodies, checked against the H5 screenshot:
+   - Every part is drawn with the scale and rotation of the body, the part naming `<Body>_anim` (the face):
+     parts share one instance, and some armor meshes store no scale or rotation, which tilted mystic robes.
+   - Bones a part shares with the body take the body's pose, and back hair that is a chain of its own
+     (`FElf_m000_m00_bh`, Hair01 to Hair13) hangs from the body's `Bip01_Head`.
+   - The root bone plays its keys. Idle roots differ by up to 100 degrees of yaw (`Wait_Hand_FElf` 57 to 68,
+     `Wait_1HS_MElf` 154), and the pelvis keys make up for it: with the root's keys the head faces the same way
+     in every idle, and with its bind rotation it did not. Stances and weapons now match the screenshot.
+   - Still to do: H5 turns each head toward the camera (`Pawn.bFaceRotation`, `LastNeckRot` in `Engine.u`).

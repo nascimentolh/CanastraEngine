@@ -14,7 +14,7 @@ impl Transform {
     const IDENTITY: Self = Self { rotation: [0.0, 0.0, 0.0, 1.0], translation: [0.0; 3] };
 
     /// `self` applied after `local`: a child's transform placed by its parent's.
-    fn then(self, local: Self) -> Self {
+    pub(super) fn then(self, local: Self) -> Self {
         Self {
             rotation: multiply(self.rotation, local.rotation),
             translation: add(self.translation, rotate(self.rotation, local.translation)),
@@ -29,7 +29,7 @@ impl Transform {
         rotate(self.rotation, direction)
     }
 
-    fn inverse(self) -> Self {
+    pub(super) fn inverse(self) -> Self {
         let [x, y, z, w] = self.rotation;
         let rotation = [-x, -y, -z, w];
         Self { rotation, translation: rotate(rotation, self.translation.map(|axis| -axis)) }
@@ -37,10 +37,18 @@ impl Transform {
 }
 
 /// Where each bone stands in the space of the mesh, from each bone's rotation and translation relative to
-/// its parent. Parents come before their children.
-pub(super) fn world(locals: &[Transform], parents: impl Iterator<Item = usize>) -> Vec<Transform> {
+/// its parent, or as `known` already places it. Parents come before their children.
+pub(super) fn world(
+    locals: &[Transform],
+    parents: impl Iterator<Item = usize>,
+    known: impl Fn(usize) -> Option<Transform>,
+) -> Vec<Transform> {
     let mut world: Vec<Transform> = Vec::with_capacity(locals.len());
     for (index, (local, parent)) in locals.iter().zip(parents).enumerate() {
+        if let Some(placed) = known(index) {
+            world.push(placed);
+            continue;
+        }
         let placed = if parent < index {
             world.get(parent).copied().unwrap_or(Transform::IDENTITY)
         } else {
@@ -76,13 +84,8 @@ pub(super) fn sequence_locals(
         .enumerate()
         .map(|(index, (&bind, track))| {
             let Some(track) = track.and_then(|track| sequence.tracks.get(track)) else { return bind };
-            // The root keeps its bind rotation: its keys turn female idles away from where the pawn faces, and
-            // H5 stands every lobby character facing its yaw.
-            let rotation = match index {
-                0 => bind.rotation,
-                _ => sample(&track.rotations, &track.times, frame, slerp)
-                    .map_or(bind.rotation, |q| stored_rotation(index, q)),
-            };
+            let rotation = sample(&track.rotations, &track.times, frame, slerp)
+                .map_or(bind.rotation, |q| stored_rotation(index, q));
             let translation = sample(&track.positions, &track.times, frame, lerp).unwrap_or(bind.translation);
             Transform { rotation, translation }
         })
@@ -185,7 +188,7 @@ mod tests {
             Bone { name: "arm".into(), parent: 0, rotation: [0.0, 0.0, 0.0, 1.0], position: [10.0, 0.0, 0.0] },
         ];
         let locals = bind_locals(&bones);
-        let bind = world(&locals, bones.iter().map(|bone| bone.parent));
+        let bind = world(&locals, bones.iter().map(|bone| bone.parent), |_| None);
         let vertex = SkinVertex {
             position: [12.0, 0.0, 0.0],
             normal: [0.0; 3],
@@ -198,7 +201,7 @@ mod tests {
         // A quarter turn of the root about Z swings the arm, and the vertex on it, from +X to +Y.
         let half = std::f32::consts::FRAC_1_SQRT_2;
         let turned = [Transform { rotation: [0.0, 0.0, half, half], translation: [0.0; 3] }, locals[1]];
-        let pose = world(&turned, bones.iter().map(|bone| bone.parent));
+        let pose = world(&turned, bones.iter().map(|bone| bone.parent), |_| None);
         assert!(close(skin(&vertex, &bind, &pose), [0.0, 12.0, 0.0]));
     }
 }

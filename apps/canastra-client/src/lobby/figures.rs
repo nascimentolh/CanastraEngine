@@ -90,10 +90,12 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
             .map(|(index, mesh)| PartSource {
                 mesh: mesh.path().to_owned(),
                 textures: section_textures(&model.textures, model.meshes.len(), index),
+                follow: None,
             })
             // Extra meshes worn with the armor, such as Kamael wings, each with the texture at its index.
             .chain(model.attachments.iter().enumerate().map(|(index, attachment)| PartSource {
                 mesh: attachment.mesh.path().to_owned(),
+                follow: None,
                 textures:
                     model.attachment_textures.get(index).map(|texture| texture.path().to_owned()).into_iter().collect(),
             }))
@@ -115,9 +117,17 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
         ItemModel::Held(model) if model.grip != 0 => Some(model.grip),
         _ => None,
     });
-    let head =
-        [look.faces.get(face), hair.and_then(|style| style.front.as_ref()), hair.and_then(|style| style.back.as_ref())];
-    let parts = head.into_iter().flatten().map(part).chain(slots.into_iter().flat_map(|(_, parts)| parts)).collect();
+    let head = [look.faces.get(face), hair.and_then(|style| style.front.as_ref())];
+    // Back hair is a chain of its own the client swings from the head (`Hair.int`); it hangs from the head bone.
+    let back_hair =
+        hair.and_then(|style| style.back.as_ref()).map(|look| PartSource { follow: Some("Bip01_head"), ..part(look) });
+    let parts = head
+        .into_iter()
+        .flatten()
+        .map(part)
+        .chain(back_hair)
+        .chain(slots.into_iter().flat_map(|(_, parts)| parts))
+        .collect();
     Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip), label: None })
 }
 
@@ -180,6 +190,7 @@ fn part(look: &Look) -> PartSource {
     PartSource {
         mesh: look.mesh.path().to_owned(),
         textures: look.textures.iter().map(|texture| texture.path().to_owned()).collect(),
+        follow: None,
     }
 }
 
