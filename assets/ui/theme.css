@@ -1,7 +1,7 @@
 /* Canastra's own look: drawn from shapes, no client textures.
    Control effects stay inside the control; only windows cast shadows. */
 
-ui { font-family: Inter; align-items: center; justify-content: center; background: radial-gradient(#2b2416, #06080c) }
+ui { font-family: Inter; align-items: center; justify-content: center }
 
 #login {
     width: 360px;

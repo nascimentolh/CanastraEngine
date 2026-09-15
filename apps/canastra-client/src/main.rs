@@ -8,6 +8,7 @@
 mod app;
 mod gpu;
 mod renderer;
+mod scene;
 mod screen;
 
 use std::path::PathBuf;

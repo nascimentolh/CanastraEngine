@@ -586,7 +586,11 @@ dependencies = [
  "canastra-ui",
  "glyphon",
  "l2-catalog",
+ "l2-crypto",
  "pollster 0.4.0",
+ "ue2-assets",
+ "ue2-level",
+ "ue2-package",
  "wgpu",
  "winit",
 ]

@@ -39,6 +39,10 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    mesh, location, rotation, scale, groups, skins, scene warps). **Done:** `canastra level` reads 616
    actors and 62 distinct meshes from lobby01 and finds `Logon_Warp` at the camera above.
 2. Static meshes (`.usx`) with their textures, drawn from the fixed camera behind the login UI.
+   **Done:** the client draws lobby01's 62 meshes (138 264 vertices, 99 445 triangles, 132 textures,
+   about 0.4 s to load) with each material's base texture. The H5 screenshot puts the moon and the
+   tree where a 50° horizontal field of view does. Still missing, for step 3: blending, so the
+   opaque star layers of `BloodLobbySky_S` hide its purple sky and the moon shows only its outline.
 3. Materials the scene uses (shaders, panners, blending) so the sky and clouds animate.
 4. Terrain.
 5. Emitters: sprite particles.

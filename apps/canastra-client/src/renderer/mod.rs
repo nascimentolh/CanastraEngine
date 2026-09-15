@@ -5,6 +5,8 @@ mod shapes;
 mod text;
 
 use canastra_ui::{Draw, Frame};
+
+use crate::gpu::Gpu;
 use l2_catalog::Catalog;
 
 pub(crate) use text::Fonts;
@@ -32,16 +34,16 @@ impl Renderer {
         &mut self.text.fonts
     }
 
-    /// Draws `frame` (in logical pixels) over a cleared target of `size` physical pixels.
+    /// Draws `frame` (in logical pixels) onto the window's `target`, over what it already shows or,
+    /// with `clear`, over black.
     pub(crate) fn render(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        gpu: &Gpu,
         target: &wgpu::TextureView,
-        size: [u32; 2],
-        scale: f32,
         frame: &Frame,
+        clear: bool,
     ) -> Result<wgpu::CommandBuffer, String> {
+        let (device, queue, size, scale) = (&gpu.device, &gpu.queue, gpu.size(), gpu.scale());
         // ponytail: text always draws over every shape; interleave passes when windows overlap.
         self.shapes.prepare(device, queue, size, scale, &frame.draws);
         let labels: Vec<text::Label<'_>> = frame
@@ -63,7 +65,10 @@ impl Renderer {
                 view: target,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: if clear { wgpu::LoadOp::Clear(wgpu::Color::BLACK) } else { wgpu::LoadOp::Load },
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,

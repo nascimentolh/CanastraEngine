@@ -12,7 +12,12 @@ use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
 use crate::renderer::Renderer;
+use crate::scene::Scene;
 use crate::screen::Screen;
+
+/// The map behind the login screen and the scene that places its camera.
+const LOGIN_MAP: &str = "lobby01.unr";
+const LOGIN_CAMERA: &str = "Logon_Warp";
 
 pub(crate) struct App {
     client_root: PathBuf,
@@ -25,6 +30,8 @@ pub(crate) struct App {
 struct Running {
     screen: Screen,
     modifiers: ModifiersState,
+    /// `None` when the client's map could not be loaded; the UI then draws over black.
+    scene: Option<Scene>,
     renderer: Renderer,
     gpu: Gpu,
 }
@@ -45,7 +52,12 @@ impl App {
         // ponytail: fonts load once at start; F5 reloads markup and CSS but not new font files.
         let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
-        Ok(Running { screen, modifiers: ModifiersState::empty(), renderer, gpu })
+        let started = std::time::Instant::now();
+        let scene = Scene::load(&gpu, &self.client_root, LOGIN_MAP, LOGIN_CAMERA)
+            .inspect(|_| println!("scene loaded in {:?}", started.elapsed()))
+            .inspect_err(|error| eprintln!("scene: {error}"))
+            .ok();
+        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, renderer, gpu })
     }
 }
 
@@ -56,10 +68,10 @@ impl Running {
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());
         let Some(frame) = self.gpu.frame() else { return };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        match self.renderer.render(&self.gpu.device, &self.gpu.queue, &view, self.gpu.size(), scale, &self.screen.frame)
-        {
-            Ok(commands) => {
-                self.gpu.queue.submit([commands]);
+        let scene = self.scene.as_mut().map(|scene| scene.draw(&self.gpu, &view));
+        match self.renderer.render(&self.gpu, &view, &self.screen.frame, scene.is_none()) {
+            Ok(ui) => {
+                self.gpu.queue.submit(scene.into_iter().chain([ui]));
                 self.gpu.queue.present(frame);
                 if self.screen.frame.animating {
                     self.gpu.window.request_redraw();
