@@ -217,6 +217,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
         Some((stage, Combine::Multiply, factor)) => (stage.matrix(time), 1.0, *factor),
         Some((stage, Combine::Add, factor)) => (stage.matrix(time), 2.0, *factor),
         Some((stage, Combine::Mask, factor)) => (stage.matrix(time), 3.0, *factor),
+        Some((stage, Combine::AddMasked, factor)) => (stage.matrix(time), 4.0, *factor),
         None => (IDENTITY, 0.0, 1.0),
     };
     // How the shader fogs, fades and outputs the batch; see `params` in `scene.wgsl`. Ten more marks a

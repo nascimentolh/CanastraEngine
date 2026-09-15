@@ -27,6 +27,9 @@ pub enum Combine {
     Add,
     /// The second stage's red channel becomes the alpha, as terrain alpha maps weigh their layers.
     Mask,
+    /// The second stage is added where the base is opaque, as a Shader's self-illumination glows through
+    /// its mask.
+    AddMasked,
 }
 
 /// A texture and how its coordinates move, outermost modifier first.
@@ -122,7 +125,16 @@ impl Catalog {
                 alpha_ref: None,
             },
             "shader" => {
-                let mut material = inner(self, &node.diffuse).or_else(|| inner(self, &node.self_illumination))?;
+                let diffuse = inner(self, &node.diffuse);
+                let glow = inner(self, &node.self_illumination);
+                let mut material = match (diffuse, glow) {
+                    // ponytail: the self-illumination mask is taken to be the diffuse texture's alpha, as the lobby moon sets it.
+                    (Some(mut diffuse), Some(glow)) if diffuse.layer.is_none() => {
+                        diffuse.layer = Some((glow.base, Combine::AddMasked, 1.0));
+                        diffuse
+                    }
+                    (diffuse, glow) => diffuse.or(glow)?,
+                };
                 material.blend = match node.output_blending {
                     // ponytail: an Opacity map is taken to be the diffuse texture's own alpha, as foliage shaders set it.
                     0 if node.alpha_test.is_some() => Blend::Masked,

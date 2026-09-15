@@ -80,7 +80,10 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    non-sRGB view of the window, as the original client's framebuffer did; linear blending had crushed
    the dim tails of mist, stars and the moon glow. Translucent is Unreal's screen blend (One,
    OneMinusSrcColor), modulate fades and fogs towards mid gray (white doubled what lies behind), and
-   translucent and brighten surfaces are tinted by fog instead of fading to black.
+   translucent and brighten surfaces are tinted by fog instead of fading to black. A Shader's
+   self-illumination now adds over its diffuse where the diffuse is opaque, so `Lobby_Moon_s` shows
+   its panning `OpenEyeMoon_myst_bitmap2` glow through `Bloodmoon_deco`'s crater mask as in H5. The
+   H5 moon is still pinker than ours, with a dimmer symbol.
 6. Movers, sway and ambient sound as the comparison shows they matter.
 
 ## Lighting

@@ -17,9 +17,9 @@ struct Material {
     layer_u: vec4<f32>,
     layer_v: vec4<f32>,
     color: vec4<f32>,
-    // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, and
-    // how the batch blends for fog and fading (0 alpha or opaque, 1 translucent or brighten, 2 modulate,
-    // 3 darken; ten more when fog is off).
+    // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha, 4 add where the base is opaque),
+    // combine factor, alpha cutoff, and how the batch blends for fog and fading (0 alpha or opaque,
+    // 1 translucent or brighten, 2 modulate, 3 darken; ten more when fog is off).
     params: vec4<f32>,
 }
 
@@ -62,7 +62,9 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     var color = textureSample(base, tiling, base_uv);
     let second = textureSample(layer, tiling, layer_uv);
     let factor = material.params.y;
-    if material.params.x > 2.5 {
+    if material.params.x > 3.5 {
+        color = vec4<f32>(color.rgb + second.rgb * color.a * factor, color.a);
+    } else if material.params.x > 2.5 {
         color = vec4<f32>(color.rgb, color.a * second.r);
     } else if material.params.x > 1.5 {
         color = vec4<f32>((color.rgb + second.rgb) * factor, color.a);
