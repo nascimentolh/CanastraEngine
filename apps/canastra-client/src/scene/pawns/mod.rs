@@ -7,9 +7,10 @@ mod skeleton;
 use std::ops::Range;
 
 use l2_catalog::{Catalog, Material, Skinned};
-use ue2_assets::{MeshAnimation, SkeletalMesh};
+use ue2_assets::{MeshAnimation, SkeletalMesh, SkinVertex};
 
 use super::camera;
+use super::daylight::Daylight;
 use super::load::Vertex;
 use skeleton::Transform;
 
@@ -79,8 +80,9 @@ impl Pawn {
         Self { parts, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
     }
 
-    /// Writes every part's vertices at scene time `time`, relative to `camera`, part after part.
-    pub(crate) fn write(&self, time: f32, camera: [f32; 3], out: &mut Vec<Vertex>) {
+    /// Writes every part's vertices at scene time `time`, relative to `camera` and lit by `daylight` if given,
+    /// part after part.
+    pub(crate) fn write(&self, time: f32, camera: [f32; 3], daylight: Option<&Daylight>, out: &mut Vec<Vertex>) {
         for part in &self.parts {
             let pose = part.pose(time);
             for vertex in &part.mesh.vertices {
@@ -90,7 +92,17 @@ impl Pawn {
                 for (at, camera) in at.iter_mut().zip(camera) {
                     *at -= camera;
                 }
-                out.push([at[0], at[1], at[2], vertex.uv[0], vertex.uv[1], 1.0, 1.0, 1.0, 1.0]);
+                let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
+                    // The normal skins as the offset between the vertex and a point one unit along it.
+                    let tip = skeleton::skin(
+                        &SkinVertex { position: skeleton::add(vertex.position, vertex.normal), ..*vertex },
+                        &part.bind,
+                        &pose,
+                    );
+                    let turned = camera::place(sub(tip, skinned), part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+                    daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), 1.0)
+                });
+                out.push([at[0], at[1], at[2], vertex.uv[0], vertex.uv[1], r, g, b, 1.0]);
             }
         }
     }
@@ -173,4 +185,8 @@ impl Animation {
             .collect();
         Some(Self { sequence, tracks })
     }
+}
+
+fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }

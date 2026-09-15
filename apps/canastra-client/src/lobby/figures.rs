@@ -2,6 +2,9 @@
 
 use canastra_data::GameData;
 use canastra_data::appearance::{Look, Stand, body_of};
+use canastra_data::id::ItemId;
+use canastra_data::item::{Body, EquipSlot, ItemKind, ItemModel};
+use canastra_data::npc::Race;
 use canastra_protocol::game::{CharacterSummary, Sex};
 
 use crate::scene::{Figure, PartSource};
@@ -25,8 +28,22 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
                 stand.location[0] -= yaw.cos() * SELECTED_STEP_BACK;
                 stand.location[1] -= yaw.sin() * SELECTED_STEP_BACK;
             }
-            figure(data, character, stand)
+            let start = data.starting_class(character.class)?;
+            let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
+            let appearance = &character.appearance;
+            figure(data, body, [appearance.face, appearance.hair_style].map(usize::from), &[], stand)
         })
+        .collect()
+}
+
+/// The characters on display for `race` at creation, in their display gear.
+// ponytail: held weapons are left out until parts attach to bones.
+pub(super) fn creation(data: &GameData, race: Race) -> Vec<Figure> {
+    data.lobby
+        .creation
+        .iter()
+        .filter(|shown| [false, true].iter().any(|&female| body_of(race, shown.archetype, female) == Some(shown.body)))
+        .filter_map(|shown| figure(data, shown.body, [0, 0], &shown.gear, shown.stand))
         .collect()
 }
 
@@ -36,20 +53,50 @@ fn slot(slots: &[Stand], index: usize, selected: usize) -> Option<&Stand> {
     if index == selected { Some(center) } else { others.get(if index < selected { index } else { index - 1 }) }
 }
 
-fn figure(data: &GameData, character: &CharacterSummary, stand: Stand) -> Option<Figure> {
-    let start = data.starting_class(character.class)?;
-    let body = data.bodies.get(&body_of(start.race, start.archetype, character.sex == Sex::Female)?)?;
-    let hair = body.hair_styles.get(usize::from(character.appearance.hair_style));
-    let looks = [
-        body.faces.get(usize::from(character.appearance.face)),
-        hair.and_then(|style| style.front.as_ref()),
-        hair.and_then(|style| style.back.as_ref()),
-        body.gloves.as_ref(),
-        body.upper.as_ref(),
-        body.lower.as_ref(),
-        body.boots.as_ref(),
+/// `body` with its face and hair style, wearing `gear` where it has a model for the body and bare parts elsewhere.
+fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId], stand: Stand) -> Option<Figure> {
+    let look = data.bodies.get(&body)?;
+    let hair = look.hair_styles.get(hair);
+    let mut slots = [
+        (EquipSlot::Gloves, look.gloves.as_ref().map(part).into_iter().collect()),
+        (EquipSlot::Chest, look.upper.as_ref().map(part).into_iter().collect()),
+        (EquipSlot::Legs, look.lower.as_ref().map(part).into_iter().collect()),
+        (EquipSlot::Feet, look.boots.as_ref().map(part).into_iter().collect()),
     ];
-    let parts = looks.into_iter().flatten().map(part).collect();
+    for item in gear.iter().filter_map(|id| data.items.get(id)) {
+        let (ItemKind::Armor(armor), ItemModel::Worn(worn)) = (&item.kind, &item.visual.model) else { continue };
+        let Some(model) = worn.bodies.get(&body) else { continue };
+        // A mesh wears the texture at its index; a lone mesh wears them all, one per section.
+        let worn = model
+            .meshes
+            .iter()
+            .enumerate()
+            .map(|(index, mesh)| {
+                let textures = if model.meshes.len() == 1 {
+                    model.textures.as_slice()
+                } else {
+                    model.textures.get(index..=index).unwrap_or_default()
+                };
+                PartSource {
+                    mesh: mesh.path().to_owned(),
+                    textures: textures.iter().map(|texture| texture.path().to_owned()).collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        // Full armor wears its meshes over the chest and bares nothing of the legs.
+        let full = armor.slot == EquipSlot::FullArmor;
+        let mut worn = Some(worn);
+        for (slot, parts) in &mut slots {
+            if *slot == armor.slot || full && *slot == EquipSlot::Chest {
+                *parts = worn.take().unwrap_or_default();
+            } else if full && *slot == EquipSlot::Legs {
+                parts.clear();
+            }
+        }
+    }
+    let head =
+        [look.faces.get(face), hair.and_then(|style| style.front.as_ref()), hair.and_then(|style| style.back.as_ref())];
+    let parts = head.into_iter().flatten().map(part).chain(slots.into_iter().flat_map(|(_, parts)| parts)).collect();
     Some(Figure { parts, location: stand.location, yaw: stand.yaw, sequence: IDLE })
 }
 
@@ -69,5 +116,36 @@ mod tests {
         let slots: Vec<Stand> = (0..4).map(|yaw| Stand { location: [0.0; 3], yaw }).collect();
         let yaws: Vec<Option<i32>> = (0..5).map(|index| slot(&slots, index, 1).map(|stand| stand.yaw)).collect();
         assert_eq!(yaws, [Some(0), Some(3), Some(1), Some(2), None]);
+    }
+
+    #[test]
+    fn full_armor_replaces_the_bare_chest_and_legs_and_keeps_the_rest() {
+        use canastra_data::appearance::BodyLook;
+        use canastra_data::asset::AssetRef;
+        use canastra_data::item::{Armor, BodyModel, Item, WornModel};
+
+        let look = |mesh: &str| Some(Look { mesh: AssetRef::parse(mesh).unwrap(), textures: Vec::new() });
+        let bare = BodyLook { upper: look("M.u"), lower: look("M.l"), boots: look("M.b"), ..BodyLook::default() };
+        let mut robe = Item::new(ItemId(1));
+        robe.kind = ItemKind::Armor(Armor { slot: EquipSlot::FullArmor, ..Armor::default() });
+        let model = BodyModel {
+            meshes: vec![AssetRef::parse("M.robe_u").unwrap(), AssetRef::parse("M.robe_l").unwrap()],
+            textures: vec![AssetRef::parse("T.robe_u").unwrap(), AssetRef::parse("T.robe_l").unwrap()],
+            ..BodyModel::default()
+        };
+        robe.visual.model = ItemModel::Worn(WornModel { bodies: [(Body::ElfMale, model)].into(), hit_effect: None });
+        let mut data = GameData::default();
+        data.bodies.insert(Body::ElfMale, bare);
+        data.items.insert(ItemId(1), robe);
+
+        let stand = Stand { location: [0.0; 3], yaw: 0 };
+        let figure = figure(&data, Body::ElfMale, [0, 0], &[ItemId(1)], stand).unwrap();
+
+        let parts: Vec<(&str, Vec<&str>)> = figure
+            .parts
+            .iter()
+            .map(|part| (part.mesh.as_str(), part.textures.iter().map(String::as_str).collect()))
+            .collect();
+        assert_eq!(parts, [("M.robe_u", vec!["T.robe_u"]), ("M.robe_l", vec!["T.robe_l"]), ("M.b", vec![])]);
     }
 }

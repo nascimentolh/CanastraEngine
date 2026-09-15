@@ -73,6 +73,8 @@ pub(crate) struct Scene {
     camera: [f32; 3],
     rotation: [i32; 3],
     catalog: Catalog,
+    /// The light on pawns in world zones; pawns in zones with states draw at full brightness.
+    actor_daylight: Option<daylight::Daylight>,
     fog: Option<Fog>,
     /// Zero of the clock materials and particles run on.
     started: Instant,
@@ -177,6 +179,7 @@ impl Scene {
             camera: data.camera.location,
             rotation: data.camera.rotation,
             catalog: data.catalog,
+            actor_daylight: data.actor_daylight,
             fog: data.fog,
             started: Instant::now(),
             depth: None,
@@ -214,7 +217,7 @@ impl Scene {
         if !self.pawns.is_empty() {
             let mut skinned = Vec::new();
             for pawn in &self.pawns {
-                pawn.write(time, self.camera, &mut skinned);
+                pawn.write(time, self.camera, self.actor_daylight.as_ref(), &mut skinned);
             }
             gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
         }

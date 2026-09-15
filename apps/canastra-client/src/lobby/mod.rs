@@ -6,6 +6,7 @@ mod figures;
 mod messages;
 
 use canastra_data::GameData;
+use canastra_data::npc::Race;
 use canastra_data::text::Locale;
 use canastra_protocol::game::{CharacterSummary, Sex};
 use canastra_protocol::login::ServerEntry;
@@ -16,22 +17,14 @@ use crate::screen::Screen;
 use creation::{Choice, Draft};
 
 pub(crate) const LOGIN_SCREEN: &str = "login.ui";
-/// The map behind the lobby and the scene that places the camera for each screen.
+/// The maps behind the lobby and the scenes that place the camera for each screen.
 const MAP: &str = "lobby01.unr";
 const LOGIN_CAMERA: &str = "Logon_Warp";
 const SELECT_CAMERA: &str = "Char_Select_Warp";
+const CREATION_MAP: &str = "Lobby02.unr";
 const SERVERS_SCREEN: &str = "servers.ui";
 const CHARACTERS_SCREEN: &str = "characters.ui";
 const CREATE_SCREEN: &str = "create.ui";
-
-/// The map and camera scene shown behind `markup`.
-// ponytail: creation stands in the select hall until its race scenes in Lobby02 are wired.
-pub(crate) fn backdrop(markup: &str) -> (&'static str, &'static str) {
-    match markup {
-        CHARACTERS_SCREEN | CREATE_SCREEN => (MAP, SELECT_CAMERA),
-        _ => (MAP, LOGIN_CAMERA),
-    }
-}
 
 pub(crate) struct Lobby {
     /// The network thread, or why it could not start.
@@ -138,12 +131,38 @@ impl Lobby {
         };
     }
 
+    /// The map and camera scene shown behind `markup`.
+    pub(crate) fn backdrop(&self, markup: &str) -> (&'static str, &'static str) {
+        match markup {
+            CHARACTERS_SCREEN => (MAP, SELECT_CAMERA),
+            // Lobby02 has one scene per race, all but Orc's named after it.
+            CREATE_SCREEN => (
+                CREATION_MAP,
+                match self.race() {
+                    Race::Elf => "Elf",
+                    Race::DarkElf => "DarkElf",
+                    Race::Orc => "orc",
+                    Race::Dwarf => "Dwarf",
+                    Race::Kamael => "Kamael",
+                    _ => "Human",
+                },
+            ),
+            _ => (MAP, LOGIN_CAMERA),
+        }
+    }
+
     /// The characters to stand in the scene behind `markup`.
     pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
         match (&self.data, markup) {
             (Ok(data), CHARACTERS_SCREEN) => figures::select(data, &self.characters, self.selected),
+            (Ok(data), CREATE_SCREEN) => figures::creation(data, self.race()),
             _ => Vec::new(),
         }
+    }
+
+    /// The race of the class being created, Human until one is picked.
+    fn race(&self) -> Race {
+        self.draft.class.and_then(|index| self.choices.get(index)).map_or(Race::Human, |choice| choice.race)
     }
 
     fn request(&self, request: Request, status: &str, screen: &mut Screen) {

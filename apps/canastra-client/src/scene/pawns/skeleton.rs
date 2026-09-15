@@ -72,8 +72,13 @@ pub(super) fn sequence_locals(
         .enumerate()
         .map(|(index, (&bind, track))| {
             let Some(track) = track.and_then(|track| sequence.tracks.get(track)) else { return bind };
-            let rotation = sample(&track.rotations, &track.times, frame, slerp)
-                .map_or(bind.rotation, |q| stored_rotation(index, q));
+            // The root keeps its bind rotation: its keys turn female idles away from where the pawn faces, and
+            // H5 stands every lobby character facing its yaw.
+            let rotation = match index {
+                0 => bind.rotation,
+                _ => sample(&track.rotations, &track.times, frame, slerp)
+                    .map_or(bind.rotation, |q| stored_rotation(index, q)),
+            };
             let translation = sample(&track.positions, &track.times, frame, lerp).unwrap_or(bind.translation);
             Transform { rotation, translation }
         })
@@ -151,7 +156,7 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
-fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+pub(super) fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 

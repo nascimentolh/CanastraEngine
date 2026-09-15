@@ -138,3 +138,12 @@ Each step is checked against the real client: a dump of the files, or a screensh
    clear. Still to do: worn gear, names above heads, and picking by clicking the model.
 6. **Creation scene.** Fly to the race's camera, show the class's model in its display gear, and switch
    the model when the sex, hair style, hair color or face changes, as H5 does.
+   *2026-09-15:* the creation screen flies to Lobby02's scene for the chosen class's race (Human until one is
+   picked) and stands that race's display characters from `Charcreategrp` in their display armor. Findings:
+   - An armor's worn model gives each mesh the texture at its index; full armor brings upper and lower
+     meshes, which replace the bare chest and legs. Held weapons still wait for bone attachments.
+   - Characters in world zones take the `ActorAmbient` and `HSVActorLight` ramps on their skinned normals;
+     unlit, the armor looked silver where H5's is warm gold.
+   - The root bone keeps its bind rotation. Its animation keys turn female idles away: with them, the female
+     elves showed their backs; conjugated, every Human did. Without them all 20 face the camera and the Human
+     poses match the H5 screenshot, three-quarter turns included.

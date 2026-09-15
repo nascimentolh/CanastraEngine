@@ -3,7 +3,7 @@
 use canastra_data::GameData;
 use canastra_data::class::Origin;
 use canastra_data::id::ClassId;
-use canastra_data::npc::Sex as LineSex;
+use canastra_data::npc::{Race, Sex as LineSex};
 use canastra_data::text::Locale;
 use canastra_protocol::game::{Appearance, NewCharacter, Sex};
 
@@ -13,6 +13,7 @@ pub(super) struct Choice {
     pub(super) name: String,
     /// The only sex the class allows, if any.
     pub(super) sex: Option<Sex>,
+    pub(super) race: Race,
 }
 
 /// The starting classes in `data`, by id.
@@ -26,7 +27,12 @@ pub(super) fn choices(data: &GameData) -> Vec<Choice> {
                 Some(LineSex::Female) => Some(Sex::Female),
                 _ => None,
             };
-            Some(Choice { id: class.id, name: class.name.get(Locale::En).unwrap_or("?").to_owned(), sex })
+            Some(Choice {
+                id: class.id,
+                name: class.name.get(Locale::En).unwrap_or("?").to_owned(),
+                sex,
+                race: start.race,
+            })
         })
         .collect()
 }
@@ -84,8 +90,8 @@ mod tests {
     #[test]
     fn a_class_tied_to_one_sex_keeps_it() {
         let choices = [
-            Choice { id: ClassId(0), name: "Human Fighter".into(), sex: None },
-            Choice { id: ClassId(124), name: "Female Soldier".into(), sex: Some(Sex::Female) },
+            Choice { id: ClassId(0), name: "Human Fighter".into(), sex: None, race: Race::Human },
+            Choice { id: ClassId(124), name: "Female Soldier".into(), sex: Some(Sex::Female), race: Race::Kamael },
         ];
         let mut draft = Draft::default();
         assert!(draft.character(&choices, "Ana").is_none());

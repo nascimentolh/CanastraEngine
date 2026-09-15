@@ -11,7 +11,7 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
-use crate::lobby::{self, LOGIN_SCREEN, Lobby};
+use crate::lobby::{LOGIN_SCREEN, Lobby};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
 use crate::scene::{Figure, Scene};
@@ -59,7 +59,7 @@ impl App {
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
         let lobby = Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")));
-        let backdrop = lobby::backdrop(LOGIN_SCREEN);
+        let backdrop = lobby.backdrop(LOGIN_SCREEN);
         let scene = load_scene(&gpu, &self.client_root, backdrop);
         let client_root = self.client_root.clone();
         Ok(Running {
@@ -129,7 +129,7 @@ impl Running {
     /// Loads the scene the shown screen stands in and stands the lobby's characters in it, when they changed.
     // ponytail: loads block the window for a moment; load in the background if it shows.
     fn follow_screen(&mut self) {
-        let backdrop = lobby::backdrop(self.screen.markup());
+        let backdrop = self.lobby.backdrop(self.screen.markup());
         if backdrop != self.backdrop {
             self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
             self.backdrop = backdrop;

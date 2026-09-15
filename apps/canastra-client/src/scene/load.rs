@@ -42,6 +42,8 @@ pub(crate) struct SceneData {
     pub(crate) cloud_tint: [f32; 3],
     /// The client's assets, kept to stand characters in the scene later.
     pub(crate) catalog: Catalog,
+    /// The light on characters, in world zones.
+    pub(crate) actor_daylight: Option<Daylight>,
 }
 
 /// Geometry that draws with one material.
@@ -69,6 +71,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let terrain_daylight = daylight_for(["TerrainAmbient", "HSVTerrainLight"]);
     let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, daylight.as_ref());
     let bsp_daylight = daylight_for(["BSPAmbient", "HSVBSPLight"]);
+    let actor_daylight = daylight_for(["ActorAmbient", "HSVActorLight"]);
     let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, bsp_daylight.as_ref());
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
@@ -109,6 +112,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
             .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
             .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
         catalog: Catalog::default(),
+        actor_daylight,
     };
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())
