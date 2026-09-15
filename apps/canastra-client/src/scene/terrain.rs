@@ -44,7 +44,7 @@ fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3]) -> Group {
             terrain.location[1] + (y - height as f32 / 2.0) * scale_y,
             terrain.location[2] + (f32::from(sample) - ZERO_HEIGHT) / 256.0 * scale_z,
         ];
-        vertices.push([world[0] - camera[0], world[1] - camera[1], world[2] - camera[2], x, y]);
+        vertices.push([world[0] - camera[0], world[1] - camera[1], world[2] - camera[2], x, y, 1.0, 1.0, 1.0, 1.0]);
     }
     // ponytail: every quad splits along the same diagonal; read EdgeTurnBitmap if seams show.
     let mut indices = Vec::new();
@@ -85,8 +85,8 @@ mod tests {
 
         // The heightmap's center (1.5 samples in) sits on the terrain's location; one height step is
         // scale_z / 256.
-        assert_eq!(vertices[4], [-32.0, -32.0, 10.0, 1.0, 1.0]);
-        assert_eq!(vertices[1], [-32.0, -96.0, 11.0, 1.0, 0.0]);
+        assert_eq!(vertices[4], [-32.0, -32.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(vertices[1], [-32.0, -96.0, 11.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
         assert_eq!(indices.len(), 3 * 6);
         assert_eq!(indices[12..18], [3, 6, 4, 4, 6, 7]);
     }

@@ -18,7 +18,8 @@ struct Material {
     layer_v: vec4<f32>,
     color: vec4<f32>,
     // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, and
-    // what fog blends towards (0 its color, 1 black for additive, 2 white for modulate).
+    // how the batch blends for fog and fading (0 alpha or opaque, 1 additive, 2 modulate, 3 darken;
+    // ten more when fog is off).
     params: vec4<f32>,
 }
 
@@ -31,6 +32,7 @@ struct Material {
 struct Vertex {
     @location(0) position: vec3<f32>,
     @location(1) uv: vec2<f32>,
+    @location(2) color: vec4<f32>,
 }
 
 struct Varyings {
@@ -38,6 +40,7 @@ struct Varyings {
     @location(0) uv: vec2<f32>,
     // Distance along the view, for fog.
     @location(1) depth: f32,
+    @location(2) color: vec4<f32>,
 }
 
 @vertex
@@ -46,6 +49,7 @@ fn vs(vertex: Vertex) -> Varyings {
     out.position = globals.view_projection * vec4<f32>(vertex.position, 1.0);
     out.uv = vertex.uv;
     out.depth = out.position.w;
+    out.color = vertex.color;
     return out;
 }
 
@@ -71,14 +75,29 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     } else if material.params.x > 0.5 {
         color = vec4<f32>(color.rgb * second.rgb * factor, color.a * second.a);
     }
-    color = min(color, vec4<f32>(1.0)) * material.color;
+    color = min(color, vec4<f32>(1.0)) * material.color * in.color;
+    let unfogged = material.params.w > 9.5;
+    let neutral_kind = material.params.w - select(0.0, 10.0, unfogged);
+    // Blends that ignore alpha fade through the vertex color instead: additive, brighten and darken
+    // towards black, modulate towards white. Level geometry has opaque vertex colors, so only
+    // particles change.
+    let modulate = neutral_kind > 1.5 && neutral_kind < 2.5;
+    if modulate {
+        color = vec4<f32>(mix(vec3<f32>(1.0), color.rgb, in.color.a), color.a);
+    } else if neutral_kind > 0.5 {
+        color = vec4<f32>(color.rgb * in.color.a, color.a);
+    }
     if color.a < material.params.z {
         discard;
     }
     let range = globals.fog_range;
-    let clear = clamp((range.y - in.depth) / max(range.y - range.x, 1.0), 0.0, 1.0);
-    let neutral = select(vec3<f32>(0.0), vec3<f32>(1.0), material.params.w > 1.5);
-    let target_color = select(globals.fog_color.rgb, neutral, material.params.w > 0.5);
+    let fogged = clamp((range.y - in.depth) / max(range.y - range.x, 1.0), 0.0, 1.0);
+    let clear = select(fogged, 1.0, unfogged);
+    let neutral = select(vec3<f32>(0.0), vec3<f32>(1.0), modulate);
+    let target_color = select(globals.fog_color.rgb, neutral, neutral_kind > 0.5);
     color = vec4<f32>(mix(target_color, color.rgb, clear), color.a);
-    return vec4<f32>(to_linear(color.rgb), color.a);
+    // Modulate and darken use the color as a blend factor on what is already on screen, where Unreal's
+    // gamma-space math makes mid gray neutral; only colors that are added or drawn convert.
+    let factor_blend = neutral_kind > 1.5;
+    return vec4<f32>(select(to_linear(color.rgb), color.rgb, factor_blend), color.a);
 }

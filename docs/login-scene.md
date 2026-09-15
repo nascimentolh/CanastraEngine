@@ -58,5 +58,15 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    units of the ground this computes. Textures now upload with box-filtered mips, which removed the
    ground's shimmer. The hills and the tree on its hill match the H5 screenshot; zone fog is still
    missing, and edge turns and terrain lighting are not modeled.
-5. Emitters: sprite particles.
+5. Emitters: sprite particles. **Done, after zone fog:** the camera's zone fog (#a8afbf from 200 to
+   50000 units) fades surfaces by view distance, towards its color for opaque and alpha surfaces and
+   towards the neutral value for the others. `ue2-level` reads each Emitter's SpriteEmitters (counts,
+   lifetimes, start boxes, velocities, acceleration, size and color curves, fades, spin, texture cells,
+   draw style, depth test, fogging, projection plane) with Unreal's defaults; the client simulates them
+   on the CPU starting warmed up, respawns them as they die, and draws them over the level. Only the
+   camera zone's emitters draw, since other zones are closed off. Styles that ignore alpha fade through
+   the vertex color, and modulate and darken output gamma-space factors so mid gray stays neutral.
+   The purple haze over the hills and around the tree now matches the H5 screenshot. Not modeled:
+   sphere and polar start shapes, revolution, the emitter's DrawScale (scaling sizes by it blew the
+   clouds up to screen size), BSP portal visibility and particle depth sorting.
 6. Movers, sway and ambient sound as the comparison shows they matter.

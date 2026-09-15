@@ -3,6 +3,7 @@
 //! Only what the client draws from is extracted: where each actor sits and what it shows. Property
 //! values stay in the package; nothing is converted.
 
+mod emitters;
 mod terrain;
 
 use std::collections::BTreeMap;
@@ -10,6 +11,7 @@ use std::collections::BTreeMap;
 use ue2_assets::{Error, Property, find, object_properties};
 use ue2_package::{ObjectRef, Package};
 
+pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
 pub use terrain::{Terrain, TerrainLayer};
 
 /// Pitch, yaw and roll in Unreal units, 65536 to a full turn.
@@ -50,10 +52,12 @@ pub struct Fog {
 }
 
 /// Where a scene puts the camera and the fog of the zone it lands in.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Warp {
     pub placement: Placement,
     pub fog: Option<Fog>,
+    /// Name of the zone the camera lands in.
+    pub zone: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -62,6 +66,7 @@ pub struct Level {
     /// Where each scene that starts with a warp puts the camera, by the scene's tag.
     pub warps: BTreeMap<String, Warp>,
     pub terrains: Vec<Terrain>,
+    pub emitters: Vec<Emitter>,
 }
 
 /// Reads every placed actor, recognized by the `Level` reference the editor stores in each of them.
@@ -83,6 +88,9 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
             && let Some(terrain) = terrain::read(package, &properties)
         {
             level.terrains.push(terrain);
+        } else if actor.class.eq_ignore_ascii_case("Emitter") {
+            let zone = zone(package, &properties).map(|zone| package.object_name(ObjectRef::Export(zone)).to_owned());
+            level.emitters.push(emitters::read(package, file, &properties, zone)?);
         }
         level.actors.push(actor);
     }
@@ -142,14 +150,22 @@ fn first_warp(package: &Package, file: &[u8], scene: &[Property<'_>]) -> Result<
     };
     let point = object_properties(package, file, point)?;
     // The zone an actor stands in is the first field of its Region.
-    let zone = find(&point, "Region")
-        .and_then(|region| region.fields(package))
-        .and_then(|region| export(find(&region, "Zone").and_then(|zone| zone.object(package))));
-    let fog = match zone {
+    let zone = zone(package, &point);
+    let fog = match zone.and_then(|zone| package.exports().get(zone)) {
         Some(zone) => fog(&object_properties(package, file, zone)?),
         None => None,
     };
-    Ok(Some(Warp { placement: placement(&point), fog }))
+    let zone = zone.map(|zone| package.object_name(ObjectRef::Export(zone)).to_owned());
+    Ok(Some(Warp { placement: placement(&point), fog, zone }))
+}
+
+/// The export index of the zone an actor stands in: the `Zone` field of its `Region`.
+fn zone(package: &Package, actor: &[Property<'_>]) -> Option<usize> {
+    let region = find(actor, "Region")?.fields(package)?;
+    match find(&region, "Zone")?.object(package)? {
+        ObjectRef::Export(index) => Some(index),
+        _ => None,
+    }
 }
 
 fn fog(zone: &[Property<'_>]) -> Option<Fog> {

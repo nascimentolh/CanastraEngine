@@ -6,13 +6,13 @@ use std::path::Path;
 
 use l2_catalog::{Blend, Catalog, Material, Mesh};
 use ue2_assets::Image;
-use ue2_level::{Fog, Level, Placement};
+use ue2_level::{Emitter, Fog, Level, Placement};
 use ue2_package::Package;
 
 use super::{camera, terrain};
 
-/// Position relative to the camera, then UV.
-pub(crate) type Vertex = [f32; 5];
+/// Position relative to the camera, UV, then an RGBA multiplier (white for level geometry).
+pub(crate) type Vertex = [f32; 9];
 
 pub(crate) struct Batch {
     pub(crate) material: Material,
@@ -27,8 +27,9 @@ pub(crate) struct SceneData {
     pub(crate) indices: Vec<u32>,
     /// Opaque batches first, then blended ones, in drawing order.
     pub(crate) batches: Vec<Batch>,
-    /// Decoded textures by path, for every stage of every batch.
+    /// Decoded textures by path, for every stage of every batch and every emitter sprite.
     pub(crate) textures: HashMap<String, Image>,
+    pub(crate) emitters: Vec<Emitter>,
 }
 
 /// Geometry that draws with one material.
@@ -41,7 +42,7 @@ pub(super) struct Group {
 /// Loads `MAPS/<map>` from the client and frames it from the scene tagged `camera_tag`.
 pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<SceneData, String> {
     let level = read_level(&client_root.join("MAPS").join(map))?;
-    let warp = *level.warps.get(camera_tag).ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
+    let warp = level.warps.get(camera_tag).cloned().ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
     let camera = warp.placement;
     let mut catalog = Catalog::open(client_root);
     let mut meshes: HashMap<String, Option<Mesh>> = HashMap::new();
@@ -76,7 +77,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
                     let position = mesh.positions.get(usize::from(index)).copied().unwrap_or_default();
                     let at = relative(position);
                     let uv = mesh.uvs.get(usize::from(index)).copied().unwrap_or_default();
-                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1]]);
+                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], 1.0, 1.0, 1.0, 1.0]);
                     u32::try_from(group.vertices.len() - 1).unwrap_or(u32::MAX)
                 });
                 group.indices.push(placed);
@@ -93,7 +94,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     groups.sort_by_key(|(material, _)| match material.blend {
         Blend::Opaque | Blend::Masked => 0,
         Blend::Alpha => 1,
-        Blend::Modulate | Blend::Brighten | Blend::Additive => 2,
+        Blend::Modulate | Blend::Brighten | Blend::Additive | Blend::Darken => 2,
     });
     let mut data = SceneData {
         camera,
@@ -102,7 +103,19 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         indices: Vec::new(),
         batches: Vec::new(),
         textures: HashMap::new(),
+        // Other zones are closed off from the camera's; only its own emitters can be seen.
+        // ponytail: zones stand in for BSP portal visibility; add portals when a scene looks into another zone.
+        emitters: level.emitters.into_iter().filter(|emitter| emitter.zone == warp.zone).collect(),
     };
+    for texture in
+        data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())
+    {
+        if !data.textures.contains_key(texture)
+            && let Some(image) = catalog.texture(texture)
+        {
+            data.textures.insert(texture.clone(), image);
+        }
+    }
     for (material, group) in groups {
         let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
         for stage in stages {

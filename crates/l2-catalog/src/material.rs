@@ -5,7 +5,7 @@ use ue2_assets::{Property, find, object_properties};
 
 use crate::{Catalog, MAX_MATERIAL_DEPTH, full_path, package_name};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Blend {
     Opaque,
     /// Cut out where alpha is below half.
@@ -16,6 +16,8 @@ pub enum Blend {
     Modulate,
     /// Adds, scaled down where what is behind is already bright.
     Brighten,
+    /// Darkens what is behind where the source is bright.
+    Darken,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +122,8 @@ impl Catalog {
                 material.blend = match node.output_blending {
                     0 => material.blend,
                     1 => Blend::Masked,
-                    2 | 6 => Blend::Modulate,
+                    2 => Blend::Modulate,
+                    6 => Blend::Darken,
                     3 => Blend::Additive,
                     5 => Blend::Brighten,
                     _ => return None,
@@ -132,7 +135,8 @@ impl Catalog {
                 material.blend = match node.frame_buffer_blending {
                     0 if node.alpha_test => Blend::Masked,
                     0 => Blend::Opaque,
-                    1 | 5 => Blend::Modulate,
+                    1 => Blend::Modulate,
+                    5 => Blend::Darken,
                     2 | 3 => Blend::Alpha,
                     4 | 8 => Blend::Additive,
                     6 => Blend::Brighten,

@@ -1,8 +1,11 @@
-//! The 3D scene behind the UI: static geometry drawn from a fixed camera with animated materials.
+//! The 3D scene behind the UI: level geometry with animated materials and sprite particles, drawn
+//! from a fixed camera.
 
 mod camera;
+mod curves;
 mod load;
 mod mips;
+mod particles;
 mod pipeline;
 mod terrain;
 
@@ -11,12 +14,14 @@ use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
 
-use l2_catalog::{Blend, Combine, IDENTITY, Material, UvMatrix};
+use l2_catalog::{Material, Stage};
 use ue2_level::Fog;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::gpu::Gpu;
-use pipeline::{DEPTH_FORMAT, MATERIAL_BYTES, Pipeline};
+use load::Vertex;
+use particles::System;
+use pipeline::{DEPTH_FORMAT, Draw, Pipeline, material_uniform};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
 /// screenshot at a 1.9 aspect ratio.
@@ -25,8 +30,11 @@ const FOV: f32 = 50.0;
 /// View-projection matrix, fog color and fog start and end; see `Globals` in `scene.wgsl`.
 const GLOBALS_BYTES: u64 = 96;
 
+/// Geometry drawn with one material: a range of level indices or of particle quad indices.
 struct Batch {
     material: Material,
+    draw: Draw,
+    fogged: bool,
     uniform: wgpu::Buffer,
     group: wgpu::BindGroup,
     indices: Range<u32>,
@@ -39,9 +47,14 @@ pub(crate) struct Scene {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
+    systems: Vec<System>,
+    /// One batch per particle system, in the same order.
+    sprite_batches: Vec<Batch>,
+    particle_vertices: wgpu::Buffer,
+    particle_indices: wgpu::Buffer,
     rotation: [i32; 3],
     fog: Option<Fog>,
-    /// Zero of the clock materials animate on.
+    /// Zero of the clock materials and particles run on.
     started: Instant,
     /// Depth target and the size it was made for.
     depth: Option<(wgpu::TextureView, [u32; 2])>,
@@ -52,7 +65,7 @@ impl Scene {
     pub(crate) fn load(gpu: &Gpu, client_root: &Path, map: &str, camera_tag: &str) -> Result<Self, String> {
         let data = load::load(client_root, map, camera_tag)?;
         let (device, queue) = (&gpu.device, &gpu.queue);
-        let pipeline = Pipeline::new(device, gpu.config.format);
+        let mut pipeline = Pipeline::new(device, gpu.config.format);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("scene globals"),
             size: GLOBALS_BYTES,
@@ -64,38 +77,64 @@ impl Scene {
             layout: &pipeline.globals,
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() }],
         });
-        let vertices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("scene vertices"),
-            contents: &data.vertices.iter().flatten().flat_map(|value| value.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let indices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("scene indices"),
-            contents: &data.indices.iter().flat_map(|index| index.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::INDEX,
-        });
         let views: HashMap<&str, wgpu::TextureView> = data
             .textures
             .iter()
             .map(|(path, image)| (path.as_str(), Pipeline::texture(device, queue, image)))
             .collect();
+        let mut batch = |material: Material, draw: Draw, fogged: bool, indices: Range<u32>| {
+            let base = views.get(material.base.texture.as_str())?;
+            // A material without a second stage samples its base twice; the shader ignores it.
+            let layer = material.layer.as_ref().and_then(|(stage, _, _)| views.get(stage.texture.as_str()));
+            let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
+            pipeline.prepare(device, draw);
+            Some(Batch { material, draw, fogged, uniform, group, indices })
+        };
         let batches: Vec<Batch> = data
             .batches
             .into_iter()
-            .filter_map(|batch| {
-                let base = views.get(batch.material.base.texture.as_str())?;
-                // A material without a second stage samples its base twice; the shader ignores it.
-                let layer = batch.material.layer.as_ref().and_then(|(stage, _, _)| views.get(stage.texture.as_str()));
-                let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
-                Some(Batch { material: batch.material, uniform, group, indices: batch.indices })
-            })
+            .filter_map(|level| batch(level.material.clone(), Draw::surface(level.material.blend), true, level.indices))
             .collect();
+
+        let mut systems = particles::start(&data.emitters, data.camera.location);
+        systems.retain(|system| system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path)));
+        let mut quads = 0;
+        let mut sprite_batches = Vec::new();
+        for system in &systems {
+            let sprite = &system.sprite;
+            let material = Material {
+                base: Stage { texture: sprite.texture.clone().unwrap_or_default(), uv: Vec::new() },
+                layer: None,
+                blend: particles::blend(sprite.draw_style),
+                color: [255; 4],
+            };
+            let draw = Draw { blend: material.blend, depth_test: sprite.z_test, depth_write: false };
+            let start = u32::try_from(quads * 6).map_err(|_| "too many particles")?;
+            quads += system.len();
+            let end = u32::try_from(quads * 6).map_err(|_| "too many particles")?;
+            sprite_batches.extend(batch(material, draw, sprite.fogged, start..end));
+        }
+
+        let vertices = buffer(device, "scene vertices", wgpu::BufferUsages::VERTEX, &vertex_bytes(&data.vertices));
+        let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
+        let particle_vertices = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("particle vertices"),
+            size: (quads.max(1) * 4 * size_of::<Vertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let quad_indices: Vec<u32> = (0..u32::try_from(quads.max(1)).map_err(|_| "too many particles")?)
+            .flat_map(|quad| [0, 1, 2, 0, 2, 3].map(|corner| quad * 4 + corner))
+            .collect();
+        let particle_indices =
+            buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(&quad_indices));
         println!(
-            "scene: {map} from {camera_tag}, {} vertices, {} triangles, {} materials, {} textures",
+            "scene: {map} from {camera_tag}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
             data.vertices.len(),
             data.indices.len() / 3,
             batches.len(),
-            views.len()
+            views.len(),
+            systems.len(),
         );
         Ok(Self {
             pipeline,
@@ -104,6 +143,10 @@ impl Scene {
             vertices,
             indices,
             batches,
+            systems,
+            sprite_batches,
+            particle_vertices,
+            particle_indices,
             rotation: data.camera.rotation,
             fog: data.fog,
             started: Instant::now(),
@@ -124,9 +167,17 @@ impl Scene {
             matrix.iter().chain([&fog_color, &fog_range]).flatten().flat_map(|value| value.to_le_bytes()).collect();
         gpu.queue.write_buffer(&self.globals, 0, &bytes);
         let time = self.started.elapsed().as_secs_f32();
-        for batch in &self.batches {
-            gpu.queue.write_buffer(&batch.uniform, 0, &material_bytes(&batch.material, time));
+        for batch in self.batches.iter().chain(&self.sprite_batches) {
+            gpu.queue.write_buffer(&batch.uniform, 0, &material_uniform(&batch.material, time, batch.fogged));
         }
+        for system in &mut self.systems {
+            system.update(time);
+        }
+        let mut sprites = Vec::new();
+        for system in &self.systems {
+            system.quads(time, self.rotation, &mut sprites);
+        }
+        gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
         if self.depth.as_ref().is_none_or(|(_, depth_size)| *depth_size != size) {
             let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("scene depth"),
@@ -159,47 +210,34 @@ impl Scene {
             multiview_mask: None,
         });
         pass.set_bind_group(0, &self.globals_group, &[]);
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        for batch in &self.batches {
-            pass.set_pipeline(self.pipeline.for_blend(batch.material.blend));
-            pass.set_bind_group(1, &batch.group, &[]);
-            pass.draw_indexed(batch.indices.clone(), 0, 0..1);
+        // Level geometry first, then particles over it.
+        // ponytail: particle systems draw in level order, not sorted by distance; sort them if overlaps show.
+        for (batches, vertices, indices) in [
+            (&self.batches, &self.vertices, &self.indices),
+            (&self.sprite_batches, &self.particle_vertices, &self.particle_indices),
+        ] {
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+            for batch in batches {
+                let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(1, &batch.group, &[]);
+                pass.draw_indexed(batch.indices.clone(), 0, 0..1);
+            }
         }
         drop(pass);
         encoder.finish()
     }
 }
 
-/// The shader's `Material` uniform for `material` at `time` seconds.
-fn material_bytes(material: &Material, time: f32) -> Vec<u8> {
-    let rows = |[u, v]: UvMatrix| [[u[0], u[1], u[2], 0.0], [v[0], v[1], v[2], 0.0]];
-    let (layer, combine, factor) = match &material.layer {
-        Some((stage, Combine::Multiply, factor)) => (stage.matrix(time), 1.0, *factor),
-        Some((stage, Combine::Add, factor)) => (stage.matrix(time), 2.0, *factor),
-        Some((stage, Combine::Mask, factor)) => (stage.matrix(time), 3.0, *factor),
-        None => (IDENTITY, 0.0, 1.0),
-    };
-    // What fog blends towards: its color, or the value that leaves the target untouched.
-    let fog = match material.blend {
-        Blend::Opaque | Blend::Masked | Blend::Alpha => 0.0,
-        Blend::Additive | Blend::Brighten => 1.0,
-        Blend::Modulate => 2.0,
-    };
-    let cutoff = match material.blend {
-        Blend::Masked => 0.5,
-        // Fully transparent texels would still write depth over what lies behind them.
-        Blend::Alpha => 0.02,
-        _ => 0.0,
-    };
-    let [base_u, base_v] = rows(material.base.matrix(time));
-    let [layer_u, layer_v] = rows(layer);
-    let color = material.color.map(|channel| f32::from(channel) / 255.0);
-    let bytes: Vec<u8> = [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog]]
-        .iter()
-        .flatten()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    debug_assert_eq!(bytes.len() as u64, MATERIAL_BYTES);
-    bytes
+fn buffer(device: &wgpu::Device, label: &str, usage: wgpu::BufferUsages, contents: &[u8]) -> wgpu::Buffer {
+    device.create_buffer_init(&BufferInitDescriptor { label: Some(label), contents, usage })
+}
+
+fn vertex_bytes(vertices: &[Vertex]) -> Vec<u8> {
+    vertices.iter().flatten().flat_map(|value| value.to_le_bytes()).collect()
+}
+
+fn index_bytes(indices: &[u32]) -> Vec<u8> {
+    indices.iter().flat_map(|index| index.to_le_bytes()).collect()
 }
