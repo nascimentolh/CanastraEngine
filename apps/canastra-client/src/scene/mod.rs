@@ -1,6 +1,7 @@
 //! The 3D scene behind the UI: level geometry with animated materials and sprite particles, drawn
 //! from a fixed camera.
 
+mod bsp;
 mod camera;
 mod curves;
 mod daylight;

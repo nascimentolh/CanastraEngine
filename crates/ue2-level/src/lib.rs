@@ -3,6 +3,7 @@
 //! Only what the client draws from is extracted: where each actor sits and what it shows. Property
 //! values stay in the package; nothing is converted.
 
+mod bsp;
 mod emitters;
 mod lighting;
 mod terrain;
@@ -12,6 +13,7 @@ use std::collections::BTreeMap;
 use ue2_assets::{Error, Property, find, object_properties};
 use ue2_package::{ObjectRef, Package};
 
+pub use bsp::BspPolygon;
 pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
 pub use lighting::TerrainSector;
 pub use terrain::{DecoLayer, Terrain, TerrainLayer};
@@ -75,6 +77,8 @@ pub struct Level {
     pub warps: BTreeMap<String, Warp>,
     pub terrains: Vec<Terrain>,
     pub emitters: Vec<Emitter>,
+    /// The level's BSP polygons that draw.
+    pub bsp: Vec<BspPolygon>,
 }
 
 /// Reads every placed actor, recognized by the `Level` reference the editor stores in each of them.
@@ -82,6 +86,15 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
     let mut level = Level::default();
     let mut scenes = Vec::new();
     for (index, export) in package.exports().iter().enumerate() {
+        // Brushes keep empty models of their own; the level's is the one with polygons.
+        if package.class_name(export).eq_ignore_ascii_case("Model") {
+            if let Some(polygons) = bsp::read(package, file, export)?
+                && polygons.len() > level.bsp.len()
+            {
+                level.bsp = polygons;
+            }
+            continue;
+        }
         if export.serial_size == 0 || matches!(export.class, ObjectRef::Null) {
             continue;
         }

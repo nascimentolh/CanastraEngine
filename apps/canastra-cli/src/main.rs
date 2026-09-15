@@ -108,7 +108,12 @@ fn level(input: &Path) -> Result {
             *meshes.entry(mesh).or_default() += 1;
         }
     }
-    println!("{} actors, {} distinct static meshes", level.actors.len(), meshes.len());
+    println!(
+        "{} actors, {} distinct static meshes, {} BSP polygons",
+        level.actors.len(),
+        meshes.len(),
+        level.bsp.len()
+    );
     for (class, count) in classes {
         println!("{count:>6}  {class}");
     }

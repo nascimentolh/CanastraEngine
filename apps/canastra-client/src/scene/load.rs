@@ -10,7 +10,7 @@ use ue2_level::{Actor, Emitter, Fog, Level, Placement};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
-use super::{camera, deco, sky, terrain};
+use super::{bsp, camera, deco, sky, terrain};
 
 /// The hour world zones are shown at. H5's lobby clock runs from 22:00 at six times real time; this is the hour
 /// whose sky and light match the H5 creation screenshot.
@@ -66,6 +66,8 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let daylight = daylight_for(["StaticMeshAmbient", "HSVStaticMeshLight"]);
     let terrain_daylight = daylight_for(["TerrainAmbient", "HSVTerrainLight"]);
     let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, daylight.as_ref());
+    let bsp_daylight = daylight_for(["BSPAmbient", "HSVBSPLight"]);
+    let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, bsp_daylight.as_ref());
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
     let sky = match &environment {
@@ -79,6 +81,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
             terrain::groups(&level.terrains, &mut catalog, camera.location, warp.zone_state, terrain_daylight.as_ref())
                 .into_iter()
                 .chain(meshes)
+                .chain(brushes)
                 .map(|(material, group)| (material, group, true)),
         )
         .collect();

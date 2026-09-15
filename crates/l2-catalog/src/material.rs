@@ -254,7 +254,8 @@ impl Catalog {
 
     /// A texture's size in texels, from its `USize` and `VSize`.
     #[expect(clippy::cast_precision_loss, reason = "texture sizes are at most a few thousand texels")]
-    fn texture_size(&mut self, path: &str) -> Option<[f32; 2]> {
+    /// The width and height of the texture at `path`, in texels.
+    pub fn texture_size(&mut self, path: &str) -> Option<[f32; 2]> {
         let (loaded, index) = self.object(path, "Texture")?;
         let export = loaded.package.exports().get(index)?;
         let properties = object_properties(&loaded.package, &loaded.file, export).ok()?;

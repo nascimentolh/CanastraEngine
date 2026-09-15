@@ -94,6 +94,13 @@ Each step is checked against the real client: a dump of the files, or a screensh
    The hour: H5's lobby clock starts at 22:00 and runs at six times real time, so a screenshot can show any
    hour. At 22:00 the sky turns pink; at 18:00 to 20:00 the houses lose their warm light. 21:00 gives both
    the blue sky and the warm light of the screenshot, and world zones are now shown at that hour.
+   *2026-09-15:* the hall's BSP. The level's `Model` (lobby01's `Model5`) is read up to its vertex pool,
+   following Lineage2JS's description of the format, and its visible polygons draw textured along their
+   surface's axes. From `Char_Select_Warp` the hall now shows its carpet, the rune circle, the stairs and
+   the throne as in the H5 screenshot. All 208 maps of the client still read; one had nodes pointing
+   nowhere, which are left out. Still to do: BSP light maps (the floor and walls draw at full
+   brightness), the torch flames, and the wider framing of H5's select camera, which the scene may move
+   after its warp.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
