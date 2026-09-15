@@ -457,12 +457,29 @@ pub struct BodyModel {
     pub extra_texture: Option<TextureRef>,
 }
 
-/// Extra mesh worn with an armor piece, e.g. Kamael wings.
+/// Extra mesh worn with an armor piece, e.g. Kamael wings or shoulder guards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attachment {
     pub mesh: MeshRef,
-    /// Two client parameters kept verbatim until their meaning is mapped.
+    /// The client's two letters for the mesh, as in its name's `_Hrs_` suffix, read backwards: where it hangs
+    /// (`r`, `a`, `h`, `s`, `m`; `w` and `l` for Kamael wings and skirts), then whether it is rigid (`r`) or
+    /// simulated cloth (`s`).
     pub params: [i8; 2],
+}
+
+impl Attachment {
+    /// The body bone the mesh hangs from, for a mesh bound to one: its root bone stands on that bone in the bind
+    /// pose. Kamael wings and skirts play animations of their own instead.
+    pub fn bone(&self) -> Option<&'static str> {
+        match u8::try_from(self.params[0]).ok()? {
+            b'r' => Some("Bip01_R_UpperArm"),
+            b'a' => Some("Bip01_L_UpperArm"),
+            b'h' => Some("Shoulder_R_Bone"),
+            b's' => Some("Shoulder_L_Bone"),
+            b'm' => Some("Bip01_Spine2"),
+            _ => None,
+        }
+    }
 }
 
 /// Character body a model is authored for.
@@ -485,4 +502,20 @@ pub enum Body {
     KamaelMale,
     KamaelFemale,
     Npc,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attachment_letters_name_the_bone_they_hang_from() {
+        let attachment = |letter: u8| Attachment {
+            mesh: MeshRef::parse("Elf.MElf_m008_Lrr_ad00").unwrap(),
+            params: [letter.cast_signed(), b'r'.cast_signed()],
+        };
+        assert_eq!(attachment(b'r').bone(), Some("Bip01_R_UpperArm"));
+        assert_eq!(attachment(b's').bone(), Some("Shoulder_L_Bone"));
+        assert_eq!(attachment(b'w').bone(), None, "Kamael wings animate on their own");
+    }
 }

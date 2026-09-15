@@ -240,3 +240,13 @@ Each step is checked against the real client: a dump of the files, or a screensh
    blends with the idle over a quarter second, so quick clicks do not snap the pose. The UI gained `show`, which
    leaves an element out unless its binding holds `true`.
    - Still to measure: H5's turning pace.
+   *2026-09-16:* armor pieces hanging from a bone. Armorgrp's `_add` meshes carry two letters, the ones their
+   name ends in read backwards (`MElf_m008_Lrr_ad00` gives `r`, `r`). Each mesh's root bone (`attach_R`,
+   `attach_L`, `mantle_pin`) stands exactly on one body bone in the bind pose, which names the letters: `r`
+   `Bip01_R_UpperArm`, `a` `Bip01_L_UpperArm`, `h` `Shoulder_R_Bone`, `s` `Shoulder_L_Bone`, `m` `Bip01_Spine2`,
+   matching the Pawn's `RightUpperArmBone`, `LeftUpperArmBone`, `RightShoulderBone`, `LeftShoulderBone` and
+   `CapeBone`. The second letter is `r` for rigid and `s` for cloth, which lives in the `*Simulation` packages
+   (`MeshComponentData.SimulationType` in `Engine.u`). These meshes now hang from their bone the way back hair
+   hangs from the head, and follow it as the character moves.
+   - Weapons, rechecked against every race's screenshot, point as in H5 since the root bone plays its keys.
+   - Not done: simulated cloth (`s`), whose meshes our catalog does not load yet.

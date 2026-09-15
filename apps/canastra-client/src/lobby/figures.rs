@@ -93,10 +93,11 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
                 textures: section_textures(&model.textures, model.meshes.len(), index),
                 follow: None,
             })
-            // Extra meshes worn with the armor, such as Kamael wings, each with the texture at its index.
+            // Extra meshes worn with the armor, such as Kamael wings or shoulder guards hanging from a body bone,
+            // each with the texture at its index.
             .chain(model.attachments.iter().enumerate().map(|(index, attachment)| PartSource {
                 mesh: attachment.mesh.path().to_owned(),
-                follow: None,
+                follow: attachment.bone(),
                 textures:
                     model.attachment_textures.get(index).map(|texture| texture.path().to_owned()).into_iter().collect(),
             }))
