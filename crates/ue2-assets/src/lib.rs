@@ -11,7 +11,7 @@ use std::fmt;
 
 use ue2_core::ReadError;
 
-pub use properties::{Property, find, object_properties};
+pub use properties::{Property, find, object_data, object_properties};
 pub use static_mesh::{Section, StaticMesh, read_static_mesh};
 pub use texture::{Image, Mip, Texture, TextureFormat, decode_rgba, decode_texture, read_palette, read_texture};
 

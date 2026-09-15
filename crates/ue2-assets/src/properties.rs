@@ -131,6 +131,15 @@ pub fn object_properties<'a>(
     object_properties_reader(package, file, export).map(|(properties, _)| properties)
 }
 
+/// Properties of `export` and the bytes of the object after them, for native data that follows.
+pub fn object_data<'a>(
+    package: &'a Package,
+    file: &'a [u8],
+    export: &Export,
+) -> Result<(Vec<Property<'a>>, &'a [u8]), Error> {
+    object_properties_reader(package, file, export).map(|(properties, reader)| (properties, reader.remaining()))
+}
+
 /// Properties of `export` and a reader just past them, bounded by the end of the object.
 pub(crate) fn object_properties_reader<'a>(
     package: &'a Package,

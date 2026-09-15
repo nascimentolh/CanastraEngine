@@ -70,3 +70,17 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    sphere and polar start shapes, revolution, the emitter's DrawScale (scaling sizes by it blew the
    clouds up to screen size), BSP portal visibility and particle depth sorting.
 6. Movers, sway and ambient sound as the comparison shows they matter.
+
+## Lighting
+
+- **Precomputed lighting, drawn now:** each StaticMeshActor's `StaticMeshInstance` holds one RGBA color
+  per mesh vertex (serialized red first) after its empty property list, and each TerrainSector holds
+  its quads, offset and a count of intensity maps, one byte per sector vertex each (8 in lobby01,
+  found by shape after variable L2 data). The login camera's zone is in state `CurZoneState = 2`,
+  whose maps are the darkest, matching the dark hills of the H5 login. `bUnlit` actors (sky, moon)
+  stay at full brightness; movers have no stored lighting and draw unlit for now.
+- **Time of day, next:** `system/Env.int` starts the clock at 22h with 8 terrain shadow maps and 8
+  actor light sets per day, and `TimeEnv0..3.int` give hourly ambient colors and HSV lights for
+  terrain, static meshes, actors and BSP, plus sky, cloud and haze colors. Fermata reads the same
+  palette as an atmospheric light probe and adds hemisphere ambient, a directional sun, rim light,
+  specular and local lights on top; Canastra follows that path after the faithful baseline.

@@ -4,6 +4,7 @@
 //! values stay in the package; nothing is converted.
 
 mod emitters;
+mod lighting;
 mod terrain;
 
 use std::collections::BTreeMap;
@@ -12,6 +13,7 @@ use ue2_assets::{Error, Property, find, object_properties};
 use ue2_package::{ObjectRef, Package};
 
 pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
+pub use lighting::TerrainSector;
 pub use terrain::{Terrain, TerrainLayer};
 
 /// Pitch, yaw and roll in Unreal units, 65536 to a full turn.
@@ -38,6 +40,10 @@ pub struct Actor {
     pub static_mesh: Option<String>,
     /// Material overrides by slot, as object paths.
     pub skins: Vec<String>,
+    /// Drawn at full brightness, ignoring lighting.
+    pub unlit: bool,
+    /// Precomputed RGBA lighting per mesh vertex; empty when the level stores none.
+    pub lighting: Vec<[u8; 4]>,
 }
 
 /// Linear distance fog of a zone.
@@ -58,6 +64,8 @@ pub struct Warp {
     pub fog: Option<Fog>,
     /// Name of the zone the camera lands in.
     pub zone: Option<String>,
+    /// The zone's current time-of-day state, which picks terrain intensity maps.
+    pub zone_state: Option<u8>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -81,11 +89,11 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
         if find(&properties, "Level").is_none() {
             continue;
         }
-        let actor = actor(package, index, &properties);
+        let actor = actor(package, file, index, &properties)?;
         if actor.class.eq_ignore_ascii_case("SceneManager") {
             scenes.push((actor.tag.clone(), properties));
         } else if actor.class.eq_ignore_ascii_case("TerrainInfo")
-            && let Some(terrain) = terrain::read(package, &properties)
+            && let Some(terrain) = terrain::read(package, file, index, &properties)
         {
             level.terrains.push(terrain);
         } else if actor.class.eq_ignore_ascii_case("Emitter") {
@@ -102,13 +110,20 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
     Ok(level)
 }
 
-fn actor(package: &Package, export: usize, properties: &[Property<'_>]) -> Actor {
+fn actor(package: &Package, file: &[u8], export: usize, properties: &[Property<'_>]) -> Result<Actor, Error> {
     let get = |name: &str| find(properties, name);
     let path = |object: ObjectRef| (!matches!(object, ObjectRef::Null)).then(|| package.object_path(object));
     let draw_scale = get("DrawScale").and_then(Property::float).unwrap_or(1.0);
     let scale3d = get("DrawScale3D").and_then(Property::vector).unwrap_or([1.0; 3]);
     let exports = package.exports();
-    Actor {
+    let lighting = match get("StaticMeshInstance").and_then(|instance| instance.object(package)) {
+        Some(ObjectRef::Export(instance)) => match exports.get(instance) {
+            Some(instance) => lighting::vertex_colors(package, file, instance)?,
+            None => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    Ok(Actor {
         class: exports.get(export).map(|export| package.class_name(export).to_owned()).unwrap_or_default(),
         name: package.object_name(ObjectRef::Export(export)).to_owned(),
         tag: get("Tag").and_then(|tag| tag.name_value(package)).map(str::to_owned),
@@ -123,7 +138,9 @@ fn actor(package: &Package, export: usize, properties: &[Property<'_>]) -> Actor
             .and_then(|skins| skins.objects(package))
             .map(|skins| skins.into_iter().filter_map(path).collect())
             .unwrap_or_default(),
-    }
+        unlit: get("bUnlit").and_then(Property::bool).unwrap_or(false),
+        lighting,
+    })
 }
 
 fn placement(properties: &[Property<'_>]) -> Placement {
@@ -151,12 +168,19 @@ fn first_warp(package: &Package, file: &[u8], scene: &[Property<'_>]) -> Result<
     let point = object_properties(package, file, point)?;
     // The zone an actor stands in is the first field of its Region.
     let zone = zone(package, &point);
-    let fog = match zone.and_then(|zone| package.exports().get(zone)) {
-        Some(zone) => fog(&object_properties(package, file, zone)?),
-        None => None,
+    let (fog, zone_state) = match zone.and_then(|zone| package.exports().get(zone)) {
+        Some(zone) => {
+            let zone = object_properties(package, file, zone)?;
+            let state = find(&zone, "CurZoneState");
+            let state = state
+                .and_then(Property::byte)
+                .or_else(|| state.and_then(Property::int).and_then(|state| u8::try_from(state).ok()));
+            (fog(&zone), state)
+        }
+        None => (None, None),
     };
     let zone = zone.map(|zone| package.object_name(ObjectRef::Export(zone)).to_owned());
-    Ok(Some(Warp { placement: placement(&point), fog, zone }))
+    Ok(Some(Warp { placement: placement(&point), fog, zone, zone_state }))
 }
 
 /// The export index of the zone an actor stands in: the `Zone` field of its `Region`.

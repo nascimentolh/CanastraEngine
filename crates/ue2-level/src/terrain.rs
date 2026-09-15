@@ -3,6 +3,8 @@
 use ue2_assets::{Property, find};
 use ue2_package::{ObjectRef, Package};
 
+use crate::lighting::{self, TerrainSector};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Terrain {
     /// World position of the heightmap's center.
@@ -15,6 +17,8 @@ pub struct Terrain {
     pub layers: Vec<TerrainLayer>,
     /// One bit per quad, row by row from the lowest bit of the first word; a clear bit is a hole.
     pub visible_quads: Vec<u32>,
+    /// Precomputed lighting, patch by patch.
+    pub sectors: Vec<TerrainSector>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,7 +31,7 @@ pub struct TerrainLayer {
     pub scale: [f32; 2],
 }
 
-pub(crate) fn read(package: &Package, properties: &[Property<'_>]) -> Option<Terrain> {
+pub(crate) fn read(package: &Package, file: &[u8], export: usize, properties: &[Property<'_>]) -> Option<Terrain> {
     let path = |property: &Property<'_>| match property.object(package)? {
         ObjectRef::Null => None,
         object => Some(package.object_path(object)),
@@ -54,5 +58,15 @@ pub(crate) fn read(package: &Package, properties: &[Property<'_>]) -> Option<Ter
             .and_then(Property::ints)
             .map(|words| words.into_iter().map(i32::cast_unsigned).collect())
             .unwrap_or_default(),
+        // Sectors are objects inside the terrain actor.
+        sectors: package
+            .exports()
+            .iter()
+            .filter(|sector| {
+                sector.outer == ObjectRef::Export(export)
+                    && package.class_name(sector).eq_ignore_ascii_case("TerrainSector")
+            })
+            .filter_map(|sector| lighting::sector(package, file, sector))
+            .collect(),
     })
 }

@@ -77,7 +77,14 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
                     let position = mesh.positions.get(usize::from(index)).copied().unwrap_or_default();
                     let at = relative(position);
                     let uv = mesh.uvs.get(usize::from(index)).copied().unwrap_or_default();
-                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], 1.0, 1.0, 1.0, 1.0]);
+                    // ponytail: actors without stored lighting (movers) draw unlit until dynamic lighting exists.
+                    let light = match actor.lighting.get(usize::from(index)) {
+                        Some(&[red, green, blue, _]) if !actor.unlit => {
+                            [red, green, blue].map(|channel| f32::from(channel) / 255.0)
+                        }
+                        _ => [1.0; 3],
+                    };
+                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], 1.0]);
                     u32::try_from(group.vertices.len() - 1).unwrap_or(u32::MAX)
                 });
                 group.indices.push(placed);
@@ -86,10 +93,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     }
 
     // Terrain layers come first and in order: the stable sort below keeps their blending order.
-    let mut groups: Vec<(Material, Group)> = terrain::groups(&level.terrains, &mut catalog, camera.location)
-        .into_iter()
-        .chain(groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))))
-        .collect();
+    let mut groups: Vec<(Material, Group)> =
+        terrain::groups(&level.terrains, &mut catalog, camera.location, warp.zone_state)
+            .into_iter()
+            .chain(groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))))
+            .collect();
     // ponytail: blended batches draw by kind, not sorted by distance; sort them when overlaps show.
     groups.sort_by_key(|(material, _)| match material.blend {
         Blend::Opaque | Blend::Masked => 0,

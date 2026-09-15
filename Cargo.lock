@@ -3468,6 +3468,7 @@ name = "ue2-level"
 version = "0.1.0"
 dependencies = [
  "ue2-assets",
+ "ue2-core",
  "ue2-package",
 ]
 
