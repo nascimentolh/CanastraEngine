@@ -3,8 +3,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use canastra_protocol::game::Refusal;
-use canastra_protocol::login::{AuthFailure, ServerEntry, TicketRefusal};
 use l2_catalog::Catalog;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent};
@@ -13,7 +11,8 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
-use crate::network::{LoginAddress, Network, Reply, Request};
+use crate::lobby::{LOGIN_SCREEN, Lobby};
+use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use crate::screen::Screen;
@@ -21,9 +20,6 @@ use crate::screen::Screen;
 /// The map behind the login screen and the scene that places its camera.
 const LOGIN_MAP: &str = "lobby01.unr";
 const LOGIN_CAMERA: &str = "Logon_Warp";
-
-const LOGIN_SCREEN: &str = "login.ui";
-const SERVERS_SCREEN: &str = "servers.ui";
 
 pub(crate) struct App {
     client_root: PathBuf,
@@ -40,12 +36,7 @@ struct Running {
     /// `None` when the client's map could not be loaded; the UI then draws over black.
     scene: Option<Scene>,
     renderer: Renderer,
-    /// The login server connection, or why it could not start.
-    network: Result<Network, String>,
-    /// The game servers the login server listed.
-    servers: Vec<ServerEntry>,
-    /// The name of the server being joined.
-    joining: Option<String>,
+    lobby: Lobby,
     gpu: Gpu,
 }
 
@@ -71,16 +62,8 @@ impl App {
             .inspect_err(|error| eprintln!("scene: {error}"))
             .ok();
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
-        Ok(Running {
-            screen,
-            modifiers: ModifiersState::empty(),
-            scene,
-            renderer,
-            network,
-            servers: Vec::new(),
-            joining: None,
-            gpu,
-        })
+        let lobby = Lobby::new(network, game_data());
+        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, renderer, lobby, gpu })
     }
 }
 
@@ -125,74 +108,11 @@ impl Running {
     }
 
     fn run(&mut self, event_loop: &ActiveEventLoop, action: &str) {
-        match action {
-            "exit" => event_loop.exit(),
-            "login" => {
-                let (account, password) = (self.screen.value("login.account"), self.screen.value("login.password"));
-                if account.is_empty() || password.is_empty() {
-                    self.screen.status = "Enter your account and password.".into();
-                } else {
-                    let request = Request::Login { account: account.to_owned(), password: password.to_owned() };
-                    self.request(request, "Connecting...");
-                }
-            }
-            "back" => {
-                self.screen.status.clear();
-                self.screen.show(LOGIN_SCREEN);
-            }
-            _ => match action.strip_prefix("server:").and_then(|index| index.parse::<usize>().ok()) {
-                Some(index) => {
-                    if let Some(server) = self.servers.get(index) {
-                        self.joining = Some(server.name.clone());
-                        self.request(Request::Join(server.clone()), "Joining...");
-                    }
-                }
-                None => eprintln!("unknown action `{action}`"),
-            },
+        if action == "exit" {
+            event_loop.exit();
+        } else if !self.lobby.act(action, &mut self.screen) {
+            eprintln!("unknown action `{action}`");
         }
-        self.gpu.window.request_redraw();
-    }
-
-    /// Sends `request` to the login server, showing `status` while it runs.
-    fn request(&mut self, request: Request, status: &str) {
-        match &self.network {
-            Ok(network) => {
-                network.send(request);
-                self.screen.status = status.into();
-            }
-            Err(error) => self.screen.status = error.clone(),
-        }
-    }
-
-    fn reply(&mut self, reply: Reply) {
-        self.screen.status = match reply {
-            Reply::Failed(error) => format!("Cannot reach the login server: {error}"),
-            Reply::UpdateRequired => "This client is out of date. Please update.".into(),
-            Reply::AuthFailed(AuthFailure::WrongCredentials) => "Wrong account or password.".into(),
-            Reply::AuthFailed(AuthFailure::Banned) => "This account is banned.".into(),
-            Reply::AuthFailed(AuthFailure::TooManyAttempts) => "Too many attempts. Try again later.".into(),
-            Reply::Servers(servers) => {
-                self.screen.set("servers.len".into(), servers.len().to_string());
-                for (index, server) in servers.iter().enumerate() {
-                    self.screen.set(format!("servers.{index}.name"), server.name.clone());
-                    self.screen
-                        .set(format!("servers.{index}.load"), format!("{} / {}", server.population, server.capacity));
-                }
-                let status = if servers.is_empty() { "No servers are online." } else { "" };
-                self.servers = servers;
-                self.screen.show(SERVERS_SCREEN);
-                status.into()
-            }
-            // ponytail: joining ends at admission until character selection exists.
-            Reply::Admitted => format!("Joined {}.", self.joining.as_deref().unwrap_or("the server")),
-            Reply::GameRefused(Refusal::InvalidTicket) => "The server did not accept the login ticket.".into(),
-            Reply::GameRefused(Refusal::Expired) => "The login ticket expired. Pick the server again.".into(),
-            Reply::GameRefused(Refusal::Reused) => "That login ticket was already used.".into(),
-            Reply::TicketRefused(TicketRefusal::Offline) => "That server is offline.".into(),
-            Reply::TicketRefused(TicketRefusal::Full) | Reply::GameRefused(Refusal::Full) => {
-                "That server is full.".into()
-            }
-        };
         self.gpu.window.request_redraw();
     }
 }
@@ -239,7 +159,8 @@ impl ApplicationHandler<Reply> for App {
 
     fn user_event(&mut self, _: &ActiveEventLoop, reply: Reply) {
         if let Some(running) = &mut self.running {
-            running.reply(reply);
+            running.lobby.reply(reply, &mut running.screen);
+            running.gpu.window.request_redraw();
         }
     }
 
@@ -254,4 +175,12 @@ impl ApplicationHandler<Reply> for App {
         let blink = self.running.as_ref().and_then(|running| running.screen.next_blink());
         event_loop.set_control_flow(blink.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
+}
+
+/// The game data at `CANASTRA_GAME_DATA`, by default `gamedata.cana` in the working folder.
+// ponytail: read from a path until content packs deliver the data each server plays by.
+fn game_data() -> Result<canastra_data::GameData, String> {
+    let path = std::env::var("CANASTRA_GAME_DATA").unwrap_or_else(|_| "gamedata.cana".into());
+    let bytes = std::fs::read(&path).map_err(|error| format!("{path}: {error}"))?;
+    canastra_data::format::decode(&bytes).map_err(|error| format!("{path}: {error}"))
 }

@@ -705,6 +705,7 @@ dependencies = [
 name = "canastra-client"
 version = "0.1.0"
 dependencies = [
+ "canastra-data",
  "canastra-net",
  "canastra-protocol",
  "canastra-ui",

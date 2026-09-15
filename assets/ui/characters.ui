@@ -1,0 +1,20 @@
+<ui>
+    <window id="characters">
+        <label class="heading" text="Select Character"/>
+        <column class="server-list" repeat="characters">
+            <row class="server">
+                <column class="character-text">
+                    <label class="server-name" bind="item.name" text=""/>
+                    <label class="server-load" bind="item.detail" text=""/>
+                </column>
+                <button class="small" text="Delete" action="delete:{index}"/>
+            </row>
+        </column>
+        <label class="status" bind="app.status" text=""/>
+        <row class="actions centered">
+            <button class="primary" text="Create" action="create"/>
+            <button text="Back" action="back"/>
+        </row>
+    </window>
+    <label id="version" bind="app.version" text="?"/>
+</ui>

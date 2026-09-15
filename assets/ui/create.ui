@@ -1,0 +1,23 @@
+<ui>
+    <window id="create">
+        <label class="heading" text="Create Character"/>
+        <row class="field">
+            <label class="caption" text="Name"/>
+            <input bind="create.name" placeholder="Character name" action="confirm"/>
+        </row>
+        <column class="class-grid" repeat="classes">
+            <button class="choice" bind="item.name" action="class:{index}"/>
+        </column>
+        <row class="actions centered">
+            <button class="choice" text="Male" action="male"/>
+            <button class="choice" text="Female" action="female"/>
+        </row>
+        <label class="status" bind="create.choice" text=""/>
+        <label class="status" bind="app.status" text=""/>
+        <row class="actions centered">
+            <button class="primary" text="Create" action="confirm"/>
+            <button text="Cancel" action="cancel"/>
+        </row>
+    </window>
+    <label id="version" bind="app.version" text="?"/>
+</ui>

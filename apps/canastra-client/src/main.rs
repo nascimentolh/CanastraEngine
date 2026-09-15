@@ -7,6 +7,7 @@
 
 mod app;
 mod gpu;
+mod lobby;
 mod network;
 mod renderer;
 mod scene;
@@ -22,7 +23,7 @@ const USAGE: &str = "usage: canastra-client <client-root> [<ui-folder>]
 Shows login.ui styled by theme.css from <ui-folder> (default assets/ui). F5 reloads both.
 CANASTRA_BACKEND=dx12|vulkan|metal forces a graphics backend.
 CANASTRA_LOGIN=host:port (default 127.0.0.1:2106) and CANASTRA_LOGIN_KEY=<the login server's noise_public>
-point the client at a login server.";
+point the client at a login server. CANASTRA_GAME_DATA names the game data file (default gamedata.cana).";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

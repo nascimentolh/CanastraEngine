@@ -46,6 +46,10 @@ input:focus { border: 1px solid #c9a45c; box-shadow: inset 0 1px 3px #000000c0, 
 .server:hover { border: 1px solid #c9a45c; background: linear-gradient(#2d2517e8, #17130de8) }
 .server-name { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #efdcae }
 .server-load { font-size: 12px; color: #a9987a }
+.character-text { gap: 2px }
+.small { flex-grow: 0; padding: 4px 10px; font-size: 11px }
+.class-grid { gap: 3px }
+.choice { padding: 5px 0; font-size: 12px; font-weight: 400 }
 
 .actions { gap: 10px; margin: 4px 0 0 92px }
 .actions.centered { margin: 4px 0 0 0 }
