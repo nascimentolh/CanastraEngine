@@ -58,6 +58,21 @@ Each step is checked against the real client: a dump of the files, or a screensh
    capture shows what it still lacks. The hall shows its walls, stairs and torches almost black, with no
    floor: its floor and walls are BSP, which is not drawn yet, and it needs the level's lighting. In the
    village, trees, grass, paths and the windmill draw, but the houses are black and there is no sky.
+   *2026-09-15:* why the village differs from the login. lobby01's zones set `bUseZoneState`, and their
+   meshes carry precomputed colors for the zone's state. Lobby02's zones are ordinary world zones: the
+   houses' stored colors are black, and H5 lights them by the hour instead.
+   - **Lighting:** `system/TimeEnv0.int` has hourly ramps for ambient light (`StaticMeshAmbient`,
+     `BSPAmbient`, `TerrainAmbient`, `ActorAmbient`) and the sun's light in HSV (`HSVStaticMeshLight` and
+     the rest). Adding the static mesh ambient alone brings the houses back with their textures.
+   - **Sun:** after its colors, each `StaticMeshInstance` stores a revision and eight entries of one
+     visibility bit per vertex. These are likely the sun's shadowing, which is not decoded yet.
+     `NMovableSunLight0` gives the sun's rotation.
+   - **Sky:** Lobby02's `SkyZoneInfo` holds only the sun and moon sprites and moon planes; no sky mesh
+     exists. The sky is drawn from the `TimeEnv` sky, haze and cloud color ramps.
+   - **Hour:** `system/Env.int` starts the clock at 22, but the H5 creation screenshot shows late
+     daylight, so the lobby's hour is still to be found.
+   - **Fermata:** it lights these zones with its own improved model, driven by the same time of day:
+     hemisphere ambient, sun with sky exposure, and local lights. Try it against the screenshot too.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
