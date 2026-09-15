@@ -11,8 +11,8 @@ use wgpu::util::{DeviceExt, TextureDataOrder};
 pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Position (3 floats), UV (2 floats) and RGBA color (4 floats).
 const VERTEX_BYTES: u64 = 36;
-/// Six `vec4<f32>`, see `Material` in `scene.wgsl`.
-pub(super) const MATERIAL_BYTES: u64 = 96;
+/// Seven `vec4<f32>`, see `Material` in `scene.wgsl`.
+pub(super) const MATERIAL_BYTES: u64 = 112;
 
 /// How a batch meets the depth buffer and the target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,7 +36,7 @@ pub(super) struct Pipeline {
     layout: wgpu::PipelineLayout,
     format: wgpu::TextureFormat,
     pipelines: HashMap<Draw, wgpu::RenderPipeline>,
-    pub(super) globals: wgpu::BindGroupLayout,
+    globals: wgpu::BindGroupLayout,
     materials: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
@@ -56,7 +56,18 @@ impl Pipeline {
         };
         let globals = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("scene globals"),
-            entries: &[entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, uniform)],
+            entries: &[
+                entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, uniform),
+                entry(
+                    1,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+            ],
         });
         let fragment = wgpu::ShaderStages::FRAGMENT;
         let materials = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -209,8 +220,9 @@ impl Pipeline {
     }
 }
 
-/// The shader's `Material` uniform for `material` at `time` seconds; `fogged` false keeps fog off it.
-pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogged: bool) -> Vec<u8> {
+/// The shader's `Material` uniform for `material` at `time` seconds; `fogged` false keeps fog off it, and
+/// a positive `soft` fades it out over that many units in front of the geometry behind it.
+pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogged: bool, soft: f32) -> Vec<u8> {
     use l2_catalog::{Combine, IDENTITY, UvMatrix};
     let rows = |[u, v]: UvMatrix| [[u[0], u[1], u[2], 0.0], [v[0], v[1], v[2], 0.0]];
     let (layer, combine, factor) = match &material.layer {
@@ -237,11 +249,48 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     let [base_u, base_v] = rows(material.base.matrix(time));
     let [layer_u, layer_v] = rows(layer);
     let color = material.color.map(|channel| f32::from(channel) / 255.0);
-    let bytes: Vec<u8> = [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog]]
-        .iter()
-        .flatten()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
+    let bytes: Vec<u8> =
+        [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog], [soft, 0.0, 0.0, 0.0]]
+            .iter()
+            .flatten()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
     debug_assert_eq!(bytes.len() as u64, MATERIAL_BYTES);
     bytes
+}
+
+impl Pipeline {
+    /// The globals group: the `globals` uniform and the depth the scene has drawn so far, which only
+    /// soft sprites read.
+    pub(super) fn globals_group(
+        &self,
+        device: &wgpu::Device,
+        globals: &wgpu::Buffer,
+        depth: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("scene globals"),
+            layout: &self.globals,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth) },
+            ],
+        })
+    }
+}
+
+/// A depth target of `size` that the scene can also read.
+pub(super) fn depth_texture(device: &wgpu::Device, size: [u32; 2]) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("scene depth"),
+            size: wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
 }

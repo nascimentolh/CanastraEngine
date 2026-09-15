@@ -22,6 +22,7 @@ pub enum DrawStyle {
 pub type Range = [f32; 2];
 
 #[derive(Debug, Clone, PartialEq)]
+#[expect(clippy::struct_excessive_bools, reason = "mirrors the emitter's independent Unreal flags")]
 pub struct SpriteEmitter {
     pub max_particles: u32,
     pub lifetime: Range,
@@ -55,6 +56,8 @@ pub struct SpriteEmitter {
     pub fogged: bool,
     /// Tinted by the time of day's sky color.
     pub cloud_color: bool,
+    /// Fades out where it nears the geometry behind it instead of cutting into it.
+    pub soft: bool,
     /// The plane sprites lie in instead of facing the camera.
     pub projection_normal: Option<[f32; 3]>,
 }
@@ -153,6 +156,7 @@ fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
         z_test: flag("ZTest", true),
         fogged: !flag("DisableFogging", false),
         cloud_color: flag("UseCloudColor", false),
+        soft: flag("UseSoftParticle", false),
         // PTDU_Normal and the modes built on it lay sprites in ProjectionNormal's plane.
         projection_normal: matches!(get("UseDirectionAs").and_then(Property::byte), Some(4..=6))
             .then(|| get("ProjectionNormal").and_then(Property::vector).unwrap_or([0.0, 0.0, 1.0])),

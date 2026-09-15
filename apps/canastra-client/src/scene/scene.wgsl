@@ -6,7 +6,7 @@ struct Globals {
     view_projection: mat4x4<f32>,
     // Gamma-space RGB.
     fog_color: vec4<f32>,
-    // Start and end distance; fog is linear in between.
+    // Start and end distance, fog linear in between, then the near plane's distance.
     fog_range: vec4<f32>,
 }
 
@@ -21,9 +21,13 @@ struct Material {
     // combine factor, alpha cutoff, and how the batch blends for fog and fading (0 alpha or opaque,
     // 1 translucent or brighten, 2 modulate, 3 darken; ten more when fog is off).
     params: vec4<f32>,
+    // Distance over which a soft sprite fades out in front of the geometry behind it; zero when hard.
+    soft: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
+// The depth level geometry wrote; a placeholder while level geometry itself draws.
+@group(0) @binding(1) var scene_depth: texture_depth_2d;
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var base: texture_2d<f32>;
 @group(1) @binding(2) var layer: texture_2d<f32>;
@@ -77,11 +81,20 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     // Blends that ignore alpha fade through the vertex color instead: translucent, brighten and darken
     // towards black, modulate towards mid gray, which its doubling leaves unchanged. Level geometry has
     // opaque vertex colors, so only particles change.
+    var fade = in.color.a;
+    if material.soft.x > 0.0 {
+        // Reverse Z with no far plane stores near / distance, zero where nothing was drawn.
+        let stored = textureLoad(scene_depth, vec2<i32>(in.position.xy), 0);
+        let behind = select(1.0e30, globals.fog_range.z / stored, stored > 0.0) - in.depth;
+        let soft = clamp(behind / material.soft.x, 0.0, 1.0);
+        fade *= soft;
+        color = vec4<f32>(color.rgb, color.a * soft);
+    }
     let modulate = neutral_kind > 1.5 && neutral_kind < 2.5;
     if modulate {
-        color = vec4<f32>(mix(vec3<f32>(0.5), color.rgb, in.color.a), color.a);
+        color = vec4<f32>(mix(vec3<f32>(0.5), color.rgb, fade), color.a);
     } else if neutral_kind > 0.5 {
-        color = vec4<f32>(color.rgb * in.color.a, color.a);
+        color = vec4<f32>(color.rgb * fade, color.a);
     }
     if color.a < material.params.z {
         discard;

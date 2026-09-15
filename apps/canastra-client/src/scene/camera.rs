@@ -5,7 +5,7 @@
 pub(crate) type Matrix = [[f32; 4]; 4];
 
 /// Closest distance drawn, in world units.
-const NEAR: f32 = 10.0;
+pub(crate) const NEAR: f32 = 10.0;
 
 /// Forward, right and up axes of a rotator (pitch, yaw, roll in 65536ths of a turn), as Unreal's
 /// `FRotationMatrix` builds them.

@@ -84,6 +84,11 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    self-illumination now adds over its diffuse where the diffuse is opaque, so `Lobby_Moon_s` shows
    its panning `OpenEyeMoon_myst_bitmap2` glow through `Bloodmoon_deco`'s crater mask as in H5. The
    H5 moon is still pinker than ours, with a dimmer symbol.
+   **Soft particles:** H5 sprites with `UseSoftParticle` (the large lobby clouds, 450–1500 units) fade
+   out over half their mean size in front of the geometry behind them. Level geometry draws first and
+   stores its depth; particles then draw in a pass that only reads it. This removed the hard straight
+   edges those clouds cut into the hills. Fermata ignores this flag. The flat ground mist
+   (`ZTest=false`, not soft) still leaves a faint band along the ground.
 6. Movers, sway and ambient sound as the comparison shows they matter.
 
 ## Lighting
