@@ -39,6 +39,9 @@ snow = "0.10"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros"] }
 taffy = "0.14"
 tokio = "1"
+toml = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 wgpu = "30"
 winit = "0.30"
 

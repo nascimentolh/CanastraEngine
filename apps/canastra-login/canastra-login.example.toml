@@ -1,0 +1,25 @@
+# Copy to canastra-login.toml. Fill [keys] from `canastra-login keygen`; in containers, pass them as
+# CANASTRA_NOISE_PRIVATE, CANASTRA_NOISE_PUBLIC and CANASTRA_TICKET_SECRET instead.
+
+database_url = "postgres://canastra:canastra@localhost:5433/canastra"
+# Where players connect.
+players = "0.0.0.0:2106"
+# Where game servers register. Keep it off the public network.
+game_servers = "127.0.0.1:2107"
+# How long a ticket admits its player, in seconds.
+ticket_seconds = 30
+
+[keys]
+noise_private = ""
+noise_public = ""
+ticket_secret = ""
+
+# One entry per game server allowed to register, with the public key from its own keygen.
+# [[authorized]]
+# id = 1
+# public_key = ""
+
+[limits]
+# Login attempts per address and per account within the window.
+attempts = 5
+window_seconds = 60
