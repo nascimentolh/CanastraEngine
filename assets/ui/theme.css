@@ -76,4 +76,59 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 
-input, button, .server { transition: 160ms }
+/* Selects: a field-like row that opens its options over whatever follows. */
+.select-box { flex-grow: 1 }
+.select {
+    padding: 6px 9px;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(#070605e6, #120f0be6);
+    border: 1px solid #5b4a2f;
+    border-radius: 2px;
+    box-shadow: inset 0 1px 3px #000000c0;
+}
+.select:hover { border: 1px solid #c9a45c }
+.select-value { font-size: 13px; color: #efe6d2 }
+.select-arrow { font-size: 8px; color: #c9a45c }
+.select-options {
+    position: absolute;
+    top: 30px;
+    left: 0px;
+    right: 0px;
+    padding: 3px;
+    gap: 1px;
+    background: #15120ef5;
+    border: 1px solid #8c7443;
+    border-radius: 2px;
+    box-shadow: 0 10px 24px #000000b0;
+}
+.option {
+    padding: 5px 8px;
+    font-family: Inter;
+    font-size: 12px;
+    font-weight: 400;
+    text-align: left;
+    color: #d9ccb0;
+    background: #00000000;
+    border: none;
+    box-shadow: none;
+}
+.option:hover { color: #fff3d0; background: #5a483080 }
+
+/* Steppers: previous and next around the current choice. */
+.stepper { flex-grow: 1; gap: 4px; align-items: center }
+.step { flex-grow: 0; width: 26px; padding: 3px 0; font-family: Inter; font-size: 15px }
+.step-value { flex-grow: 1; font-size: 13px; color: #efe6d2; text-align: center }
+
+.info {
+    gap: 3px;
+    margin: 6px 0 0 0;
+    padding: 9px 11px;
+    background: #0b0907c0;
+    border: 1px solid #4f412a;
+    border-radius: 2px;
+}
+.info-title { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #e6cf98 }
+.info-line { font-size: 12px; color: #a9987a }
+
+input, button, .server, .select { transition: 160ms }

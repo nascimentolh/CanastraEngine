@@ -2,10 +2,11 @@
 
 use canastra_data::GameData;
 use canastra_data::appearance::{Look, Stand, body_of};
+use canastra_data::class::Archetype;
 use canastra_data::id::ItemId;
 use canastra_data::item::{Body, EquipSlot, ItemKind, ItemModel};
 use canastra_data::npc::Race;
-use canastra_protocol::game::{CharacterSummary, Sex};
+use canastra_protocol::game::{Appearance, CharacterSummary, Sex};
 
 use crate::scene::{Figure, PartSource};
 
@@ -36,14 +37,21 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
         .collect()
 }
 
-/// The characters on display for `race` at creation, in their display gear.
-// ponytail: held weapons are left out until parts attach to bones.
-pub(super) fn creation(data: &GameData, race: Race) -> Vec<Figure> {
+/// The characters on display for `race` at creation, in their display gear; the one of the `chosen` archetype and
+/// sex wears `look`.
+// ponytail: held weapons are left out until parts attach to bones; hair color waits for how H5 tints hair.
+pub(super) fn creation(data: &GameData, race: Race, chosen: Option<(Archetype, Sex)>, look: Appearance) -> Vec<Figure> {
     data.lobby
         .creation
         .iter()
-        .filter(|shown| [false, true].iter().any(|&female| body_of(race, shown.archetype, female) == Some(shown.body)))
-        .filter_map(|shown| figure(data, shown.body, [0, 0], &shown.gear, shown.stand))
+        .filter_map(|shown| {
+            let sex = [Sex::Male, Sex::Female]
+                .into_iter()
+                .find(|&sex| body_of(race, shown.archetype, sex == Sex::Female) == Some(shown.body))?;
+            let picked = chosen == Some((shown.archetype, sex));
+            let [face, hair] = if picked { [look.face, look.hair_style].map(usize::from) } else { [0, 0] };
+            figure(data, shown.body, [face, hair], &shown.gear, shown.stand)
+        })
         .collect()
 }
 

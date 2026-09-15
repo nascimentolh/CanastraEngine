@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use canastra_ui::{Element, Frame, Hit, StyleSheet, TextMeasure, Transitions, UiState};
+use canastra_ui::{Element, Frame, Hit, OPEN_ACTION, OPEN_KEY, StyleSheet, TextMeasure, Transitions, UiState};
 
 const STYLESHEET: &str = "theme.css";
 /// How long the caret stays on, then off.
@@ -24,6 +24,8 @@ pub(crate) struct Screen {
     pub(crate) status: String,
     /// What was typed into each input and what the app set, by data key.
     values: HashMap<String, String>,
+    /// The bind key of the select whose options are open.
+    open: Option<String>,
     /// When the caret last turned on; typing restarts the blink so the caret stays visible.
     caret_since: Instant,
     transitions: Transitions,
@@ -45,6 +47,7 @@ impl Screen {
             pointer: (0.0, 0.0),
             status: String::new(),
             values: HashMap::new(),
+            open: None,
             caret_since: Instant::now(),
             transitions: Transitions::default(),
             opened: Instant::now(),
@@ -70,6 +73,7 @@ impl Screen {
                 markup.clone_into(&mut self.markup);
                 self.state.focused = None;
                 self.state.hovered = None;
+                self.open = None;
             }
             Err(error) => self.status = error,
         }
@@ -94,10 +98,11 @@ impl Screen {
     pub(crate) fn layout(&mut self, viewport: [f32; 2], text: &mut dyn TextMeasure) {
         self.state.caret = self.blinks().is_multiple_of(2);
         self.state.time = self.opened.elapsed().as_secs_f32();
-        let (status, values) = (&self.status, &self.values);
+        let (status, values, open) = (&self.status, &self.values, &self.open);
         let bindings = |key: &str| match key {
             "app.version" => Some(concat!("v", env!("CARGO_PKG_VERSION")).to_owned()),
             "app.status" => Some(status.clone()),
+            OPEN_KEY => open.clone(),
             _ => values.get(key).cloned(),
         };
         match canastra_ui::build(&self.ui, &self.sheet, viewport, self.state, &mut self.transitions, text, &bindings) {
@@ -113,12 +118,21 @@ impl Screen {
         std::mem::replace(&mut self.state.hovered, hovered) != hovered
     }
 
-    /// Focuses the input under the pointer, or returns the action of the element there.
+    /// Focuses the input under the pointer, or returns the action of the element there. A click opens or closes a
+    /// select there and closes any other.
     pub(crate) fn click(&mut self) -> Option<String> {
         let hit = self.frame.hit(self.pointer.0, self.pointer.1).cloned();
         let field = hit.as_ref().filter(|hit| hit.field.is_some());
         self.focus(field.map(|hit| hit.element));
-        hit.filter(|hit| hit.field.is_none())?.action
+        let action = hit.filter(|hit| hit.field.is_none()).and_then(|hit| hit.action);
+        let was_open = self.open.take();
+        match action.as_deref().and_then(|action| action.strip_prefix(OPEN_ACTION)) {
+            Some(key) => {
+                self.open = (was_open.as_deref() != Some(key)).then(|| key.to_owned());
+                None
+            }
+            None => action,
+        }
     }
 
     /// Moves focus to the next input, or the previous one, wrapping around.

@@ -44,7 +44,8 @@ impl Renderer {
         clear: bool,
     ) -> Result<wgpu::CommandBuffer, String> {
         let (device, queue, size, scale) = (&gpu.device, &gpu.queue, gpu.size(), gpu.scale());
-        // ponytail: text always draws over every shape; interleave passes when windows overlap.
+        // ponytail: text always draws over every shape, and the layout hides text under overlays; interleave passes
+        // when windows overlap.
         self.shapes.prepare(device, queue, size, scale, &frame.draws);
         let labels: Vec<text::Label<'_>> = frame
             .draws

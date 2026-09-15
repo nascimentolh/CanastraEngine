@@ -6,6 +6,7 @@
 mod css;
 mod layout;
 mod markup;
+mod select;
 mod transition;
 
 use std::fmt;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 pub use css::{StyleSheet, parse_stylesheet};
 pub use layout::build;
 pub use markup::{Element, Tag, parse_markup};
+pub use select::{OPEN_ACTION, OPEN_KEY};
 pub use transition::Transitions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -74,6 +76,13 @@ impl Rect {
     pub fn contains(&self, x: f32, y: f32) -> bool {
         x >= self.x && y >= self.y && x < self.x + self.width && y < self.y + self.height
     }
+
+    pub(crate) fn intersects(&self, other: &Self) -> bool {
+        self.x < other.x + other.width
+            && other.x < self.x + self.width
+            && self.y < other.y + other.height
+            && other.y < self.y + self.height
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +111,17 @@ pub enum Draw {
         color: Rgba,
         style: TextStyle,
     },
+}
+
+impl Draw {
+    pub(crate) fn rect(&self) -> &Rect {
+        match self {
+            Self::Shadow { rect, .. }
+            | Self::Rect { rect, .. }
+            | Self::Image { rect, .. }
+            | Self::Text { rect, .. } => rect,
+        }
+    }
 }
 
 /// An interactive element on screen, in pre-order element index.

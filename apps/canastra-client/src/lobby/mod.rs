@@ -2,13 +2,14 @@
 //! turns screen actions into network requests and network replies into screens and bound data.
 
 mod creation;
+mod creation_screen;
 mod figures;
 mod messages;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
 use canastra_data::text::Locale;
-use canastra_protocol::game::{CharacterSummary, Sex};
+use canastra_protocol::game::CharacterSummary;
 use canastra_protocol::login::ServerEntry;
 
 use crate::network::{Network, Reply, Request};
@@ -82,24 +83,7 @@ impl Lobby {
                     self.request(Request::Delete(character.id), "Deleting...", screen);
                 }
             }
-            ("create", _) => self.open_creation(screen),
-            ("class", Some(index)) => {
-                self.draft.pick_class(&self.choices, index);
-                screen.set("create.choice".into(), self.draft.summary(&self.choices));
-            }
-            ("male" | "female", _) => {
-                self.draft.pick_sex(&self.choices, if verb == "male" { Sex::Male } else { Sex::Female });
-                screen.set("create.choice".into(), self.draft.summary(&self.choices));
-            }
-            ("confirm", _) => match self.draft.character(&self.choices, screen.value("create.name")) {
-                Some(new) if !new.name.is_empty() => self.request(Request::Create(new), "Creating...", screen),
-                _ => screen.status = "Enter a name and pick a class and a sex.".into(),
-            },
-            ("cancel", _) => {
-                screen.status.clear();
-                screen.show(CHARACTERS_SCREEN);
-            }
-            _ => return false,
+            _ => return self.act_creation(verb, index, screen),
         }
         true
     }
@@ -138,7 +122,7 @@ impl Lobby {
             // Lobby02 has one scene per race, all but Orc's named after it.
             CREATE_SCREEN => (
                 CREATION_MAP,
-                match self.race() {
+                match self.draft.race {
                     Race::Elf => "Elf",
                     Race::DarkElf => "DarkElf",
                     Race::Orc => "orc",
@@ -155,14 +139,12 @@ impl Lobby {
     pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
         match (&self.data, markup) {
             (Ok(data), CHARACTERS_SCREEN) => figures::select(data, &self.characters, self.selected),
-            (Ok(data), CREATE_SCREEN) => figures::creation(data, self.race()),
+            (Ok(data), CREATE_SCREEN) => {
+                let chosen = self.draft.choice(&self.choices).map(|choice| (choice.archetype, self.draft.sex));
+                figures::creation(data, self.draft.race, chosen, self.draft.appearance)
+            }
             _ => Vec::new(),
         }
-    }
-
-    /// The race of the class being created, Human until one is picked.
-    fn race(&self) -> Race {
-        self.draft.class.and_then(|index| self.choices.get(index)).map_or(Race::Human, |choice| choice.race)
     }
 
     fn request(&self, request: Request, status: &str, screen: &mut Screen) {
@@ -173,22 +155,6 @@ impl Lobby {
             }
             Err(error) => screen.status.clone_from(error),
         }
-    }
-
-    fn open_creation(&mut self, screen: &mut Screen) {
-        if let Err(error) = &self.data {
-            screen.status = format!("Cannot create characters: {error}");
-            return;
-        }
-        self.draft = Draft::default();
-        screen.set("classes.len".into(), self.choices.len().to_string());
-        for (index, choice) in self.choices.iter().enumerate() {
-            screen.set(format!("classes.{index}.name"), choice.name.clone());
-        }
-        screen.set("create.name".into(), String::new());
-        screen.set("create.choice".into(), self.draft.summary(&self.choices));
-        screen.status.clear();
-        screen.show(CREATE_SCREEN);
     }
 
     fn bind_characters(&self, list: &[CharacterSummary], screen: &mut Screen) {

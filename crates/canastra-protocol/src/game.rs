@@ -59,6 +59,20 @@ pub struct Appearance {
     pub face: u8,
 }
 
+impl Appearance {
+    /// How many of each choice the H5 creation screen offers a character of `sex`: five male and seven female
+    /// hair styles, four hair colors and three faces.
+    pub fn choices(sex: Sex) -> Self {
+        Self { hair_style: if sex == Sex::Female { 7 } else { 5 }, hair_color: 4, face: 3 }
+    }
+
+    /// Whether every choice is one `choices` offers.
+    pub fn offered(self, sex: Sex) -> bool {
+        let offered = Self::choices(sex);
+        self.hair_style < offered.hair_style && self.hair_color < offered.hair_color && self.face < offered.face
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewCharacter {
     pub name: String,

@@ -5,14 +5,47 @@
             <label class="caption" text="Name"/>
             <input bind="create.name" placeholder="Character name" action="confirm"/>
         </row>
-        <column class="class-grid" repeat="classes">
-            <button class="choice" bind="item.name" action="class:{index}"/>
-        </column>
-        <row class="actions centered">
-            <button class="choice" text="Male" action="male"/>
-            <button class="choice" text="Female" action="female"/>
+        <row class="field">
+            <label class="caption" text="Race"/>
+            <select bind="create.race" options="races" action="race:{index}"/>
         </row>
-        <label class="status" bind="create.choice" text=""/>
+        <row class="field">
+            <label class="caption" text="Class"/>
+            <select bind="create.class" options="classes" action="class:{index}"/>
+        </row>
+        <row class="field">
+            <label class="caption" text="Gender"/>
+            <select bind="create.gender" options="genders" action="gender:{index}"/>
+        </row>
+        <row class="field">
+            <label class="caption" text="Hairstyle"/>
+            <row class="stepper">
+                <button class="step" text="&#8249;" action="hair.prev"/>
+                <label class="step-value" bind="create.hair"/>
+                <button class="step" text="&#8250;" action="hair.next"/>
+            </row>
+        </row>
+        <row class="field">
+            <label class="caption" text="Hair Color"/>
+            <row class="stepper">
+                <button class="step" text="&#8249;" action="color.prev"/>
+                <label class="step-value" bind="create.color"/>
+                <button class="step" text="&#8250;" action="color.next"/>
+            </row>
+        </row>
+        <row class="field">
+            <label class="caption" text="Face"/>
+            <row class="stepper">
+                <button class="step" text="&#8249;" action="face.prev"/>
+                <label class="step-value" bind="create.face"/>
+                <button class="step" text="&#8250;" action="face.next"/>
+            </row>
+        </row>
+        <column class="info">
+            <label class="info-title" bind="create.class"/>
+            <label class="info-line" bind="create.body"/>
+            <label class="info-line" bind="create.mind"/>
+        </column>
         <label class="status" bind="app.status" text=""/>
         <row class="actions centered">
             <button class="primary" text="Create" action="confirm"/>

@@ -14,10 +14,12 @@ pub enum Tag {
     Button,
     Image,
     Input,
+    /// A value picked from a list, opened below it; see `crate::select`.
+    Select,
 }
 
 impl Tag {
-    const ALL: [(&'static str, Self); 8] = [
+    const ALL: [(&'static str, Self); 9] = [
         ("ui", Self::Ui),
         ("window", Self::Window),
         ("row", Self::Row),
@@ -26,6 +28,7 @@ impl Tag {
         ("button", Self::Button),
         ("image", Self::Image),
         ("input", Self::Input),
+        ("select", Self::Select),
     ];
 
     pub(crate) fn from_name(name: &str) -> Option<Self> {
@@ -33,7 +36,7 @@ impl Tag {
     }
 
     fn is_leaf(self) -> bool {
-        matches!(self, Self::Label | Self::Button | Self::Image | Self::Input)
+        matches!(self, Self::Label | Self::Button | Self::Image | Self::Input | Self::Select)
     }
 }
 
@@ -57,7 +60,31 @@ pub struct Element {
     /// On a container, the data list its children repeat for: once per item, with `item.` keys bound to
     /// that item and `{index}` in actions replaced by its position. The count comes from `<list>.len`.
     pub repeat: Option<String>,
+    /// On a select, the data list it picks from, bound like `repeat`: `<list>.len` and `<list>.<index>.name`.
+    pub options: Option<String>,
+    /// Drawn after everything else and hit first, like an open select's options; set by expansion only.
+    pub overlay: bool,
     pub children: Vec<Element>,
+}
+
+impl Element {
+    pub(crate) fn new(tag: Tag) -> Self {
+        Self {
+            tag,
+            id: None,
+            classes: Vec::new(),
+            text: None,
+            bind: None,
+            action: None,
+            placeholder: None,
+            password: false,
+            src: None,
+            repeat: None,
+            options: None,
+            overlay: false,
+            children: Vec::new(),
+        }
+    }
 }
 
 pub fn parse_markup(source: &str) -> Result<Element, UiError> {
@@ -72,19 +99,7 @@ pub fn parse_markup(source: &str) -> Result<Element, UiError> {
 fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
     let name = node.tag_name().name();
     let tag = Tag::from_name(name).ok_or_else(|| UiError::UnknownTag(name.to_owned()))?;
-    let mut element = Element {
-        tag,
-        id: None,
-        classes: Vec::new(),
-        text: None,
-        bind: None,
-        action: None,
-        placeholder: None,
-        password: false,
-        src: None,
-        repeat: None,
-        children: Vec::new(),
-    };
+    let mut element = Element::new(tag);
     for attribute in node.attributes() {
         let value = attribute.value().to_owned();
         match attribute.name() {
@@ -96,6 +111,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "src" => element.src = Some(value),
             "placeholder" => element.placeholder = Some(value),
             "repeat" if !tag.is_leaf() => element.repeat = Some(value),
+            "options" if tag == Tag::Select => element.options = Some(value),
             "type" => {
                 element.password = match value.as_str() {
                     "text" => false,

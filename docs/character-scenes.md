@@ -162,3 +162,10 @@ Each step is checked against the real client: a dump of the files, or a screensh
    only keeps clear texels out of the depth buffer: read that way, a capture at the screenshot's resolution
    shows the Talking Island trees with H5's shapes, and the login keeps its bushes. What still differs is the
    whole scene's warmer grade in H5, not the trees.
+   *2026-09-15:* the creation panel, redesigned: Race, Class and Gender are combos, and Hairstyle, Hair Color
+   and Face are steppers, over a box with the class's attributes. The race moves the camera, the class lists
+   only that race's, and the display character of the chosen archetype and sex wears the face and hair
+   picked. `canastra-ui` gained `<select bind options action>`: a row with the value that opens its options
+   as an overlay, drawn after everything and hit first. The limits of five male and seven female hair styles,
+   four colors and three faces now live in the protocol, shared by client and server. Still to do: hair color
+   on the model, held weapons, and the camera closing in on the chosen model as H5 does.

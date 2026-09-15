@@ -102,7 +102,16 @@ pub fn build(
     .map_err(layout_error)?;
 
     let mut frame = Frame { animating: pass.animating, ..Frame::default() };
-    emit(&tree, &root, [0.0, 0.0], state, text, &mut frame).map_err(layout_error)?;
+    let mut overlays = Vec::new();
+    emit(&tree, &root, [0.0, 0.0], state, text, &mut frame, &mut overlays).map_err(layout_error)?;
+    for overlay in overlays {
+        // The renderer draws all text over all shapes, so text an overlay covers would show through it.
+        // ponytail: covered text is dropped whole; draw layers apart if a label half under an overlay matters.
+        let covered = |rect: &Rect| overlay.draws.iter().any(|draw| draw.rect().intersects(rect));
+        frame.draws.retain(|draw| !matches!(draw, Draw::Text { rect, .. } if covered(rect)));
+        frame.draws.extend(overlay.draws);
+        frame.hits.extend(overlay.hits);
+    }
     Ok(frame)
 }
 
@@ -162,6 +171,10 @@ impl Pass<'_> {
 
 /// `element` with each `repeat` container's children copied once per item of its list.
 fn expand(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> Element {
+    if element.tag == Tag::Select {
+        let open = bindings(crate::OPEN_KEY).is_some_and(|key| element.bind.as_ref() == Some(&key));
+        return expand(&crate::select::expand(element, open), bindings);
+    }
     let children = match &element.repeat {
         Some(list) => {
             let count = bindings(&format!("{list}.len")).and_then(|len| len.parse::<usize>().ok()).unwrap_or(0);
@@ -192,7 +205,7 @@ fn default_style(tag: Tag) -> Style {
         Tag::Ui => style.size = Size { width: Dimension::percent(1.0), height: Dimension::percent(1.0) },
         Tag::Row => style.flex_direction = FlexDirection::Row,
         Tag::Window | Tag::Column => style.flex_direction = FlexDirection::Column,
-        Tag::Label | Tag::Button | Tag::Image | Tag::Input => {}
+        Tag::Label | Tag::Button | Tag::Image | Tag::Input | Tag::Select => {}
     }
     style
 }
@@ -272,6 +285,7 @@ fn emit(
     state: UiState,
     text: &mut dyn TextMeasure,
     frame: &mut Frame,
+    overlays: &mut Vec<Frame>,
 ) -> taffy::TaffyResult<()> {
     let layout = tree.layout(node.id)?;
     let rect = Rect {
@@ -332,7 +346,13 @@ fn emit(
         frame.hits.push(Hit { rect, element: node.index, action: element.action.clone(), field });
     }
     for child in &node.children {
-        emit(tree, child, [rect.x, rect.y], state, text, frame)?;
+        if child.element.overlay {
+            let mut overlay = Frame::default();
+            emit(tree, child, [rect.x, rect.y], state, text, &mut overlay, overlays)?;
+            overlays.push(overlay);
+        } else {
+            emit(tree, child, [rect.x, rect.y], state, text, frame, overlays)?;
+        }
     }
     Ok(())
 }
@@ -454,6 +474,45 @@ mod tests {
         let fields: Vec<_> =
             frame.fields().map(|hit| (hit.element, hit.field.as_deref(), hit.action.as_deref())).collect();
         assert_eq!(fields, [(1, Some("account"), None), (2, Some("password"), Some("login"))]);
+    }
+
+    #[test]
+    fn an_open_select_lists_its_options_over_what_follows() {
+        let ui = parse_markup(
+            r#"<ui><select bind="race" options="races" action="race:{index}"/><button text="Next" action="next"/></ui>"#,
+        )
+        .unwrap();
+        let sheet = parse_stylesheet(
+            "ui { flex-direction: column; align-items: start } .select-options { position: absolute; top: 16px }",
+        )
+        .unwrap();
+        let frame = |open: bool| {
+            let bindings = move |key: &str| match key {
+                "race" => Some("Dwarf".to_owned()),
+                "races.len" => Some("2".to_owned()),
+                "races.0.name" => Some("Human".to_owned()),
+                "races.1.name" => Some("Elf".to_owned()),
+                crate::OPEN_KEY if open => Some("race".to_owned()),
+                _ => None,
+            };
+            let state = UiState::default();
+            build(&ui, &sheet, [800.0, 600.0], state, &mut Transitions::default(), &mut Monospace, &bindings).unwrap()
+        };
+        let actions = |frame: &Frame| frame.hits.iter().filter_map(|hit| hit.action.clone()).collect::<Vec<_>>();
+
+        assert_eq!(actions(&frame(false)), ["ui.open:race", "next"]);
+        let open = frame(true);
+        assert_eq!(actions(&open), ["ui.open:race", "next", "race:0", "race:1"]);
+        let next = open.hits.iter().find(|hit| hit.action.as_deref() == Some("next")).unwrap().rect;
+        let option = open.hits.iter().find(|hit| hit.action.as_deref() == Some("race:0")).unwrap().rect;
+        assert!(option.contains(next.x + 1.0, next.y + 1.0), "the options cover the button after the select");
+        assert_eq!(open.hit(next.x + 1.0, next.y + 1.0).unwrap().action.as_deref(), Some("race:0"));
+        let texts: Vec<_> = open
+            .draws
+            .iter()
+            .filter_map(|draw| if let Draw::Text { text, .. } = draw { Some(text.as_str()) } else { None })
+            .collect();
+        assert!(!texts.contains(&"Next"), "text under the options is hidden: {texts:?}");
     }
 
     #[test]

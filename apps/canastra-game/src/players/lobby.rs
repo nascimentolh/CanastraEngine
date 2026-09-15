@@ -12,13 +12,6 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use super::names::NameRules;
 use crate::config::Result;
 
-/// Highest appearance choices the H5 creation screen offers: five male and seven female hair styles, four
-/// hair colors and three faces.
-const MAX_HAIR_STYLE_MALE: u8 = 4;
-const MAX_HAIR_STYLE_FEMALE: u8 = 6;
-const MAX_HAIR_COLOR: u8 = 3;
-const MAX_FACE: u8 = 2;
-
 pub(crate) struct Lobby {
     pub(crate) server: ServerId,
     pub(crate) database: Database,
@@ -89,9 +82,7 @@ fn spawn_point(data: &GameData, new: &NewCharacter, roll: u32) -> std::result::R
     if !allows(start, new.sex) {
         return Err(CreationFailure::InvalidClass);
     }
-    let max_hair_style = if new.sex == Sex::Female { MAX_HAIR_STYLE_FEMALE } else { MAX_HAIR_STYLE_MALE };
-    let look = new.appearance;
-    if look.hair_style > max_hair_style || look.hair_color > MAX_HAIR_COLOR || look.face > MAX_FACE {
+    if !new.appearance.offered(new.sex) {
         return Err(CreationFailure::InvalidAppearance);
     }
     let points = &start.creation_points;
