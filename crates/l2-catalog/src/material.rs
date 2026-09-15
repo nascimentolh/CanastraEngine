@@ -11,6 +11,8 @@ pub enum Blend {
     /// Cut out where alpha is below the material's alpha reference.
     Masked,
     Alpha,
+    /// Adds the source weighted by its alpha, brightening what is behind.
+    AlphaAdditive,
     /// Unreal's screen blend: adds, scaled down where what is behind is already bright.
     Translucent,
     /// Multiplies what is behind, doubled as Unreal does.

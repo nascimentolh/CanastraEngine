@@ -36,10 +36,11 @@ struct Particle {
 }
 
 /// One system per sprite emitter, started as if it had been running a whole lifetime, as Unreal's
-/// warmup does. Sprites that use the cloud color take `cloud_tint`.
+/// warmup does, farthest first so blended systems draw back to front from the fixed camera. Sprites that
+/// use the cloud color take `cloud_tint`.
 pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]) -> Vec<System> {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
-    emitters
+    let mut systems: Vec<System> = emitters
         .iter()
         .flat_map(|emitter| emitter.sprites.iter().map(move |sprite| (emitter, sprite)))
         .filter(|(_, sprite)| sprite.texture.is_some())
@@ -58,7 +59,17 @@ pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]
             let tint = if sprite.cloud_color { cloud_tint } else { [1.0; 3] };
             System { sprite: sprite.clone(), origin, particles, random, tint }
         })
-        .collect()
+        .collect();
+    let distance = |system: &System| {
+        system
+            .origin
+            .iter()
+            .zip(system.sprite.start_offset)
+            .map(|(origin, offset)| (origin + offset).powi(2))
+            .sum::<f32>()
+    };
+    systems.sort_by(|a, b| distance(b).total_cmp(&distance(a)));
+    systems
 }
 
 impl System {
@@ -179,7 +190,11 @@ pub(crate) fn blend(style: DrawStyle) -> l2_catalog::Blend {
     use l2_catalog::Blend;
     match style {
         DrawStyle::Regular => Blend::Opaque,
-        DrawStyle::AlphaBlend | DrawStyle::AlphaModulate => Blend::Alpha,
+        // ponytail: measured, not recovered. Against the H5 login, alpha-blended sprites brighten the bright
+        // horizon and moon to H5's (253 vs 254 red) and only lift the dark hills, which plain alpha blending
+        // cannot do; revisit if the client's blend state for PTDS_AlphaBlend turns up.
+        DrawStyle::AlphaBlend => Blend::AlphaAdditive,
+        DrawStyle::AlphaModulate => Blend::Alpha,
         DrawStyle::Translucent => Blend::Translucent,
         DrawStyle::Modulated => Blend::Modulate,
         DrawStyle::Darken => Blend::Darken,

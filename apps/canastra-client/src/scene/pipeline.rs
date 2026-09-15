@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use l2_catalog::Blend;
 use ue2_assets::Image;
-use wgpu::BlendFactor::{Dst, One, OneMinusSrc, Src, Zero};
+use wgpu::BlendFactor::{Dst, One, OneMinusSrc, Src, SrcAlpha, Zero};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
 pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -115,6 +115,14 @@ impl Pipeline {
         let blend = match draw.blend {
             Blend::Opaque | Blend::Masked => None,
             Blend::Alpha => Some(wgpu::BlendState::ALPHA_BLENDING),
+            Blend::AlphaAdditive => Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: SrcAlpha,
+                    dst_factor: One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            }),
             // Fermata, from the original client: Translucent is a screen blend.
             // ponytail: Brighten keeps the same factors until evidence of its own shows up.
             Blend::Translucent | Blend::Brighten => Some(color(One, OneMinusSrc)),
@@ -235,7 +243,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     // How the shader fogs, fades and outputs the batch; see `params` in `scene.wgsl`. Ten more marks a
     // batch fog does not touch.
     let fog = match material.blend {
-        Blend::Opaque | Blend::Masked | Blend::Alpha => 0.0,
+        Blend::Opaque | Blend::Masked | Blend::Alpha | Blend::AlphaAdditive => 0.0,
         Blend::Translucent | Blend::Brighten => 1.0,
         Blend::Modulate => 2.0,
         Blend::Darken => 3.0,
@@ -243,7 +251,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     let cutoff = match material.blend {
         Blend::Masked => material.alpha_ref.map_or(0.5, |alpha_ref| f32::from(alpha_ref) / 255.0),
         // Fully transparent texels would still write depth over what lies behind them.
-        Blend::Alpha => 0.02,
+        Blend::Alpha | Blend::AlphaAdditive => 0.02,
         _ => 0.0,
     };
     let [base_u, base_v] = rows(material.base.matrix(time));

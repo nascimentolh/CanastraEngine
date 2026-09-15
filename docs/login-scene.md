@@ -91,6 +91,12 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    stores its depth; particles then draw in a pass that only reads it. This removed the hard straight
    edges those clouds cut into the hills. Fermata ignores this flag. The flat ground mist
    (`ZTest=false`, not soft) still leaves a faint band along the ground.
+   **Measured blending of alpha sprites:** H5's haze lifts the dark hills yet leaves the bright horizon
+   and moon at full brightness (254 red), which plain alpha blending cannot do. Drawn as
+   `(SrcAlpha, One)`, alpha-blended sprites bring the horizon to (253, 104, 117) against H5's
+   (254, 109, 119) and the summed error over twelve sampled points from 811 to 555. This is a
+   measured choice, not the client's recovered blend state. Particle systems now also draw back to
+   front from the camera.
 6. Movers, sway and ambient sound as the comparison shows they matter.
 
 ## Lighting

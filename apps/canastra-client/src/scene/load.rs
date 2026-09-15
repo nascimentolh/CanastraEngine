@@ -104,7 +104,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     // ponytail: blended batches draw by kind, not sorted by distance; sort them when overlaps show.
     groups.sort_by_key(|(material, _)| match material.blend {
         Blend::Opaque | Blend::Masked => 0,
-        Blend::Alpha => 1,
+        Blend::Alpha | Blend::AlphaAdditive => 1,
         Blend::Modulate | Blend::Brighten | Blend::Translucent | Blend::Darken => 2,
     });
     let mut data = SceneData {
