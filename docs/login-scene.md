@@ -113,10 +113,53 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
   lobby01) are tinted by `SkyBoxColor` at the start hour, (98, 107, 159). Measured against the H5
   screenshot, this turned the brown haze over the tree and hills into its blue-gray: hills
   (31, 29, 32) against H5's (32, 30, 36), trunk (30, 29, 36) against (43, 47, 54). `CloudColor1` and
-  `HazeringColor` both left it brown. The moon and the bright horizon stay darker than H5, which the
-  moon shader's missing self-illumination explains, not the tint.
+  `HazeringColor` both left it brown.
 - **Time of day, next:** `system/Env.int` starts the clock at 22h with 8 terrain shadow maps and 8
   actor light sets per day, and `TimeEnv0..3.int` give hourly ambient colors and HSV lights for
   terrain, static meshes, actors and BSP, plus sky, cloud and haze colors. Fermata reads the same
   palette as an atmospheric light probe and adds hemisphere ambient, a directional sun, rim light,
   specular and local lights on top; Canastra follows that path after the faithful baseline.
+
+## Accepted state (2026-09-14)
+
+The scene is accepted as it stands and left as is. It was compared with an H5 client screenshot of
+the same login using `tools/compare_scene.py`. The script averages the color around twelve scene
+points, placed as fractions of the view width from its center since both views span 50°, and sums
+the per-channel error.
+
+| Point | H5 | Canastra |
+|---|---|---|
+| Sky, upper middle | (69, 57, 88) | (88, 56, 83) |
+| Sky, upper right | (83, 47, 66) | (129, 59, 73) |
+| Sky, middle left | (75, 50, 60) | (109, 62, 90) |
+| Sky, right of center | (123, 76, 110) | (122, 68, 94) |
+| Horizon, left | (154, 79, 103) | (220, 89, 102) |
+| Horizon, middle | (182, 90, 119) | (227, 91, 108) |
+| Horizon, right | (254, 109, 119) | (252, 104, 116) |
+| Moon center | (243, 104, 104) | (254, 76, 69) |
+| Tree trunk | (43, 47, 54) | (38, 35, 43) |
+| Hill, left | (32, 30, 36) | (40, 37, 39) |
+| Hill, right | (42, 42, 49) | (59, 54, 62) |
+| Canopy | (49, 47, 64) | (71, 46, 63) |
+
+Summed error: 521. It was 755 after gamma-space blending and before the cloud tint, soft sprites,
+revolution and additive alpha sprites. Sprites animate, so a single capture varies by about ±20.
+
+Known differences, left as they are:
+- The moon is more orange and its symbol hotter than H5's pinker moon.
+- The left and middle horizon are brighter than H5, and the right hill is lighter.
+- The flat ground mist (`ZTest=false`, not soft) leaves a faint band along the ground.
+
+Choices made by measurement rather than recovered from the client, each marked in the code:
+- `UseCloudColor` takes `SkyBoxColor`.
+- The deco `DensityMultiplier` is read as a percentage.
+- Alpha-blended sprites draw `(SrcAlpha, One)`.
+
+Tried and not adopted, since no change stood out from the animation noise:
+- Brighten as plain addition.
+- Picking terrain intensity maps by hour (slot 7) instead of `CurZoneState`.
+
+Not modeled yet: movers and sway, ambient sound, BSP and portal visibility, mesh and vertex-mesh
+emitters (only character-select and weather-gated ones use them in lobby01), the sky zone pass, and
+the world clock advancing time of day.
+

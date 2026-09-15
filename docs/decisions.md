@@ -124,6 +124,8 @@ Login, then server and character selection, then walking in the world, with a ba
    - *2026-09-14:* decided before the UI binary compiler and before general world rendering. Fermata
      (Interlude) is a reference for how it loads the scene, but H5's login scene differs.
    - Findings and step plan: [`login-scene.md`](login-scene.md).
+   - *2026-09-14:* accepted as it stands after a measured comparison with the H5 login screenshot
+     (summed error 521 over twelve points); remaining differences are listed in `login-scene.md`.
 6. World rendering basics (terrain, BSP, static meshes).
 7. Protocol crate + server skeleton (login, character select, enter world, movement).
 8. MVP windows and NPC dialog templates.
