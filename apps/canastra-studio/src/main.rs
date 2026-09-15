@@ -3,6 +3,7 @@
 mod app;
 mod forms;
 mod icons;
+mod saving;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

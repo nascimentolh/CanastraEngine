@@ -13,7 +13,7 @@ so they can be tested against synthetic bytes and reused by tools.
 
 ```
 apps/        canastra-client     game client: winit + wgpu window drawing the UI (login screen for now)
-             canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
+             canastra-studio     game data editor (egui): validation blocks saving, undo, client icons, class kits
              canastra-cli        IO, filesystem, user-facing commands
              canastra-login      login server: accounts, rate-limited auth, game server registry, tickets
              canastra-game       game server: admits players by ticket, lists, creates and deletes their characters

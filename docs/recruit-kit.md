@@ -3,12 +3,18 @@
 Copied from the private server's design, which works well. The data half is implemented; the runtime half
 waits for inventories and mail.
 
+**The kit belongs to the server owner.** Each owner sets it in Studio (Classes tab, a starting class,
+Initial items): which items, how many, whether they are worn and how long they last. The kit listed below
+is only the suggested default that migration fills in. The runtime rules apply to whatever kit the owner
+sets.
+
 ## Data (done)
 
 Each starting class (`canastra_data::class::StartingClass`) lists its `initial_items`. An item with
 `lasts_minutes` disappears that many minutes after the character is created; `None` keeps it forever.
 
-The private server's kit has two layers per starting class, migrated from its `initialEquipment.xml`:
+The suggested kit, migrated from the private server's `initialEquipment.xml`, has two layers per starting
+class:
 
 - **Permanent:**
   - Fighters: Squire's Sword, Shirt and Pants (worn), Soulshot No Grade ×3000.

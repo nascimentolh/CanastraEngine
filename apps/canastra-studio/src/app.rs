@@ -1,10 +1,10 @@
 //! Studio window: entity list, editor, validation and saving.
 
-use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use canastra_data::id::{ItemId, NpcId, SkillId};
+use canastra_data::class::PlayerClass;
+use canastra_data::id::{ClassId, ItemId, NpcId, SkillId};
 use canastra_data::item::Item;
 use canastra_data::npc::Npc;
 use canastra_data::skill::Skill;
@@ -14,6 +14,7 @@ use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Ui};
 
 use crate::forms;
 use crate::icons::Icons;
+use crate::saving::write_safely;
 
 /// Edits to the same entity within this window collapse into one undo step.
 const UNDO_MERGE: Duration = Duration::from_millis(800);
@@ -24,6 +25,7 @@ enum Tab {
     Items,
     Skills,
     Npcs,
+    Classes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +33,7 @@ enum Selection {
     Item(ItemId),
     Skill(SkillId),
     Npc(NpcId),
+    Class(ClassId),
 }
 
 /// The state of one entity before an edit.
@@ -39,6 +42,7 @@ enum Snapshot {
     Item(Item),
     Skill(Skill),
     Npc(Npc),
+    Class(PlayerClass),
 }
 
 impl Snapshot {
@@ -47,6 +51,7 @@ impl Snapshot {
             Self::Item(item) => Selection::Item(item.id),
             Self::Skill(skill) => Selection::Skill(skill.id),
             Self::Npc(npc) => Selection::Npc(npc.id),
+            Self::Class(class) => Selection::Class(class.id),
         }
     }
 }
@@ -93,6 +98,7 @@ impl Studio {
             Selection::Item(id) => Snapshot::Item(self.data.items.get(&id)?.clone()),
             Selection::Skill(id) => Snapshot::Skill(self.data.skills.get(&id)?.clone()),
             Selection::Npc(id) => Snapshot::Npc(self.data.npcs.get(&id)?.clone()),
+            Selection::Class(id) => Snapshot::Class(self.data.classes.get(&id)?.clone()),
         })
     }
 
@@ -104,6 +110,7 @@ impl Studio {
             Snapshot::Item(item) => self.data.items.insert(item.id, item).map(drop),
             Snapshot::Skill(skill) => self.data.skills.insert(skill.id, skill).map(drop),
             Snapshot::Npc(npc) => self.data.npcs.insert(npc.id, npc).map(drop),
+            Snapshot::Class(class) => self.data.classes.insert(class.id, class).map(drop),
         };
         self.selected = Some(selection);
         self.changed();
@@ -167,12 +174,21 @@ impl Studio {
                 .filter(|npc| matches(npc.id.0, npc.name.get(Locale::En).unwrap_or_default()))
                 .map(|npc| (Selection::Npc(npc.id), label(npc.id.0, npc.name.get(Locale::En))))
                 .collect(),
+            Tab::Classes => self
+                .data
+                .classes
+                .values()
+                .filter(|class| matches(class.id.0.into(), class.name.get(Locale::En).unwrap_or_default()))
+                .map(|class| (Selection::Class(class.id), label(class.id.0.into(), class.name.get(Locale::En))))
+                .collect(),
         }
     }
 
     fn list(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            for (tab, name) in [(Tab::Items, "Items"), (Tab::Skills, "Skills"), (Tab::Npcs, "NPCs")] {
+            for (tab, name) in
+                [(Tab::Items, "Items"), (Tab::Skills, "Skills"), (Tab::Npcs, "NPCs"), (Tab::Classes, "Classes")]
+            {
                 ui.selectable_value(&mut self.tab, tab, name);
             }
         });
@@ -212,6 +228,11 @@ impl Studio {
             Selection::Npc(id) => {
                 if let Some(npc) = self.data.npcs.get_mut(&id) {
                     forms::npc(ui, npc);
+                }
+            }
+            Selection::Class(id) => {
+                if let Some(class) = self.data.classes.get_mut(&id) {
+                    forms::class(ui, class, &self.data.items, &mut self.icons);
                 }
             }
         });
@@ -274,42 +295,4 @@ impl eframe::App for Studio {
 
 fn label(id: u32, name: Option<&str>) -> String {
     format!("{id}  {}", name.unwrap_or_default())
-}
-
-/// Writes next to the target first, keeps the previous file as `.bak`, then swaps the new one in,
-/// so a failure at any point never leaves a half-written data file.
-fn write_safely(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    let temp = path.with_extension("cana.tmp");
-    fs::write(&temp, bytes)?;
-    // Reading the written file back proves the bytes on disk decode before anything is replaced.
-    if format::decode(&fs::read(&temp)?).is_err() {
-        return Err(std::io::Error::other("written data does not read back"));
-    }
-    if path.exists() {
-        fs::copy(path, path.with_extension("cana.bak"))?;
-    }
-    fs::rename(&temp, path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn saving_keeps_the_previous_file() {
-        let dir = std::env::temp_dir().join(format!("canastra-studio-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("data.cana");
-        let first = GameData::default();
-        let mut second = GameData::default();
-        second.items.insert(ItemId(1), Item::new(ItemId(1)));
-
-        write_safely(&path, &format::encode(&first)).unwrap();
-        write_safely(&path, &format::encode(&second)).unwrap();
-
-        assert_eq!(format::decode(&fs::read(&path).unwrap()).unwrap(), second);
-        assert_eq!(format::decode(&fs::read(path.with_extension("cana.bak")).unwrap()).unwrap(), first);
-        assert!(!path.with_extension("cana.tmp").exists());
-        fs::remove_dir_all(dir).unwrap();
-    }
 }

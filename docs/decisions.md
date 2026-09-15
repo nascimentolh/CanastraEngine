@@ -201,4 +201,6 @@ Login, then server and character selection, then walking in the world, with a ba
      class's static data in all 103 class files; no copy differs, and only level gains vary by class. The
      model keeps shared data once, on the 11 starting classes. The private server's 48-hour recruit kit is
      copied: data now, runtime with inventories ([`recruit-kit.md`](recruit-kit.md)).
+   - *2026-09-15:* the initial kit is the server owner's, edited in Studio's Classes tab. The migrated kit
+     is only a suggested default, not a rule of the engine.
 8. MVP windows and NPC dialog templates.

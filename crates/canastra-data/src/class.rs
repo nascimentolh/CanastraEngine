@@ -36,7 +36,8 @@ pub struct StartingClass {
     pub template: ClassTemplate,
     /// Where new characters appear.
     pub creation_points: Vec<[i32; 3]>,
-    /// What new characters carry.
+    /// What new characters carry, in the order they receive it. The server owner sets this in Studio; the
+    /// migrated kit is only a suggested default.
     pub initial_items: Vec<InitialItem>,
 }
 
@@ -151,6 +152,6 @@ pub struct InitialItem {
     pub count: u64,
     pub equipped: bool,
     /// Minutes the item lasts from character creation, then disappears; `None` keeps it forever. The
-    /// recruit kit gives top no-grade gear for 48 hours over permanent starter gear.
+    /// suggested recruit kit gives top no-grade gear for 48 hours over permanent starter gear.
     pub lasts_minutes: Option<u32>,
 }
