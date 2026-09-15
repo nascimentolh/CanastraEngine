@@ -147,3 +147,11 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - The root bone keeps its bind rotation. Its animation keys turn female idles away: with them, the female
      elves showed their backs; conjugated, every Human did. Without them all 20 face the camera and the Human
      poses match the H5 screenshot, three-quarter turns included.
+   *2026-09-15:* vegetation, which looked neon and jagged next to H5's dark olive. Three causes:
+   - Trees store no vertex colors, and meshes without them drew at full brightness without the hour's light.
+     In world zones every mesh now takes the hour's light over whatever it stores.
+   - Terrain decorations added the static mesh daylight over the terrain intensity they already carried.
+     They now take the terrain's own light where they stand, as the grass in the screenshot does.
+   - Leaf materials with `AlphaRef` 0 kept their fully clear texels, which showed as grey cards. Unreal's
+     alpha test passes only texels above the reference. Masked edges now follow Fermata: 4× MSAA with the
+     alpha turned into sample coverage, sharpened to about a pixel, so leaves and grass come out smooth.

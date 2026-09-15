@@ -21,13 +21,14 @@ struct Material {
     // combine factor, alpha cutoff, and how the batch blends for fog and fading (0 alpha or opaque,
     // 1 translucent or brighten, 2 modulate, 3 darken; ten more when fog is off).
     params: vec4<f32>,
-    // Distance over which a soft sprite fades out in front of the geometry behind it; zero when hard.
+    // Distance over which a soft sprite fades out in front of the geometry behind it, zero when hard; then 1
+    // for masked batches, whose alpha becomes sample coverage.
     soft: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 // The depth level geometry wrote; a placeholder while level geometry itself draws.
-@group(0) @binding(1) var scene_depth: texture_depth_2d;
+@group(0) @binding(1) var scene_depth: texture_depth_multisampled_2d;
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var base: texture_2d<f32>;
 @group(1) @binding(2) var layer: texture_2d<f32>;
@@ -76,6 +77,8 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         color = vec4<f32>(color.rgb * second.rgb * factor, color.a * second.a);
     }
     color = min(color, vec4<f32>(1.0)) * material.color * in.color;
+    // Taken before any discard, while derivatives are still defined.
+    let alpha_width = max(fwidth(color.a), 0.0001);
     let unfogged = material.params.w > 9.5;
     let neutral_kind = material.params.w - select(0.0, 10.0, unfogged);
     // Blends that ignore alpha fade through the vertex color instead: translucent, brighten and darken
@@ -96,7 +99,14 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     } else if neutral_kind > 0.5 {
         color = vec4<f32>(color.rgb * fade, color.a);
     }
-    if color.a < material.params.z {
+    if material.soft.y > 0.5 {
+        // Fermata's cut-out: only fully clear texels discard; the rest cover as many samples as their alpha
+        // stands above the reference, sharpened to about a pixel.
+        if color.a <= 0.0001 {
+            discard;
+        }
+        color = vec4<f32>(color.rgb, clamp((color.a - material.params.z) / alpha_width + 0.5, 0.0, 1.0));
+    } else if color.a < material.params.z {
         discard;
     }
     let range = globals.fog_range;

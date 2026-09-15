@@ -9,6 +9,9 @@ use wgpu::BlendFactor::{Dst, One, OneMinusSrc, Src, SrcAlpha, Zero};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
 pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Samples per pixel. Masked foliage turns its alpha into coverage over them, as Fermata does, so leaf and
+/// grass edges come out smooth.
+const SAMPLES: u32 = 4;
 /// Position (3 floats), UV (2 floats) and RGBA color (4 floats).
 const VERTEX_BYTES: u64 = 36;
 /// Seven `vec4<f32>`, see `Material` in `scene.wgsl`.
@@ -64,7 +67,7 @@ impl Pipeline {
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+                        multisampled: true,
                     },
                 ),
             ],
@@ -157,7 +160,11 @@ impl Pipeline {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: draw.blend == Blend::Masked,
+            },
             fragment: Some(wgpu::FragmentState {
                 module: &self.shader,
                 entry_point: Some("fs"),
@@ -249,16 +256,18 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
         Blend::Darken => 3.0,
     } + if fogged { 0.0 } else { 10.0 };
     let cutoff = match material.blend {
-        Blend::Masked => material.alpha_ref.map_or(0.5, |alpha_ref| f32::from(alpha_ref) / 255.0),
+        // Unreal's alpha test passes texels above the reference, so a reference of 0 still cuts fully clear ones.
+        Blend::Masked => material.alpha_ref.map_or(0.5, |alpha_ref| (f32::from(alpha_ref) + 0.5) / 255.0),
         // Fully transparent texels would still write depth over what lies behind them.
         Blend::Alpha | Blend::AlphaAdditive => 0.02,
         _ => 0.0,
     };
+    let masked = if material.blend == Blend::Masked { 1.0 } else { 0.0 };
     let [base_u, base_v] = rows(material.base.matrix(time));
     let [layer_u, layer_v] = rows(layer);
     let color = material.color.map(|channel| f32::from(channel) / 255.0);
     let bytes: Vec<u8> =
-        [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog], [soft, 0.0, 0.0, 0.0]]
+        [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog], [soft, masked, 0.0, 0.0]]
             .iter()
             .flatten()
             .flat_map(|value| value.to_le_bytes())
@@ -287,17 +296,27 @@ impl Pipeline {
     }
 }
 
-/// A depth target of `size` that the scene can also read.
+/// A multisampled depth target of `size` that the scene can also read.
 pub(super) fn depth_texture(device: &wgpu::Device, size: [u32; 2]) -> wgpu::TextureView {
+    target(device, size, DEPTH_FORMAT, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING)
+}
+
+/// A multisampled target of `size`.
+pub(super) fn target(
+    device: &wgpu::Device,
+    size: [u32; 2],
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> wgpu::TextureView {
     device
         .create_texture(&wgpu::TextureDescriptor {
-            label: Some("scene depth"),
+            label: Some("scene target"),
             size: wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: SAMPLES,
             dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            format,
+            usage,
             view_formats: &[],
         })
         .create_view(&wgpu::TextureViewDescriptor::default())

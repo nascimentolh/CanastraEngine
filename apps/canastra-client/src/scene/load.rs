@@ -69,7 +69,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     };
     let daylight = daylight_for(["StaticMeshAmbient", "HSVStaticMeshLight"]);
     let terrain_daylight = daylight_for(["TerrainAmbient", "HSVTerrainLight"]);
-    let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, daylight.as_ref());
+    let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, [&daylight, &terrain_daylight]);
     let bsp_daylight = daylight_for(["BSPAmbient", "HSVBSPLight"]);
     let actor_daylight = daylight_for(["ActorAmbient", "HSVActorLight"]);
     let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, bsp_daylight.as_ref());
@@ -145,19 +145,20 @@ fn mesh_groups(
     catalog: &mut Catalog,
     camera: [f32; 3],
     zone_state: Option<u8>,
-    daylight: Option<&Daylight>,
+    [daylight, terrain_daylight]: [&Option<Daylight>; 2],
 ) -> Vec<(Material, Group)> {
     let mut meshes: HashMap<String, Option<Mesh>> = HashMap::new();
     let mut materials: HashMap<String, Option<Material>> = HashMap::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
 
-    let decorations = deco::actors(&level.terrains, catalog, camera, zone_state);
+    let decorations = deco::actors(&level.terrains, catalog, camera, zone_state, terrain_daylight.as_ref());
+    // Decorations carry their full light already.
     let actors = level
         .actors
         .iter()
-        .map(|actor| (actor, 1.0))
-        .chain(decorations.iter().map(|(actor, opacity)| (actor, *opacity)));
-    for (actor, opacity) in actors {
+        .map(|actor| (actor, 1.0, daylight.as_ref()))
+        .chain(decorations.iter().map(|(actor, opacity)| (actor, *opacity, None)));
+    for (actor, opacity, daylight) in actors {
         let Some(path) = &actor.static_mesh else { continue };
         let mesh = meshes.entry(path.clone()).or_insert_with(|| catalog.static_mesh(path));
         let Some(Mesh { mesh, materials: slots }) = mesh.as_ref() else { continue };
@@ -207,13 +208,21 @@ fn vertex_light(
     daylight: Option<&Daylight>,
 ) -> [f32; 3] {
     let index = usize::from(index);
-    let Some(&[red, green, blue, _]) = actor.lighting.get(index).filter(|_| !actor.unlit) else { return [1.0; 3] };
-    let mut light = [red, green, blue].map(|channel| f32::from(channel) / 255.0);
-    if let (Some(daylight), Some(&normal)) = (daylight, mesh.normals.get(index)) {
-        let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0);
-        for (light, lit) in light.iter_mut().zip(lit) {
-            *light += lit;
-        }
+    if actor.unlit {
+        return [1.0; 3];
+    }
+    let stored = actor
+        .lighting
+        .get(index)
+        .map(|&[red, green, blue, _]| [red, green, blue].map(|channel| f32::from(channel) / 255.0));
+    let (Some(daylight), Some(&normal)) = (daylight, mesh.normals.get(index)) else {
+        return stored.unwrap_or([1.0; 3]);
+    };
+    // In world zones the hour lights every mesh, over whatever the level stored; trees store nothing.
+    let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0);
+    let mut light = stored.unwrap_or_default();
+    for (light, lit) in light.iter_mut().zip(lit) {
+        *light += lit;
     }
     light
 }

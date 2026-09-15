@@ -89,7 +89,7 @@ fn geometry(
 }
 
 /// The surface normal at heightmap sample `index`, from its neighbors' heights.
-fn normal(terrain: &Terrain, map: &Heightmap, index: usize) -> [f32; 3] {
+pub(super) fn normal(terrain: &Terrain, map: &Heightmap, index: usize) -> [f32; 3] {
     let (width, height) = (map.width, map.height);
     let height_at = |x: usize, y: usize| {
         let sample = map.samples.get(y.min(height - 1) * width + x.min(width - 1)).copied().unwrap_or(0);

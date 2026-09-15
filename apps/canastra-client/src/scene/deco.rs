@@ -1,25 +1,29 @@
 //! Terrain decoration layers: a static mesh, such as grass, scattered over the quads a density map
-//! paints, lit by the terrain under it.
+//! paints, lit as the terrain under it.
 
 use l2_catalog::Catalog;
 use ue2_level::{Actor, DecoLayer, Placement, Terrain};
 
+use super::daylight::Daylight;
 use super::random::Random;
-use super::terrain::{ZERO_HEIGHT, intensities};
+use super::terrain::{ZERO_HEIGHT, intensities, normal};
 
 /// Every decoration within fade-out range of `camera` as a placed static mesh actor with its opacity,
 /// which falls from 1 to 0 across the layer's fade-out radii as Fermata fades them.
-#[expect(clippy::cast_sign_loss, reason = "terrain intensities lie between 0 and 1")]
+/// In world zones `daylight` is the terrain's, so grass takes the ground's color of light rather than a mesh's.
+#[expect(clippy::cast_sign_loss, clippy::cast_possible_truncation, reason = "light clamped to 0..=255")]
 pub(super) fn actors(
     terrains: &[Terrain],
     catalog: &mut Catalog,
     camera: [f32; 3],
     zone_state: Option<u8>,
+    daylight: Option<&Daylight>,
 ) -> Vec<(Actor, f32)> {
     let mut actors = Vec::new();
+    let state = daylight.map_or(zone_state, |daylight| Some(daylight.time_slot()));
     for terrain in terrains {
         let Some(map) = catalog.heightmap(&terrain.heightmap) else { continue };
-        let light = intensities(terrain, map.width, map.height, zone_state);
+        let light = intensities(terrain, map.width, map.height, state);
         for layer in &terrain.deco_layers {
             let (Some(density), Some(mesh)) =
                 (catalog.texture(&layer.density_map), catalog.static_mesh(&layer.static_mesh))
@@ -54,7 +58,10 @@ pub(super) fn actors(
                     continue;
                 }
                 let opacity = 1.0 - ((distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0);
-                let bright = (light.get(quad).copied().unwrap_or(1.0) * 255.0) as u8;
+                let bright = light.get(quad).copied().unwrap_or(1.0);
+                let [red, green, blue] = daylight
+                    .map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, &map, quad), bright))
+                    .map(|channel| (channel * 255.0).clamp(0.0, 255.0) as u8);
                 let actor = Actor {
                     class: "TerrainDecoration".to_owned(),
                     name: String::new(),
@@ -65,7 +72,7 @@ pub(super) fn actors(
                     static_mesh: Some(layer.static_mesh.clone()),
                     skins: Vec::new(),
                     unlit: false,
-                    lighting: vec![[bright, bright, bright, 255]; vertices],
+                    lighting: vec![[red, green, blue, 255]; vertices],
                 };
                 actors.push((actor, opacity));
             }

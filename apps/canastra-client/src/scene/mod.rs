@@ -30,7 +30,7 @@ use load::Vertex;
 use particles::System;
 use pawns::Pawn;
 pub(crate) use pawns::{Figure, PartSource};
-use pipeline::{Draw, Pipeline, depth_texture, material_uniform};
+use pipeline::{Draw, Pipeline, depth_texture, material_uniform, target};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
 /// screenshot at a 1.9 aspect ratio.
@@ -78,8 +78,9 @@ pub(crate) struct Scene {
     fog: Option<Fog>,
     /// Zero of the clock materials and particles run on.
     started: Instant,
-    /// Depth target, the size it was made for and the globals group particles read it through.
-    depth: Option<(wgpu::TextureView, [u32; 2], wgpu::BindGroup)>,
+    /// Depth target, the size it was made for, the globals group particles read it through, and the
+    /// multisampled color target resolved into the window's frame.
+    depth: Option<(wgpu::TextureView, [u32; 2], wgpu::BindGroup, wgpu::TextureView)>,
 }
 
 impl Scene {
@@ -221,10 +222,12 @@ impl Scene {
             }
             gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
         }
-        if self.depth.as_ref().is_none_or(|(_, depth_size, _)| *depth_size != size) {
+        if self.depth.as_ref().is_none_or(|(_, depth_size, _, _)| *depth_size != size) {
             let view = depth_texture(&gpu.device, size);
+            let format = gpu.config.format.remove_srgb_suffix();
+            let color = target(&gpu.device, size, format, wgpu::TextureUsages::RENDER_ATTACHMENT);
             let group = self.pipeline.globals_group(&gpu.device, &self.globals, &view);
-            self.depth = Some((view, size, group));
+            self.depth = Some((view, size, group, color));
         }
         // Gamma-space colors written and blended as they are, as the original client's framebuffer did.
         let target = frame.create_view(&wgpu::TextureViewDescriptor {
@@ -232,7 +235,7 @@ impl Scene {
             ..Default::default()
         });
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
-        let Some((depth, _, particle_globals)) = &self.depth else { return encoder.finish() };
+        let Some((depth, _, particle_globals, color)) = &self.depth else { return encoder.finish() };
         // Level geometry first, writing depth; then particles over it in a pass that only reads depth, so
         // soft sprites can sample it.
         // ponytail: particle systems draw in level order, not sorted by distance; sort them if overlaps show.
@@ -247,9 +250,9 @@ impl Scene {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target,
+                    view: color,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: Some(&target),
                     ops: wgpu::Operations {
                         load: if first { wgpu::LoadOp::Clear(wgpu::Color::BLACK) } else { wgpu::LoadOp::Load },
                         store: wgpu::StoreOp::Store,
