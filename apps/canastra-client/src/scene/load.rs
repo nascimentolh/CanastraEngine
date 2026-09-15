@@ -6,7 +6,7 @@ use std::path::Path;
 
 use l2_catalog::{Blend, Catalog, Material, Mesh};
 use ue2_assets::Image;
-use ue2_level::{Level, Placement};
+use ue2_level::{Fog, Level, Placement};
 use ue2_package::Package;
 
 use super::{camera, terrain};
@@ -21,6 +21,8 @@ pub(crate) struct Batch {
 
 pub(crate) struct SceneData {
     pub(crate) camera: Placement,
+    /// Distance fog of the zone the camera is in.
+    pub(crate) fog: Option<Fog>,
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
     /// Opaque batches first, then blended ones, in drawing order.
@@ -39,7 +41,8 @@ pub(super) struct Group {
 /// Loads `MAPS/<map>` from the client and frames it from the scene tagged `camera_tag`.
 pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<SceneData, String> {
     let level = read_level(&client_root.join("MAPS").join(map))?;
-    let camera = *level.warps.get(camera_tag).ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
+    let warp = *level.warps.get(camera_tag).ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
+    let camera = warp.placement;
     let mut catalog = Catalog::open(client_root);
     let mut meshes: HashMap<String, Option<Mesh>> = HashMap::new();
     let mut materials: HashMap<String, Option<Material>> = HashMap::new();
@@ -92,8 +95,14 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         Blend::Alpha => 1,
         Blend::Modulate | Blend::Brighten | Blend::Additive => 2,
     });
-    let mut data =
-        SceneData { camera, vertices: Vec::new(), indices: Vec::new(), batches: Vec::new(), textures: HashMap::new() };
+    let mut data = SceneData {
+        camera,
+        fog: warp.fog,
+        vertices: Vec::new(),
+        indices: Vec::new(),
+        batches: Vec::new(),
+        textures: HashMap::new(),
+    };
     for (material, group) in groups {
         let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
         for stage in stages {

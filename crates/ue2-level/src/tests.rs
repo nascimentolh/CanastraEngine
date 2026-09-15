@@ -208,6 +208,6 @@ fn reads_actors_and_the_scene_camera() {
     assert_eq!(tree.placement, Placement { location: [1.0, 2.0, 3.0], rotation: [0; 3] });
 
     let camera = Placement { location: [148_959.1, -252_862.6, -5817.1], rotation: [2200, -42971, 0] };
-    assert_eq!(level.warps.get("Logon_Warp"), Some(&camera));
+    assert_eq!(level.warps.get("Logon_Warp"), Some(&Warp { placement: camera, fog: None }));
     assert_eq!(level.actors[2].tag.as_deref(), Some("Logon_Warp"));
 }

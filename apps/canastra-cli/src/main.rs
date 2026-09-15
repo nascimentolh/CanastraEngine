@@ -110,8 +110,12 @@ fn level(input: &Path) -> Result {
         println!("{count:>6}  {class}");
     }
     for (tag, warp) in &level.warps {
-        let ([x, y, z], [pitch, yaw, roll]) = (warp.location, warp.rotation);
-        println!("warp {tag:<24} ({x:.1}, {y:.1}, {z:.1})  pitch {pitch} yaw {yaw} roll {roll}");
+        let ([x, y, z], [pitch, yaw, roll]) = (warp.placement.location, warp.placement.rotation);
+        let fog = warp.fog.map_or_else(String::new, |fog| {
+            let [red, green, blue, _] = fog.color;
+            format!("  fog #{red:02x}{green:02x}{blue:02x} {}..{}", fog.start, fog.end)
+        });
+        println!("warp {tag:<24} ({x:.1}, {y:.1}, {z:.1})  pitch {pitch} yaw {yaw} roll {roll}{fog}");
     }
     Ok(())
 }

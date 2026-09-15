@@ -38,11 +38,29 @@ pub struct Actor {
     pub skins: Vec<String>,
 }
 
+/// Linear distance fog of a zone.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fog {
+    /// RGB; alpha is unused.
+    pub color: [u8; 4],
+    /// Distance where fog begins, in world units.
+    pub start: f32,
+    /// Distance where fog hides everything.
+    pub end: f32,
+}
+
+/// Where a scene puts the camera and the fog of the zone it lands in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Warp {
+    pub placement: Placement,
+    pub fog: Option<Fog>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Level {
     pub actors: Vec<Actor>,
     /// Where each scene that starts with a warp puts the camera, by the scene's tag.
-    pub warps: BTreeMap<String, Placement>,
+    pub warps: BTreeMap<String, Warp>,
     pub terrains: Vec<Terrain>,
 }
 
@@ -107,8 +125,8 @@ fn placement(properties: &[Property<'_>]) -> Placement {
     }
 }
 
-/// The placement of the interpolation point the scene's first action warps to, if it starts with a warp.
-fn first_warp(package: &Package, file: &[u8], scene: &[Property<'_>]) -> Result<Option<Placement>, Error> {
+/// The interpolation point the scene's first action warps to, if it starts with a warp.
+fn first_warp(package: &Package, file: &[u8], scene: &[Property<'_>]) -> Result<Option<Warp>, Error> {
     let export = |object: Option<ObjectRef>| match object {
         Some(ObjectRef::Export(index)) => package.exports().get(index),
         _ => None,
@@ -122,7 +140,28 @@ fn first_warp(package: &Package, file: &[u8], scene: &[Property<'_>]) -> Result<
     let Some(point) = export(find(&action, "IntPoint").and_then(|point| point.object(package))) else {
         return Ok(None);
     };
-    Ok(Some(placement(&object_properties(package, file, point)?)))
+    let point = object_properties(package, file, point)?;
+    // The zone an actor stands in is the first field of its Region.
+    let zone = find(&point, "Region")
+        .and_then(|region| region.fields(package))
+        .and_then(|region| export(find(&region, "Zone").and_then(|zone| zone.object(package))));
+    let fog = match zone {
+        Some(zone) => fog(&object_properties(package, file, zone)?),
+        None => None,
+    };
+    Ok(Some(Warp { placement: placement(&point), fog }))
+}
+
+fn fog(zone: &[Property<'_>]) -> Option<Fog> {
+    find(zone, "bDistanceFog").and_then(Property::bool).filter(|&fogged| fogged)?;
+    let float = |name| find(zone, name).and_then(Property::float);
+    // Unset values fall back to UT2004's ZoneInfo defaults.
+    let color = find(zone, "DistanceFogColor").and_then(Property::color).unwrap_or([0, 0, 0, 255]);
+    Some(Fog {
+        color,
+        start: float("DistanceFogStart").unwrap_or(3000.0),
+        end: float("DistanceFogEnd").unwrap_or(8000.0),
+    })
 }
 
 #[cfg(test)]

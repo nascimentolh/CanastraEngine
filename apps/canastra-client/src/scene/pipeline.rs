@@ -39,7 +39,7 @@ impl Pipeline {
         };
         let globals = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("scene globals"),
-            entries: &[entry(0, wgpu::ShaderStages::VERTEX, uniform)],
+            entries: &[entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, uniform)],
         });
         let fragment = wgpu::ShaderStages::FRAGMENT;
         let materials = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

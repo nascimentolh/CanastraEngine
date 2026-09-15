@@ -4,6 +4,10 @@
 
 struct Globals {
     view_projection: mat4x4<f32>,
+    // Gamma-space RGB.
+    fog_color: vec4<f32>,
+    // Start and end distance; fog is linear in between.
+    fog_range: vec4<f32>,
 }
 
 struct Material {
@@ -13,7 +17,8 @@ struct Material {
     layer_u: vec4<f32>,
     layer_v: vec4<f32>,
     color: vec4<f32>,
-    // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, unused.
+    // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, and
+    // what fog blends towards (0 its color, 1 black for additive, 2 white for modulate).
     params: vec4<f32>,
 }
 
@@ -31,6 +36,8 @@ struct Vertex {
 struct Varyings {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
+    // Distance along the view, for fog.
+    @location(1) depth: f32,
 }
 
 @vertex
@@ -38,6 +45,7 @@ fn vs(vertex: Vertex) -> Varyings {
     var out: Varyings;
     out.position = globals.view_projection * vec4<f32>(vertex.position, 1.0);
     out.uv = vertex.uv;
+    out.depth = out.position.w;
     return out;
 }
 
@@ -67,5 +75,10 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     if color.a < material.params.z {
         discard;
     }
+    let range = globals.fog_range;
+    let clear = clamp((range.y - in.depth) / max(range.y - range.x, 1.0), 0.0, 1.0);
+    let neutral = select(vec3<f32>(0.0), vec3<f32>(1.0), material.params.w > 1.5);
+    let target_color = select(globals.fog_color.rgb, neutral, material.params.w > 0.5);
+    color = vec4<f32>(mix(target_color, color.rgb, clear), color.a);
     return vec4<f32>(to_linear(color.rgb), color.a);
 }

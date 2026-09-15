@@ -12,6 +12,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use l2_catalog::{Blend, Combine, IDENTITY, Material, UvMatrix};
+use ue2_level::Fog;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::gpu::Gpu;
@@ -21,6 +22,8 @@ use pipeline::{DEPTH_FORMAT, MATERIAL_BYTES, Pipeline};
 /// screenshot at a 1.9 aspect ratio.
 // ponytail: fixed horizontal FOV; if other aspect ratios frame differently from H5, fix the vertical one instead.
 const FOV: f32 = 50.0;
+/// View-projection matrix, fog color and fog start and end; see `Globals` in `scene.wgsl`.
+const GLOBALS_BYTES: u64 = 96;
 
 struct Batch {
     material: Material,
@@ -37,6 +40,7 @@ pub(crate) struct Scene {
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
     rotation: [i32; 3],
+    fog: Option<Fog>,
     /// Zero of the clock materials animate on.
     started: Instant,
     /// Depth target and the size it was made for.
@@ -51,7 +55,7 @@ impl Scene {
         let pipeline = Pipeline::new(device, gpu.config.format);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("scene globals"),
-            size: 64,
+            size: GLOBALS_BYTES,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -101,6 +105,7 @@ impl Scene {
             indices,
             batches,
             rotation: data.camera.rotation,
+            fog: data.fog,
             started: Instant::now(),
             depth: None,
         })
@@ -111,7 +116,12 @@ impl Scene {
         let size = gpu.size();
         let aspect = size[0] as f32 / size[1].max(1) as f32;
         let matrix = camera::view_projection(self.rotation, FOV, aspect);
-        let bytes: Vec<u8> = matrix.iter().flatten().flat_map(|value| value.to_le_bytes()).collect();
+        // Without fog, the range starts beyond any distance drawn.
+        let (fog_color, fog_range) = self.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, 0.0, 0.0]), |fog| {
+            (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, 0.0, 0.0])
+        });
+        let bytes: Vec<u8> =
+            matrix.iter().chain([&fog_color, &fog_range]).flatten().flat_map(|value| value.to_le_bytes()).collect();
         gpu.queue.write_buffer(&self.globals, 0, &bytes);
         let time = self.started.elapsed().as_secs_f32();
         for batch in &self.batches {
@@ -170,6 +180,12 @@ fn material_bytes(material: &Material, time: f32) -> Vec<u8> {
         Some((stage, Combine::Mask, factor)) => (stage.matrix(time), 3.0, *factor),
         None => (IDENTITY, 0.0, 1.0),
     };
+    // What fog blends towards: its color, or the value that leaves the target untouched.
+    let fog = match material.blend {
+        Blend::Opaque | Blend::Masked | Blend::Alpha => 0.0,
+        Blend::Additive | Blend::Brighten => 1.0,
+        Blend::Modulate => 2.0,
+    };
     let cutoff = match material.blend {
         Blend::Masked => 0.5,
         // Fully transparent texels would still write depth over what lies behind them.
@@ -179,7 +195,7 @@ fn material_bytes(material: &Material, time: f32) -> Vec<u8> {
     let [base_u, base_v] = rows(material.base.matrix(time));
     let [layer_u, layer_v] = rows(layer);
     let color = material.color.map(|channel| f32::from(channel) / 255.0);
-    let bytes: Vec<u8> = [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, 0.0]]
+    let bytes: Vec<u8> = [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog]]
         .iter()
         .flatten()
         .flat_map(|value| value.to_le_bytes())
