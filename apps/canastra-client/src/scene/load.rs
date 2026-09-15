@@ -52,7 +52,12 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let mut groups: HashMap<String, Group> = HashMap::new();
 
     let decorations = deco::actors(&level.terrains, &mut catalog, camera.location, warp.zone_state);
-    for actor in level.actors.iter().chain(&decorations) {
+    let actors = level
+        .actors
+        .iter()
+        .map(|actor| (actor, 1.0))
+        .chain(decorations.iter().map(|(actor, opacity)| (actor, *opacity)));
+    for (actor, opacity) in actors {
         let Some(path) = &actor.static_mesh else { continue };
         let mesh = meshes.entry(path.clone()).or_insert_with(|| catalog.static_mesh(path));
         let Some(Mesh { mesh, materials: slots }) = mesh.as_ref() else { continue };
@@ -87,7 +92,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
                         }
                         _ => [1.0; 3],
                     };
-                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], 1.0]);
+                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], opacity]);
                     u32::try_from(group.vertices.len() - 1).unwrap_or(u32::MAX)
                 });
                 group.indices.push(placed);
@@ -126,20 +131,12 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())
     {
-        if !data.textures.contains_key(texture)
-            && let Some(image) = catalog.texture(texture)
-        {
-            data.textures.insert(texture.clone(), image);
-        }
+        decode(&mut data.textures, &mut catalog, texture);
     }
     for (material, group) in groups {
         let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
         for stage in stages {
-            if !data.textures.contains_key(&stage.texture)
-                && let Some(image) = catalog.texture(&stage.texture)
-            {
-                data.textures.insert(stage.texture.clone(), image);
-            }
+            decode(&mut data.textures, &mut catalog, &stage.texture);
         }
         if !data.textures.contains_key(&material.base.texture) {
             continue;
@@ -152,6 +149,15 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         data.batches.push(Batch { material, indices: start..end });
     }
     Ok(data)
+}
+
+/// Decodes the texture at `path` into `textures` unless it is already there or cannot be read.
+fn decode(textures: &mut HashMap<String, Image>, catalog: &mut Catalog, path: &str) {
+    if !textures.contains_key(path)
+        && let Some(image) = catalog.texture(path)
+    {
+        textures.insert(path.to_owned(), image);
+    }
 }
 
 fn read_level(path: &Path) -> Result<Level, String> {

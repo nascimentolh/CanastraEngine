@@ -63,7 +63,8 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    `DensityMultiplier` read as a percentage, which gives the sparse tufts along the H5 horizon (the
    plain factor saturates into a wall of bushes). Placements take a random point in the quad, the
    interpolated height, a random yaw and scale, and the terrain's intensity; they draw as static
-   meshes up to the far `FadeoutRadius`. The grass shaders cut out by `AlphaTest` and `AlphaRef`,
+   meshes whose opacity falls from 1 to 0 between the two `FadeoutRadius` distances, as Fermata fades
+   them; masked grass thins out as its alpha drops below the cutoff. The grass shaders cut out by `AlphaTest` and `AlphaRef`,
    which materials now honor.
 5. Emitters: sprite particles. **Done, after zone fog:** the camera's zone fog (#a8afbf from 200 to
    50000 units) fades surfaces by view distance, towards its color for opaque and alpha surfaces and

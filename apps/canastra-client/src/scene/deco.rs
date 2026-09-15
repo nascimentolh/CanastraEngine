@@ -7,14 +7,15 @@ use ue2_level::{Actor, DecoLayer, Placement, Terrain};
 use super::random::Random;
 use super::terrain::{ZERO_HEIGHT, intensities};
 
-/// Every decoration within fade-out range of `camera` as a placed static mesh actor.
+/// Every decoration within fade-out range of `camera` as a placed static mesh actor with its opacity,
+/// which falls from 1 to 0 across the layer's fade-out radii as Fermata fades them.
 #[expect(clippy::cast_sign_loss, reason = "terrain intensities lie between 0 and 1")]
 pub(super) fn actors(
     terrains: &[Terrain],
     catalog: &mut Catalog,
     camera: [f32; 3],
     zone_state: Option<u8>,
-) -> Vec<Actor> {
+) -> Vec<(Actor, f32)> {
     let mut actors = Vec::new();
     for terrain in terrains {
         let Some(map) = catalog.heightmap(&terrain.heightmap) else { continue };
@@ -48,12 +49,13 @@ pub(super) fn actors(
                 let scale = layer.scale.map(|range| random.range(range));
                 let yaw = if layer.random_yaw { (random.unit() * 65536.0) as i32 } else { 0 };
                 let distance = location.iter().zip(camera).map(|(at, eye)| (at - eye) * (at - eye)).sum::<f32>().sqrt();
-                // ponytail: decorations past the far fade-out radius are dropped, nearer ones draw fully; fade between when it shows.
-                if distance > layer.fadeout_radius[1] {
+                let [near, far] = layer.fadeout_radius;
+                if distance >= far {
                     continue;
                 }
+                let opacity = 1.0 - ((distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0);
                 let bright = (light.get(quad).copied().unwrap_or(1.0) * 255.0) as u8;
-                actors.push(Actor {
+                let actor = Actor {
                     class: "TerrainDecoration".to_owned(),
                     name: String::new(),
                     tag: None,
@@ -64,7 +66,8 @@ pub(super) fn actors(
                     skins: Vec::new(),
                     unlit: false,
                     lighting: vec![[bright, bright, bright, 255]; vertices],
-                });
+                };
+                actors.push((actor, opacity));
             }
         }
     }
