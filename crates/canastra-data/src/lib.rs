@@ -15,6 +15,7 @@ macro_rules! choices {
     };
 }
 
+pub mod appearance;
 pub mod asset;
 pub mod class;
 pub mod format;
@@ -41,6 +42,9 @@ pub struct GameData {
     pub skills: BTreeMap<SkillId, Skill>,
     pub npcs: BTreeMap<NpcId, Npc>,
     pub classes: BTreeMap<ClassId, PlayerClass>,
+    /// Each body's faces, hair styles and bare parts.
+    pub bodies: BTreeMap<item::Body, appearance::BodyLook>,
+    pub lobby: appearance::Lobby,
 }
 
 /// A rule the data breaks. Studio refuses to save while any exist.
@@ -133,8 +137,7 @@ mod tests {
         GameData {
             items: BTreeMap::from([(ItemId(1), sword)]),
             skills: BTreeMap::from([(SkillId(3), skill)]),
-            npcs: BTreeMap::new(),
-            classes: BTreeMap::new(),
+            ..GameData::default()
         }
     }
 

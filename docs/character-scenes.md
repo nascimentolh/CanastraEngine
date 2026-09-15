@@ -116,6 +116,17 @@ Each step is checked against the real client: a dump of the files, or a screensh
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
    meshes a body uses by race, sex and archetype, and the scene's pawn slots. Equipment models come from
    items, which already carry them.
+   *2026-09-15:* done, game data format 3. `GameData.bodies` gives each of the 16 bodies its faces (one mesh
+   with three textures), hair styles and bare gloves, upper, lower and boots; `GameData.lobby` gives the
+   eight select slots and the 20 characters on display at creation with their gear. Findings:
+   - `Chargrp` orders bodies Human fighter, Dark Elf, Dwarf, Elf, Human mystic, Orc fighter, Orc mystic,
+     Kamael, male then female; a seventeenth record is empty. Elves and Dark Elves share one body per sex
+     across fighter and mystic classes.
+   - Its hair table holds five blocks of fifteen styles: the first is hair without headgear (front and
+     back meshes), the second the back hair alone under helmets, the rest hair under other headgear.
+     Only the first is kept. The client has no hair color textures; how H5 colors hair is still open.
+   - `Charcreategrp` holds four characters per race for Human, Elf, Dark Elf and Orc, then two for Dwarf and
+     Kamael. The last select slot, in front of the camera, is the selected character's.
 5. **Select scene.** Move the camera to `Char_Select_Warp` and stand the account's characters on the
    eight slots, wearing what they wear. Clicking a model selects it, and the UI shows name, class and level.
 6. **Creation scene.** Fly to the race's camera, show the class's model in its display gear, and switch

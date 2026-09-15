@@ -28,6 +28,8 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
     let (skills, skill_names, skill_sounds) =
         (table("Skillgrp.dat")?, table("SkillName-e.dat")?, table("SkillSoundgrp.dat")?);
     let (npcs, npc_names) = (table("Npcgrp.dat")?, table("NpcName-e.dat")?);
+    let (chargrp, logongrp, charcreategrp) =
+        (table("Chargrp.dat")?, table("Logongrp.dat")?, table("Charcreategrp.dat")?);
     let (server_items, server_skills, server_npcs) = (
         xml_documents(&server_stats.join("items"))?,
         xml_documents(&server_stats.join("skills"))?,
@@ -48,6 +50,9 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
         skill_sounds: &skill_sounds,
         npcs: &npcs,
         npc_names: &npc_names,
+        chargrp: &chargrp,
+        logongrp: &logongrp,
+        charcreategrp: &charcreategrp,
         server_items: &server_items,
         server_skills: &server_skills,
         server_npcs: &server_npcs,
@@ -57,6 +62,13 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
     });
     let starting = data.classes.values().filter(|class| matches!(class.origin, Origin::Starting(_))).count();
     println!("{} classes, {starting} to start as", data.classes.len());
+    let hair_styles: usize = data.bodies.values().map(|body| body.hair_styles.len()).sum();
+    println!(
+        "{} bodies with {hair_styles} hair styles, {} select slots, {} characters on display at creation",
+        data.bodies.len(),
+        data.lobby.select.len(),
+        data.lobby.creation.len()
+    );
 
     let items = &data.items;
     let count = |kind: fn(&ItemKind) -> bool| items.values().filter(|item| kind(&item.kind)).count();

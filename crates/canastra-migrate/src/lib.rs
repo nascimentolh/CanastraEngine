@@ -8,6 +8,7 @@
 mod classes;
 mod fields;
 mod items;
+mod lobby;
 mod npcs;
 mod skills;
 
@@ -32,6 +33,10 @@ pub struct Sources<'a> {
     pub skill_sounds: &'a [Value],
     pub npcs: &'a [Value],
     pub npc_names: &'a [Value],
+    /// `Chargrp`, `Logongrp` and `Charcreategrp`: bodies and the lobby's character stands.
+    pub chargrp: &'a [Value],
+    pub logongrp: &'a [Value],
+    pub charcreategrp: &'a [Value],
     pub server_items: &'a [(String, String)],
     pub server_skills: &'a [(String, String)],
     pub server_npcs: &'a [(String, String)],
@@ -50,6 +55,8 @@ pub fn migrate(sources: &Sources<'_>) -> (GameData, Report) {
         skills: skills::migrate(sources, &mut report),
         npcs: npcs::migrate(sources, &mut report),
         classes: classes::migrate(sources, &mut report),
+        bodies: lobby::bodies(sources, &mut report),
+        lobby: lobby::lobby(sources, &mut report),
     };
     cap_skill_levels(&mut data, &mut report);
     (data, report)

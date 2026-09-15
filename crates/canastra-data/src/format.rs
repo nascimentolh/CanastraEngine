@@ -6,7 +6,7 @@ use crate::GameData;
 
 const MAGIC: [u8; 8] = *b"CANASTRA";
 /// Bump on any change to a serialized type; the `layout_is_frozen` test fails until you do.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -56,6 +56,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::appearance::{BodyLook, DisplayCharacter, HairStyle, Lobby, Look, Stand};
     use crate::asset::AssetRef;
     use crate::class::{
         Archetype, Attributes, BodySize, ClassTemplate, CombatBase, DamageRange, InitialItem, LevelGain, MDefSlots,
@@ -71,7 +72,7 @@ mod tests {
     use crate::skill::{Skill, SkillLevel, SkillOperate, SkillSounds, SoundCue};
     use crate::text::Localized;
 
-    const FROZEN: &[u8] = include_bytes!("../tests/format_v2.cana");
+    const FROZEN: &[u8] = include_bytes!("../tests/format_v3.cana");
 
     fn asset<K>(path: &str) -> AssetRef<K> {
         AssetRef::parse(path).unwrap()
@@ -148,6 +149,7 @@ mod tests {
         };
 
         let class = starting_class();
+        let (bodies, lobby) = appearance();
 
         GameData {
             items: BTreeMap::from([(ItemId(1), sword), (ItemId(2), plate)]),
@@ -165,7 +167,34 @@ mod tests {
                     },
                 ),
             ]),
+            bodies,
+            lobby,
         }
+    }
+
+    fn appearance() -> (BTreeMap<Body, BodyLook>, Lobby) {
+        let bodies = BTreeMap::from([(
+            Body::KamaelFemale,
+            BodyLook {
+                faces: vec![Look { mesh: asset("Kamael.FKamael_m000_f"), textures: vec![asset("FKamael.face")] }],
+                hair_styles: vec![HairStyle {
+                    front: None,
+                    back: Some(Look { mesh: asset("K.bh"), textures: Vec::new() }),
+                }],
+                upper: Some(Look { mesh: asset("K.u"), textures: vec![asset("K.u"), asset("K.ut")] }),
+                ..BodyLook::default()
+            },
+        )]);
+        let lobby = Lobby {
+            select: vec![Stand { location: [150_995.0, -246_683.0, -8117.0], yaw: -26408 }],
+            creation: vec![DisplayCharacter {
+                body: Body::KamaelFemale,
+                archetype: Archetype::Fighter,
+                stand: Stand { location: [174_548.0, -248_303.0, -10_356.0], yaw: -14868 },
+                gear: vec![ItemId(2)],
+            }],
+        };
+        (bodies, lobby)
     }
 
     fn starting_class() -> PlayerClass {
@@ -229,7 +258,7 @@ mod tests {
     fn layout_is_frozen() {
         let bytes = encode(&sample());
         if std::env::var_os("CANASTRA_BLESS").is_some() {
-            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v2.cana"), &bytes).unwrap();
+            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v3.cana"), &bytes).unwrap();
         }
         assert!(bytes == FROZEN, "serialized layout changed: bump format::VERSION and rebless the fixture");
     }
@@ -239,8 +268,8 @@ mod tests {
         let bytes = encode(&sample());
         assert!(matches!(decode(b"OggS"), Err(FormatError::NotGameData)));
         let mut newer = bytes.clone();
-        newer[8] = 3;
-        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(3))));
+        newer[8] = 4;
+        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(4))));
         assert!(matches!(decode(&bytes[..bytes.len() - 3]), Err(FormatError::Corrupt(_))));
         assert!(matches!(decode(&[bytes.as_slice(), &[0]].concat()), Err(FormatError::TrailingBytes(1))));
     }
