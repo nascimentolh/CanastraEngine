@@ -30,6 +30,8 @@ pub(crate) struct Figure {
     pub(crate) sequence: &'static str,
     /// Text shown above the head, such as the character's name.
     pub(crate) label: Option<String>,
+    /// Whether the player can turn the figure around, as the chosen character at creation.
+    pub(crate) turns: bool,
 }
 
 /// A body part: its skeletal mesh and the texture of each section; sections without one keep the mesh's.
@@ -41,6 +43,9 @@ pub(crate) struct PartSource {
     pub(crate) follow: Option<&'static str>,
 }
 
+/// How long a pawn takes to blend from standing to walking in place and back, in seconds.
+const BLEND_SECONDS: f32 = 0.25;
+
 /// How far above the top of the head a label stands, in world units.
 const LABEL_LIFT: f32 = 6.0;
 
@@ -51,7 +56,14 @@ pub(crate) struct Pawn {
     held: Vec<Held>,
     label: Option<String>,
     location: [f32; 3],
+    /// Unreal rotation units, and the axes they turn the pawn to.
+    yaw: f32,
     axes: [[f32; 3]; 3],
+    turns: bool,
+    /// How far the pawn has blended into walking in place, from 0 standing to 1 walking; it walks while it turns.
+    walking: f32,
+    /// How fast the pawn turns now, in rotation units a second, easing toward the speed asked for.
+    spin: f32,
 }
 
 struct Part {
@@ -61,7 +73,8 @@ struct Part {
     /// Where each bone stands in the bind pose, and each bone's bind pose relative to its parent.
     bind: Vec<Transform>,
     bind_locals: Vec<Transform>,
-    animation: Option<Animation>,
+    /// The sequence the part stands in, and the one it walks in.
+    animations: [Option<Animation>; 2],
     mesh_axes: [[f32; 3]; 3],
     /// For each bone, the same bone in the body's skeleton; empty for the body itself.
     in_body: Vec<Option<usize>>,
@@ -97,6 +110,7 @@ impl Pawn {
         let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
         let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
         let sequence = format!("{}_{}", figure.sequence, suffix.unwrap_or_default());
+        let walk = sequence.replacen("Wait", "Walk", 1);
         if animation.as_ref().is_some_and(|animation| {
             !animation.sequences.iter().any(|found| found.name.eq_ignore_ascii_case(&sequence))
         }) {
@@ -113,7 +127,7 @@ impl Pawn {
             .map(|(skinned, sections, _)| {
                 let own = skinned.animation.as_deref().filter(|path| Some(*path) != animation_path.as_deref());
                 let own = own.and_then(|path| catalog.mesh_animation(path));
-                Part::new(skinned.mesh, sections, own.as_ref().or(animation.as_ref()), &sequence)
+                Part::new(skinned.mesh, sections, own.as_ref().or(animation.as_ref()), [&sequence, &walk])
             })
             .collect();
         // Bones a part shares with the body follow the body's, or their local keys would turn about the wrong parents.
@@ -125,7 +139,30 @@ impl Pawn {
         }
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();
-        Self { parts, body, held, label, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
+        Self {
+            parts,
+            body,
+            held,
+            label,
+            location: figure.location,
+            yaw: figure.yaw as f32,
+            axes: camera::axes([0, figure.yaw, 0]),
+            turns: figure.turns,
+            walking: 0.0,
+            spin: 0.0,
+        }
+    }
+
+    /// Turns the pawn for `seconds` at `speed` rotation units a second if the player may turn it, blending into
+    /// walking in place while it turns and back to standing when it stops.
+    pub(crate) fn turn(&mut self, speed: f32, seconds: f32) {
+        if self.turns {
+            let step = seconds / BLEND_SECONDS;
+            self.spin += (speed - self.spin) * step.min(1.0);
+            self.yaw += self.spin * seconds;
+            self.axes = camera::axes([0, self.yaw as i32, 0]);
+            self.walking = if speed == 0.0 { self.walking - step } else { self.walking + step }.clamp(0.0, 1.0);
+        }
     }
 
     /// Where the pawn stands on the ground, relative to `camera`.
@@ -138,7 +175,7 @@ impl Pawn {
         let label = self.label.as_deref()?;
         let part = self.parts.get(self.body)?;
         let bone = head::find(&part.mesh.bones, "Bip01_HeadNub")?;
-        let head = part.pose(time, &[], &[]).get(bone)?.translation;
+        let head = part.pose(time, self.walking, &[], &[]).get(bone)?.translation;
         let turned = camera::place(head, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
         let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
         at[2] += LABEL_LIFT;
@@ -149,13 +186,17 @@ impl Pawn {
     /// and lit by `daylight` if given.
     pub(crate) fn write(&self, time: f32, camera: [f32; 3], daylight: Option<&Daylight>, out: &mut Vec<Vertex>) {
         let body_part = self.parts.get(self.body);
-        let body = body_part.map(|part| part.pose(time, &[], &[])).unwrap_or_default();
+        let body = body_part.map(|part| part.pose(time, self.walking, &[], &[])).unwrap_or_default();
         let body_bind = body_part.map_or(&[][..], |part| &part.bind);
         let poses: Vec<Vec<Transform>> = self
             .parts
             .iter()
             .enumerate()
-            .map(|(index, part)| if index == self.body { body.clone() } else { part.pose(time, &body, body_bind) })
+            .map(
+                |(index, part)| {
+                    if index == self.body { body.clone() } else { part.pose(time, self.walking, &body, body_bind) }
+                },
+            )
             .collect();
         let Some(body_part) = body_part else { return };
         let (scale, mesh_axes) = (body_part.mesh.scale, body_part.mesh_axes);
@@ -237,26 +278,33 @@ impl Part {
         mut mesh: SkeletalMesh,
         sections: Vec<(Material, Range<usize>)>,
         animation: Option<&MeshAnimation>,
-        sequence: &str,
+        sequences: [&str; 2],
     ) -> Self {
         head::carry(&mesh.bones, &mut mesh.vertices);
         let bind_locals = skeleton::bind_locals(&mesh.bones);
         let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent), |_| None);
-        let animation = animation.and_then(|animation| Animation::of(&mesh, animation, sequence));
+        let animations =
+            sequences.map(|sequence| animation.and_then(|animation| Animation::of(&mesh, animation, sequence)));
         let mesh_axes = camera::axes(mesh.rotation);
-        Self { mesh, sections, bind, bind_locals, animation, mesh_axes, in_body: Vec::new(), follow: None }
+        Self { mesh, sections, bind, bind_locals, animations, mesh_axes, in_body: Vec::new(), follow: None }
     }
 
-    /// Where each bone stands at scene time `time`, looping the sequence; bones shared with the body stand where
-    /// `body`, the body's pose, puts them, and a following part's root moves with its body bone from `body_bind`.
-    fn pose(&self, time: f32, body: &[Transform], body_bind: &[Transform]) -> Vec<Transform> {
-        let locals = match &self.animation {
+    /// Where each bone stands at scene time `time`, looping the sequence, or the walk while `walking` when the part
+    /// has one; bones shared with the body stand where `body`, the body's pose, puts them, and a following part's
+    /// root moves with its body bone from `body_bind`.
+    fn pose(&self, time: f32, walking: f32, body: &[Transform], body_bind: &[Transform]) -> Vec<Transform> {
+        let locals = |animation: Option<&Animation>| match animation {
             Some(animation) => {
                 let frames = animation.sequence.frames.max(1) as f32;
                 let frame = (time * animation.sequence.rate).rem_euclid(frames);
                 skeleton::sequence_locals(&animation.sequence, &animation.tracks, &self.bind_locals, frame)
             }
             None => self.bind_locals.clone(),
+        };
+        let [stand, walk] = &self.animations;
+        let locals = match walk.as_ref().filter(|_| walking > 0.0) {
+            Some(walk) => skeleton::blend(&locals(stand.as_ref()), &locals(Some(walk)), walking),
+            None => locals(stand.as_ref()),
         };
         let followed = self.follow.and_then(|bone| {
             let moved = body.get(bone)?.then(body_bind.get(bone)?.inverse());

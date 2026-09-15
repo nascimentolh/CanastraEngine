@@ -79,6 +79,9 @@ pub(crate) struct Scene {
     /// Every scene's camera shots, by the scene's tag in lowercase, and the camera's move along some, if moving.
     shots: BTreeMap<String, Vec<Shot>>,
     flight: Option<flight::Flight>,
+    /// How fast the player turns the pawns they may turn, in rotation units a second, and the scene time they last
+    /// turned at.
+    turning: (f32, f32),
     catalog: Catalog,
     /// The light on pawns in world zones; pawns in zones with states draw at full brightness.
     actor_daylight: Option<daylight::Daylight>,
@@ -152,17 +155,7 @@ impl Scene {
 
         let vertices = buffer(device, "scene vertices", wgpu::BufferUsages::VERTEX, &vertex_bytes(&data.vertices));
         let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
-        let particle_vertices = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("particle vertices"),
-            size: (quads.max(1) * 4 * size_of::<Vertex>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let quad_indices: Vec<u32> = (0..u32::try_from(quads.max(1)).map_err(|_| "too many particles")?)
-            .flat_map(|quad| [0, 1, 2, 0, 2, 3].map(|corner| quad * 4 + corner))
-            .collect();
-        let particle_indices =
-            buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(&quad_indices));
+        let (particle_vertices, particle_indices) = particle_buffers(device, quads)?;
         println!(
             "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
             data.camera.location,
@@ -192,6 +185,7 @@ impl Scene {
             eye: data.camera,
             shots: data.shots,
             flight: None,
+            turning: (0.0, 0.0),
             catalog: data.catalog,
             actor_daylight: data.actor_daylight,
             fog: data.fog,
@@ -199,6 +193,11 @@ impl Scene {
             uniforms_written: false,
             depth: None,
         })
+    }
+
+    /// Turns the pawns the player may turn at `speed` rotation units a second from now on; 0 stops them.
+    pub(crate) fn turn(&mut self, speed: f32) {
+        self.turning.0 = speed;
     }
 
     /// Each pawn's label and where its head and feet fall on a window of `size` physical pixels, in those pixels;
@@ -269,6 +268,10 @@ impl Scene {
         }
         gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
         if !self.pawns.is_empty() {
+            let (speed, last) = (self.turning.0, std::mem::replace(&mut self.turning.1, time));
+            for pawn in &mut self.pawns {
+                pawn.turn(speed, time - last);
+            }
             let mut skinned = Vec::new();
             for pawn in &self.pawns {
                 pawn.write(time, self.camera, self.actor_daylight.as_ref(), &mut skinned);
@@ -360,6 +363,20 @@ fn material_batch<'a>(
     let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
     pipeline.prepare(device, draw);
     Some(Batch { material, draw, fogged: true, soft: 0.0, uniform, group, indices })
+}
+
+/// A vertex buffer the particles rewrite every frame, four corners a quad, and the index buffer of `quads` quads.
+fn particle_buffers(device: &wgpu::Device, quads: usize) -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
+    let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("particle vertices"),
+        size: (quads.max(1) * 4 * size_of::<Vertex>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let indices: Vec<u32> = (0..u32::try_from(quads.max(1)).map_err(|_| "too many particles")?)
+        .flat_map(|quad| [0, 1, 2, 0, 2, 3].map(|corner| quad * 4 + corner))
+        .collect();
+    Ok((vertices, buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(&indices))))
 }
 
 fn buffer(device: &wgpu::Device, label: &str, usage: wgpu::BufferUsages, contents: &[u8]) -> wgpu::Buffer {

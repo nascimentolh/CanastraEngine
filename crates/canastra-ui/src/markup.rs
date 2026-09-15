@@ -49,6 +49,8 @@ pub struct Element {
     pub text: Option<String>,
     /// Data key whose value replaces `text`, e.g. `app.version`; for an input, the key it edits.
     pub bind: Option<String>,
+    /// Data key the element is left out without, unless it holds `true`, e.g. controls that only apply sometimes.
+    pub show: Option<String>,
     /// Data key that puts the element in `:checked` while it holds `true`, e.g. the selected item of a list.
     pub checked: Option<String>,
     /// Action name reported when the element is clicked, or when Enter is pressed in an input.
@@ -78,6 +80,7 @@ impl Element {
             text: None,
             bind: None,
             checked: None,
+            show: None,
             action: None,
             placeholder: None,
             password: false,
@@ -112,6 +115,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "bind" => element.bind = Some(value),
             "action" => element.action = Some(value),
             "checked" => element.checked = Some(value),
+            "show" => element.show = Some(value),
             "src" => element.src = Some(value),
             "placeholder" => element.placeholder = Some(value),
             "repeat" if !tag.is_leaf() => element.repeat = Some(value),

@@ -92,6 +92,17 @@ pub(super) fn sequence_locals(
         .collect()
 }
 
+/// Each bone between its pose in `from` and in `to`, `t` of the way, from 0 to 1.
+pub(super) fn blend(from: &[Transform], to: &[Transform], t: f32) -> Vec<Transform> {
+    from.iter()
+        .zip(to)
+        .map(|(from, to)| Transform {
+            rotation: slerp(from.rotation, to.rotation, t),
+            translation: lerp(from.translation, to.translation, t),
+        })
+        .collect()
+}
+
 /// A skinned vertex's position: its bind position moved by each bone it is weighted to, from `bind` to `pose`.
 pub(super) fn skin(vertex: &SkinVertex, bind: &[Transform], pose: &[Transform]) -> [f32; 3] {
     let mut out = [0.0; 3];

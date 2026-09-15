@@ -20,6 +20,9 @@ impl Lobby {
         match (verb, index) {
             ("create", _) => return self.open_creation(screen),
             ("zoom", _) => self.zoomed = !self.zoomed && self.draft.sex.is_some() && self.draft.class.is_some(),
+            ("turn.left", _) => self.turning = -1,
+            ("turn.right", _) => self.turning = 1,
+            ("turn.stop", _) => self.turning = 0,
             ("race", Some(index)) => {
                 if let Some(&(race, _)) = RACES.get(index) {
                     self.draft.pick_race(race);
@@ -85,7 +88,9 @@ impl Lobby {
             ("create.hair", letter(hair_style)),
             ("create.color", letter(hair_color)),
             ("create.face", letter(face)),
-            ("create.zoom", if self.zoomed { "−" } else { "+" }.to_owned()),
+            // Lucide's zoom-out and zoom-in icons.
+            ("create.zoom", if self.zoomed { "\u{e1b6}" } else { "\u{e1b5}" }.to_owned()),
+            ("create.chosen", (draft.class.is_some() && draft.sex.is_some()).to_string()),
         ] {
             screen.set(key.into(), value);
         }

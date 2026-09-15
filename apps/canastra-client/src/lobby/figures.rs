@@ -52,7 +52,8 @@ pub(super) fn creation(data: &GameData, race: Race, chosen: Option<(Archetype, S
                 .find(|&sex| body_of(race, shown.archetype, sex == Sex::Female) == Some(shown.body))?;
             let picked = chosen == Some((shown.archetype, sex));
             let [face, hair] = if picked { [look.face, look.hair_style].map(usize::from) } else { [0, 0] };
-            figure(data, shown.body, [face, hair], &shown.gear, shown.stand)
+            let figure = figure(data, shown.body, [face, hair], &shown.gear, shown.stand)?;
+            Some(Figure { turns: picked, ..figure })
         })
         .collect()
 }
@@ -128,7 +129,15 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
         .chain(back_hair)
         .chain(slots.into_iter().flat_map(|(_, parts)| parts))
         .collect();
-    Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip), label: None })
+    Some(Figure {
+        parts,
+        held: in_hands,
+        location: stand.location,
+        yaw: stand.yaw,
+        sequence: idle(grip),
+        label: None,
+        turns: false,
+    })
 }
 
 /// The idle a character plays holding a weapon of the client's `grip`, or none. Grips by `Weapongrp`: 1 one-handed,

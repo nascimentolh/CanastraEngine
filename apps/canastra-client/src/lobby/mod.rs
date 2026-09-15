@@ -42,6 +42,8 @@ pub(crate) struct Lobby {
     draft: Draft,
     /// Whether the creation camera closes in on the chosen character.
     zoomed: bool,
+    /// Which way the player turns the chosen character: -1, 0 or 1.
+    turning: i8,
 }
 
 impl Lobby {
@@ -56,6 +58,7 @@ impl Lobby {
             choices,
             draft: Draft::default(),
             zoomed: false,
+            turning: 0,
         }
     }
 
@@ -143,6 +146,13 @@ impl Lobby {
             }
             _ => String::new(),
         }
+    }
+
+    /// How fast the characters the player may turn behind `markup` turn, in rotation units a second.
+    pub(crate) fn turning(&self, markup: &str) -> f32 {
+        // ponytail: a quarter turn a second, by eye; H5's pace is unmeasured.
+        const QUARTER_TURN: f32 = 16384.0;
+        if markup == CREATE_SCREEN { f32::from(self.turning) * QUARTER_TURN } else { 0.0 }
     }
 
     /// The camera routes from view `from` to view `to` of the scene behind `markup`.

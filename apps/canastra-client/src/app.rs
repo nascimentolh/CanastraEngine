@@ -38,6 +38,8 @@ struct Running {
     figures: Vec<Figure>,
     /// The camera view `scene` shows or is flying to, as the lobby names it.
     view: String,
+    /// The action of the control the pointer holds down.
+    held: Option<String>,
     client_root: PathBuf,
     renderer: Renderer,
     lobby: Lobby,
@@ -80,6 +82,7 @@ impl App {
             backdrop,
             figures: Vec::new(),
             view: String::new(),
+            held: None,
             client_root,
             renderer,
             lobby,
@@ -187,6 +190,9 @@ impl Running {
             }
             self.view = view;
         }
+        if let Some(scene) = &mut self.scene {
+            scene.turn(self.lobby.turning(self.screen.markup()));
+        }
         let figures = self.lobby.figures(self.screen.markup());
         if figures != self.figures
             && let Some(scene) = &mut self.scene
@@ -227,10 +233,17 @@ impl ApplicationHandler<Reply> for App {
                 let on_ui = running.screen.hovered();
                 if let Some(action) = running.screen.click() {
                     running.run(event_loop, &action);
+                    running.held = Some(action);
                 } else if !on_ui {
                     running.pick();
                 }
                 running.gpu.window.request_redraw();
+            }
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
+                // Held controls, such as turning the character, stop when let go.
+                if running.held.take().is_some_and(|action| action.starts_with("turn.")) {
+                    running.run(event_loop, "turn.stop");
+                }
             }
             WindowEvent::ModifiersChanged(modifiers) => running.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {

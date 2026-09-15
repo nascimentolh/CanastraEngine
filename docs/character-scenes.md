@@ -233,3 +233,10 @@ Each step is checked against the real client: a dump of the files, or a screensh
    them, since text draws over every shape. The UI gained `:checked` (an element whose `checked` binding holds
    `true`, as the selected card) and percent offsets for absolute elements.
    - Enter World only says it is not ready yet: the game server has no world to enter.
+   *2026-09-16:* the chosen character's controls. Once a class and gender are picked, a strip under the character
+   turns them left, closes in or out, and turns them right, with Lucide icons (a 2 KB subset of the ISC-licensed
+   font in `assets/ui/fonts`). Holding a turn button turns the character a quarter turn a second while it walks in
+   place with the client's own `Walk_*` sequence, whose root stays put; the turn eases in and out and the walk
+   blends with the idle over a quarter second, so quick clicks do not snap the pose. The UI gained `show`, which
+   leaves an element out unless its binding holds `true`.
+   - Still to measure: H5's turning pace.

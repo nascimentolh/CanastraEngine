@@ -170,7 +170,8 @@ impl Pass<'_> {
     }
 }
 
-/// `element` with each `repeat` container's children copied once per item of its list.
+/// `element` with each `repeat` container's children copied once per item of its list, leaving out children whose
+/// `show` binding does not hold `true`.
 fn expand(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> Element {
     if element.tag == Tag::Select {
         let open = bindings(crate::OPEN_KEY).is_some_and(|key| element.bind.as_ref() == Some(&key));
@@ -181,12 +182,22 @@ fn expand(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> Eleme
             let count = bindings(&format!("{list}.len")).and_then(|len| len.parse::<usize>().ok()).unwrap_or(0);
             (0..count)
                 .flat_map(|index| element.children.iter().map(move |child| instantiate(child, list, index)))
+                .filter(|child| shown(child, bindings))
                 .map(|child| expand(&child, bindings))
                 .collect()
         }
-        None => element.children.iter().map(|child| expand(child, bindings)).collect(),
+        None => element
+            .children
+            .iter()
+            .filter(|child| shown(child, bindings))
+            .map(|child| expand(child, bindings))
+            .collect(),
     };
     Element { children, ..element.clone() }
+}
+
+fn shown(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> bool {
+    element.show.as_deref().is_none_or(|key| bindings(key).is_some_and(|value| value == "true"))
 }
 
 /// A copy of a repeated `element` for item `index` of `list`.
@@ -195,10 +206,11 @@ fn instantiate(element: &Element, list: &str, index: usize) -> Element {
         Some(field) => format!("{list}.{index}.{field}"),
         None => key.clone(),
     };
-    let (bind, checked) = (element.bind.as_ref().map(item), element.checked.as_ref().map(item));
+    let (bind, show, checked) =
+        (element.bind.as_ref().map(item), element.show.as_ref().map(item), element.checked.as_ref().map(item));
     let action = element.action.as_ref().map(|action| action.replace("{index}", &index.to_string()));
     let children = element.children.iter().map(|child| instantiate(child, list, index)).collect();
-    Element { bind, checked, action, children, ..element.clone() }
+    Element { bind, show, checked, action, children, ..element.clone() }
 }
 
 fn default_style(tag: Tag) -> Style {
@@ -528,7 +540,7 @@ mod tests {
     #[test]
     fn repeated_children_bind_each_item() {
         let ui = parse_markup(
-            r#"<ui><column repeat="servers"><button bind="item.name" checked="item.picked" action="pick:{index}"/></column></ui>"#,
+            r#"<ui><column repeat="servers"><button bind="item.name" checked="item.picked" action="pick:{index}"/></column><button show="hidden" text="Gone"/></ui>"#,
         )
         .unwrap();
         let sheet = parse_stylesheet("ui { align-items: start } button:checked { color: #ff0000 }").unwrap();

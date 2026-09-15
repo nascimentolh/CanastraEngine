@@ -106,9 +106,17 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 #confirm { width: 360px }
 .confirm-text { font-size: 13px; color: #d9d0bb; text-align: center }
 #create { position: absolute; left: 24px; top: 24px; width: 300px }
-/* The creation camera's close-up toggle, under the chosen character. */
-#view { position: absolute; left: 0px; right: 0px; bottom: 36px; justify-content: center }
-.view-button { flex-grow: 0; width: 40px; height: 40px; padding: 0; font-family: Inter; font-size: 22px; font-weight: 400 }
+/* The chosen character's controls under them: turn left, close in or out, turn right, drawn with Lucide icons. */
+#view { position: absolute; left: 0px; right: 0px; bottom: 28px; justify-content: center }
+.view-strip {
+    gap: 6px;
+    padding: 6px;
+    background: linear-gradient(#2b251ccc, #15120ed6);
+    border: 1px solid #8c7443;
+    border-radius: 3px;
+    box-shadow: 0 8px 24px #00000080, inset 0 1px 0 #e0c07a30;
+}
+.view-button { flex-grow: 0; width: 40px; height: 36px; padding: 8px 0; font-family: lucide; font-size: 19px; font-weight: 400 }
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 
