@@ -78,9 +78,13 @@ impl Pawn {
                 Some((skinned, sections))
             })
             .collect();
-        // Parts share the body's skeleton, but only some name the animation it plays, hair among those that do
-        // not; every part plays the first one found, whose name ends each sequence's name.
-        let animation_path = loaded.iter().find_map(|(skinned, _)| skinned.animation.clone());
+        // Body parts share the body's skeleton, but only some name its `<Body>_anim`, hair among those that do not;
+        // they all play it, and its name ends each sequence's name. Parts with a skeleton of their own, such as
+        // Kamael wings, name their own animation, with sequences of the same names.
+        let animation_path = loaded
+            .iter()
+            .filter_map(|(skinned, _)| skinned.animation.clone())
+            .find(|path| path.to_ascii_lowercase().ends_with("_anim"));
         let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
         let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
         let sequence = format!("{}_{}", figure.sequence, suffix.unwrap_or_default());
@@ -91,7 +95,11 @@ impl Pawn {
         }
         let parts: Vec<Part> = loaded
             .into_iter()
-            .map(|(skinned, sections)| Part::new(skinned.mesh, sections, animation.as_ref(), &sequence))
+            .map(|(skinned, sections)| {
+                let own = skinned.animation.as_deref().filter(|path| Some(*path) != animation_path.as_deref());
+                let own = own.and_then(|path| catalog.mesh_animation(path));
+                Part::new(skinned.mesh, sections, own.as_ref().or(animation.as_ref()), &sequence)
+            })
             .collect();
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();

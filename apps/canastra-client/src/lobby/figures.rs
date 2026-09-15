@@ -2,6 +2,7 @@
 
 use canastra_data::GameData;
 use canastra_data::appearance::{Look, Stand, body_of};
+use canastra_data::asset::TextureRef;
 use canastra_data::class::Archetype;
 use canastra_data::id::ItemId;
 use canastra_data::item::{Body, EquipSlot, Item, ItemKind, ItemModel};
@@ -75,22 +76,20 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
     for item in gear.iter().filter_map(|id| data.items.get(id)) {
         let (ItemKind::Armor(armor), ItemModel::Worn(worn)) = (&item.kind, &item.visual.model) else { continue };
         let Some(model) = worn.bodies.get(&body) else { continue };
-        // A mesh wears the texture at its index; a lone mesh wears them all, one per section.
         let worn = model
             .meshes
             .iter()
             .enumerate()
-            .map(|(index, mesh)| {
-                let textures = if model.meshes.len() == 1 {
-                    model.textures.as_slice()
-                } else {
-                    model.textures.get(index..=index).unwrap_or_default()
-                };
-                PartSource {
-                    mesh: mesh.path().to_owned(),
-                    textures: textures.iter().map(|texture| texture.path().to_owned()).collect(),
-                }
+            .map(|(index, mesh)| PartSource {
+                mesh: mesh.path().to_owned(),
+                textures: section_textures(&model.textures, model.meshes.len(), index),
             })
+            // Extra meshes worn with the armor, such as Kamael wings, each with the texture at its index.
+            .chain(model.attachments.iter().enumerate().map(|(index, attachment)| PartSource {
+                mesh: attachment.mesh.path().to_owned(),
+                textures:
+                    model.attachment_textures.get(index).map(|texture| texture.path().to_owned()).into_iter().collect(),
+            }))
             .collect::<Vec<_>>();
         // Full armor wears its meshes over the chest and bares nothing of the legs.
         let full = armor.slot == EquipSlot::FullArmor;
@@ -152,6 +151,21 @@ fn held(item: &Item) -> Vec<HeldSource> {
         .collect()
 }
 
+/// The textures of the sections of mesh `index` of `count`, first section first. A mesh wears the texture at
+/// its index, and the textures past the meshes dress further sections of the mesh whose texture names them:
+/// Kamael armor lists `_t84_u`, `_t84_l`, then `_t84_ut` for the upper mesh's second section. A lone mesh
+/// wears them all.
+fn section_textures(textures: &[TextureRef], count: usize, index: usize) -> Vec<String> {
+    let path = |texture: &TextureRef| texture.path().to_owned();
+    if count == 1 {
+        return textures.iter().map(path).collect();
+    }
+    let Some(own) = textures.get(index) else { return Vec::new() };
+    let own_name = own.path().to_ascii_lowercase();
+    let extras = textures.iter().skip(count).filter(|extra| extra.path().to_ascii_lowercase().starts_with(&own_name));
+    std::iter::once(own).chain(extras).map(path).collect()
+}
+
 fn part(look: &Look) -> PartSource {
     PartSource {
         mesh: look.mesh.path().to_owned(),
@@ -199,5 +213,15 @@ mod tests {
             .map(|part| (part.mesh.as_str(), part.textures.iter().map(String::as_str).collect()))
             .collect();
         assert_eq!(parts, [("M.robe_u", vec!["T.robe_u"]), ("M.robe_l", vec!["T.robe_l"]), ("M.b", vec![])]);
+    }
+
+    #[test]
+    fn extra_textures_dress_the_sections_of_the_mesh_they_extend() {
+        use canastra_data::asset::AssetRef;
+
+        let textures: Vec<TextureRef> =
+            ["K.t84_u", "K.t84_l", "K.t84_ut"].iter().map(|path| AssetRef::parse(path).unwrap()).collect();
+        assert_eq!(section_textures(&textures, 2, 0), ["K.t84_u", "K.t84_ut"]);
+        assert_eq!(section_textures(&textures, 2, 1), ["K.t84_l"]);
     }
 }

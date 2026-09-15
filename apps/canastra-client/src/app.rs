@@ -48,7 +48,7 @@ impl App {
     }
 
     fn start(&self, event_loop: &ActiveEventLoop) -> Result<Running, String> {
-        let screen = Screen::load(self.ui_folder.clone(), LOGIN_SCREEN)?;
+        let mut screen = Screen::load(self.ui_folder.clone(), LOGIN_SCREEN)?;
         let attributes = Window::default_attributes()
             .with_title("Canastra")
             .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
@@ -59,7 +59,15 @@ impl App {
         let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
-        let lobby = Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")));
+        let mut lobby = Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")));
+        // Development shortcut for automated captures: logs in at start without typing.
+        if let Some((account, password)) =
+            std::env::var("CANASTRA_AUTOLOGIN").ok().as_deref().and_then(|value| value.split_once(':'))
+        {
+            screen.set("login.account".into(), account.to_owned());
+            screen.set("login.password".into(), password.to_owned());
+            lobby.act("login", &mut screen);
+        }
         let backdrop = lobby.backdrop(LOGIN_SCREEN);
         let scene = load_scene(&gpu, &self.client_root, backdrop);
         let client_root = self.client_root.clone();

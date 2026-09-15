@@ -157,7 +157,9 @@ impl Scene {
         let particle_indices =
             buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(&quad_indices));
         println!(
-            "scene: {map} from {camera_tag}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
+            "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
+            data.camera.location,
+            data.camera.rotation,
             data.vertices.len(),
             data.indices.len() / 3,
             batches.len(),

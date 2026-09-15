@@ -187,3 +187,13 @@ Each step is checked against the real client: a dump of the files, or a screensh
    *2026-09-16:* frame time. Rewriting every material's uniform each frame took 17 ms in lobby01 and 55 ms in
    Lobby02; only panning and rotating materials are rewritten now. Creation went from 8 to about 40 fps, the
    select hall to 60.
+   *2026-09-16:* the other races, checked against H5 screenshots of each. Their cameras and display stands were
+   right: projecting the stands through each race's warp at the same field of view puts heads and feet where the
+   screenshots have them. What differed was the Kamael, and the fix comes from the data:
+   - Armor rows list extra meshes (`m_Kamael_add`): the wings and a skirt layer, each with the texture at its
+     index. They are skinned meshes with skeletons and animations of their own (`Wing_Mkamael`,
+     `SkirtA_Mkamael`) whose sequences share the body's names, so each part now plays its own animation when it
+     names one, and the body's `<Body>_anim` otherwise.
+   - A Kamael armor lists more textures than meshes (`_t84_u`, `_t84_l`, `_t84_ut`); textures past the meshes
+     dress the further sections of the mesh whose texture their name extends.
+   - `CANASTRA_AUTOLOGIN=account:password` logs in at start, so captures no longer type into the window.
