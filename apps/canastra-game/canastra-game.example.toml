@@ -1,12 +1,4 @@
-# Copy to canastra-game.toml. Fill [characters]
-# Characters an account may have on this server.
-slots = 7
-# A regular expression the whole name must match.
-name_pattern = "[A-Za-z0-9]{2,16}"
-# Words names may not contain, ignoring case.
-forbidden_names = ["admin", "gm"]
-
-[keys] from `canastra-game keygen` and add its public key to the
+# Copy to canastra-game.toml. Fill [keys] from `canastra-game keygen` and add its public key to the
 # login server's [[authorized]] list under the same id.
 
 # This server's id, as the login server authorizes it.
@@ -28,6 +20,14 @@ address = "127.0.0.1:2107"
 public_key = ""
 # The login server's ticket_public key, from its keygen output.
 ticket_public = ""
+
+[characters]
+# Characters an account may have on this server.
+slots = 7
+# A regular expression the whole name must match.
+name_pattern = "[A-Za-z0-9]{2,16}"
+# Words names may not contain, ignoring case.
+forbidden_names = ["admin", "gm"]
 
 [keys]
 noise_private = ""

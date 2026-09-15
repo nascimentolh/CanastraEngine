@@ -1,0 +1,7 @@
+l2-dat-h5 is licensed under the GNU General Public License version 3.
+
+Its table layouts derive from the GPL-licensed L2ClientDat descriptors. The full license text is at
+https://www.gnu.org/licenses/gpl-3.0.txt.
+
+Only migration tooling may depend on this crate. The client, the servers and Studio must not, so that
+they stay under the repository's own license (see ../../LICENSE).

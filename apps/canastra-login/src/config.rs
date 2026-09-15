@@ -148,4 +148,10 @@ mod tests {
         assert_eq!(config.ticket_seconds, 30);
         assert!(config.keys().is_ok());
     }
+
+    #[test]
+    fn the_example_configuration_parses() {
+        let config: Config = toml::from_str(include_str!("../canastra-login.example.toml")).unwrap();
+        assert_eq!(config.limits.attempts, 5);
+    }
 }

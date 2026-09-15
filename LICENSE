@@ -1,0 +1,66 @@
+Canastra Source License 1.0
+
+Copyright (c) 2026 the CanastraEngine contributors.
+
+This is a source-available license. It lets anyone use, study, modify and share CanastraEngine for free,
+lets anyone run game servers with it, including servers that earn money, and lets anyone sell extensions
+built for it. It does not let anyone sell CanastraEngine itself. It is not an open source license as the
+Open Source Initiative defines the term.
+
+1. Definitions
+
+"Software" means the source code, object code, documentation and other material in this repository, and
+any work based on it, including modified versions, forks and ports.
+
+"Extension" means a separate work that works with the Software only through the ways the Software offers
+for extending it, such as plugins, scripts, game data, content packs, user interface themes and skins, and
+that does not contain the Software or a substantial part of it.
+
+"You" means the person or organization exercising rights under this License.
+
+2. What you may do
+
+Subject to the conditions below, each contributor grants You a worldwide, royalty-free, non-exclusive
+license to:
+
+  a. use and run the Software for any purpose, including operating game servers for players;
+  b. study and modify the Software;
+  c. copy and distribute the Software, modified or not, in source or compiled form.
+
+3. Conditions
+
+  a. No sale. You may not sell, rent or license the Software for a fee, charge for copies of it or for
+     access to its source code, or include it in a product or bundle that is sold. Every copy You
+     distribute, modified or not, must be available free of charge.
+  b. Game servers. Operating a game server built with the Software does not count as selling it. You
+     may charge the players of Your server, for example through donations, subscriptions or in-game
+     shops, as long as You do not charge for the Software itself.
+  c. Extensions. You own the Extensions You write and may license and sell them on any terms You choose,
+     as long as they do not include the Software or a substantial part of it.
+  d. Notices. Every copy You distribute must include this License and keep the copyright notices. A
+     modified version must say that it was changed.
+  e. Contributions. Contributions submitted to this repository are licensed under this License, and the
+     maintainers may also distribute them under any later version of this License.
+
+4. Third-party material
+
+Some parts of the repository carry their own license, which applies to those parts instead of this one:
+
+  - crates/l2-dat-h5 holds table layouts derived from GPL-licensed L2ClientDat descriptors and is
+    licensed under the GNU General Public License version 3. A program built with it, such as the
+    `canastra` command line tool, is covered by that license when distributed.
+
+This repository contains no files of the Lineage II game client. Lineage II is a trademark of NCSOFT
+Corporation. CanastraEngine is not affiliated with or endorsed by NCSOFT, and using it with a game client
+is subject to that client's own terms.
+
+5. Termination
+
+If You break the conditions of this License, the rights it grants You end. They are restored if You stop
+the violation within 30 days of learning about it and it is Your first violation.
+
+6. No warranty and no liability
+
+The Software is provided "as is", without warranty of any kind, express or implied, including warranties
+of merchantability, fitness for a particular purpose and non-infringement. In no event shall the authors
+or contributors be liable for any claim, damages or other liability arising from the Software or its use.

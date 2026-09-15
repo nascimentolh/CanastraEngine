@@ -2,9 +2,16 @@
 
 # CanastraEngine
 
-Lineage 2 High Five client in Rust. It reads assets straight from an existing H5 client install;
-the `system` tables (`.dat`) are being migrated to Canastra's own data format. See
+Lineage 2 High Five client and servers in Rust. It reads assets straight from an existing H5 client
+install; the `system` tables (`.dat`) are being migrated to Canastra's own data format. See
 [`docs/decisions.md`](docs/decisions.md) for the agreed architecture and build order.
+
+<p align="center"><img src="docs/screenshots/01-login.png" alt="Login screen" width="720"></p>
+
+- **Try it:** [docs/getting-started.md](docs/getting-started.md) installs Rust and runs the servers, the
+  client and Studio.
+- **See it:** [docs/screenshots](docs/screenshots) shows the screens that work today.
+- **Help build it:** read [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Architecture
 
@@ -90,7 +97,13 @@ workspace `Cargo.toml`: `unsafe` is forbidden, clippy `all` is denied, `pedantic
 - Tables: a `u32` record count, records, then the `FString` `SafePackage`. H5 layouts live in
   `crates/l2-dat-h5`; `RideData` had no public layout and was derived from the file.
 
-## Licensing boundary
+## License
+
+CanastraEngine is under the [Canastra Source License](LICENSE): it may be used, modified and shared for
+free, and game servers built with it may earn money, but the engine itself may not be sold. Extensions such
+as plugins, scripts and content packs belong to their authors and may be sold.
 
 53 of the H5 layouts derive from the GPL-licensed L2ClientDat descriptors. They are isolated in
-`l2-dat-h5`, which only migration tooling may depend on; the client, server and Studio must not.
+`l2-dat-h5`, under GPL-3.0, which only migration tooling may depend on; the client, server and Studio must
+not. Lineage II is a trademark of NCSOFT; this project is not affiliated with NCSOFT and ships no client
+files.

@@ -128,4 +128,10 @@ mod tests {
         let config: Config = toml::from_str(&text).unwrap();
         assert!(config.keypair().is_ok() && config.login_key().is_ok() && config.tickets().is_ok());
     }
+
+    #[test]
+    fn the_example_configuration_parses() {
+        let config: Config = toml::from_str(include_str!("../canastra-game.example.toml")).unwrap();
+        assert_eq!(config.characters.slots, 7);
+    }
 }
