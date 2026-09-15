@@ -141,7 +141,7 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
     right: 0px;
     padding: 3px;
     gap: 1px;
-    background: #15120ef5;
+    background: #15120e;
     border: 1px solid #8c7443;
     border-radius: 2px;
     box-shadow: 0 10px 24px #000000b0;
@@ -172,7 +172,33 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
     border: 1px solid #4f412a;
     border-radius: 2px;
 }
-.info-title { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #e6cf98 }
-.info-line { font-size: 12px; color: #a9987a }
+.info-title { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #e6cf98; text-align: center }
+.info-body { gap: 6px; margin: 4px 0 0 0 }
+/* The six attributes: body above, mind below, each explained by its tooltip. */
+.stats { gap: 5px }
+.stat {
+    flex-grow: 1;
+    padding: 5px 0 4px 0;
+    gap: 1px;
+    align-items: center;
+    background: linear-gradient(#1f1a13e6, #100d0ae6);
+    border: 1px solid #4f412a;
+    border-radius: 2px;
+}
+.stat:hover { border: 1px solid #c9a45c; background: linear-gradient(#2d2517f0, #17130df0) }
+.stat-name { font-family: Cinzel; font-size: 10px; font-weight: 700; color: #b59c68 }
+.stat-value { font-size: 17px; font-weight: 600; color: #f3e6c6 }
+.lore-quote { font-size: 11px; color: #d4bd8a; text-align: center; margin: 4px 0 0 0 }
+.lore { font-size: 11px; color: #a9987a }
+.tooltip {
+    width: 240px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #e8dcc0;
+    background: linear-gradient(#211b13, #0e0b08);
+    border: 1px solid #c9a45c;
+    border-radius: 2px;
+    box-shadow: 0 6px 18px #000000a0;
+}
 
 input, button, .server, .select { transition: 160ms }

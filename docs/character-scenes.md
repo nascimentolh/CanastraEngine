@@ -263,3 +263,8 @@ Each step is checked against the real client: a dump of the files, or a screensh
    server now offer Kamael three colors.
    - Found on the way: the front hair of some Dark Elf and Dwarf male styles names textures the client lacks
      even in color `_t00_`; those styles show no front hair, as before.
+   *2026-09-16:* the class panel at creation. The chosen class's six attributes stand in two rows of tiles, body
+   (STR, DEX, CON) above mind (INT, WIT, MEN), each with a tooltip on what the attribute does in High Five. Under
+   them comes the class's own text from the client's `ClassInfo-e.dat`, its opening line in the class's voice set
+   apart from the path it tells of. The client has no text for the attributes themselves, so those tips are
+   written from the game's rules.

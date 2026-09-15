@@ -1,6 +1,7 @@
 //! The way into the game: logging in, picking a server, and listing, creating and deleting characters. It
 //! turns screen actions into network requests and network replies into screens and bound data.
 
+mod attributes;
 mod creation;
 mod creation_screen;
 mod figures;

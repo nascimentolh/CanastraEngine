@@ -43,8 +43,20 @@
         </row>
         <column class="info">
             <label class="info-title" bind="create.class"/>
-            <label class="info-line" bind="create.body"/>
-            <label class="info-line" bind="create.mind"/>
+            <column class="info-body" show="create.described">
+                <row class="stats">
+                    <column class="stat" tip="create.str.tip"><label class="stat-name" text="STR"/><label class="stat-value" bind="create.str"/></column>
+                    <column class="stat" tip="create.dex.tip"><label class="stat-name" text="DEX"/><label class="stat-value" bind="create.dex"/></column>
+                    <column class="stat" tip="create.con.tip"><label class="stat-name" text="CON"/><label class="stat-value" bind="create.con"/></column>
+                </row>
+                <row class="stats">
+                    <column class="stat" tip="create.int.tip"><label class="stat-name" text="INT"/><label class="stat-value" bind="create.int"/></column>
+                    <column class="stat" tip="create.wit.tip"><label class="stat-name" text="WIT"/><label class="stat-value" bind="create.wit"/></column>
+                    <column class="stat" tip="create.men.tip"><label class="stat-name" text="MEN"/><label class="stat-value" bind="create.men"/></column>
+                </row>
+                <label class="lore-quote" bind="create.quote"/>
+                <label class="lore" bind="create.path"/>
+            </column>
         </column>
         <label class="status" bind="app.status" text=""/>
         <row class="actions centered">

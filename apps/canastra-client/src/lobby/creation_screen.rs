@@ -1,8 +1,10 @@
 //! The creation screen: its combos and steppers bound to the draft, and the actions that change it.
 
 use canastra_data::class::Origin;
+use canastra_data::text::Locale;
 use canastra_protocol::game::{Appearance, Sex};
 
+use super::attributes;
 use super::creation::{Draft, Look, RACES};
 use super::{CHARACTERS_SCREEN, CREATE_SCREEN, Lobby};
 use crate::network::Request;
@@ -97,18 +99,17 @@ impl Lobby {
 
         let start = self.data.as_ref().ok().zip(choice).and_then(|(data, choice)| {
             match &data.classes.get(&choice.id)?.origin {
-                Origin::Starting(start) => Some(start.template.attributes),
+                Origin::Starting(start) => Some(start),
                 Origin::Advanced { .. } => None,
             }
         });
-        let [body, mind] = start.map_or_else(Default::default, |a| {
-            [
-                format!("STR {}   DEX {}   CON {}", a.str, a.dex, a.con),
-                format!("INT {}   WIT {}   MEN {}", a.int, a.wit, a.men),
-            ]
-        });
-        screen.set("create.body".into(), body);
-        screen.set("create.mind".into(), mind);
+        attributes::bind(screen, start.map(|start| start.template.attributes));
+        // The client's text opens with a line in the class's voice, then tells of its path.
+        let description = start.and_then(|start| start.description.get(Locale::En)).unwrap_or_default();
+        let (quote, path) = description.split_once("\n\n").unwrap_or(("", description));
+        screen.set("create.quote".into(), quote.to_owned());
+        screen.set("create.path".into(), path.to_owned());
+        screen.set("create.described".into(), start.is_some().to_string());
     }
 }
 
