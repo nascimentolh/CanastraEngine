@@ -17,6 +17,8 @@ pub(crate) struct System {
     random: Random,
     /// RGB multiplier: the sky's color for sprites that use it, white otherwise.
     tint: [f32; 3],
+    /// The zone the owning emitter stands in.
+    pub(crate) zone: Option<String>,
 }
 
 struct Particle {
@@ -57,7 +59,7 @@ pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]
                 })
                 .collect();
             let tint = if sprite.cloud_color { cloud_tint } else { [1.0; 3] };
-            System { sprite: sprite.clone(), origin, particles, random, tint }
+            System { sprite: sprite.clone(), origin, particles, random, tint, zone: emitter.zone.clone() }
         })
         .collect();
     let distance = |system: &System| {

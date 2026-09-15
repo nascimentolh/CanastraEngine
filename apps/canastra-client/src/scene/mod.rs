@@ -23,7 +23,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use l2_catalog::{Catalog, Material, Stage, UvModifier};
-use ue2_level::{Fog, Placement, Shot};
+use ue2_level::{Placement, Shot, Warp};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::gpu::Gpu;
@@ -52,6 +52,8 @@ struct Batch {
     uniform: wgpu::Buffer,
     group: wgpu::BindGroup,
     indices: Range<u32>,
+    /// For a particle system's sprites, the zone they draw in.
+    zone: Option<String>,
 }
 
 pub(crate) struct Scene {
@@ -85,7 +87,10 @@ pub(crate) struct Scene {
     catalog: Catalog,
     /// The light on pawns in world zones; pawns in zones with states draw at full brightness.
     actor_daylight: Option<daylight::Daylight>,
-    fog: Option<Fog>,
+    /// The scene the camera was last placed by, whose zone gives the fog and the particles drawn, and every scene's
+    /// warp by its tag in lowercase.
+    warp: Warp,
+    warps: BTreeMap<String, Warp>,
     /// Zero of the clock materials and particles run on.
     started: Instant,
     /// Whether every batch's uniform holds its material; after that only animated materials are rewritten.
@@ -148,7 +153,8 @@ impl Scene {
             let end = u32::try_from(quads * 6).map_err(|_| "too many particles")?;
             // ponytail: soft sprites fade over half their mean size; tune against the H5 login if edges show.
             let soft = if sprite.soft { (sprite.start_size[0] + sprite.start_size[1]) / 4.0 } else { 0.0 };
-            sprite_batches.extend(batch(material, draw, sprite.fogged, soft, start..end));
+            let zone = system.zone.clone();
+            sprite_batches.extend(batch(material, draw, sprite.fogged, soft, start..end).map(|b| Batch { zone, ..b }));
         }
 
         let (pawn_vertices, pawn_indices) = cast::pawn_buffers(device, &pawns::layout(&[]));
@@ -188,11 +194,25 @@ impl Scene {
             turning: (0.0, 0.0),
             catalog: data.catalog,
             actor_daylight: data.actor_daylight,
-            fog: data.fog,
+            warp: data.warp,
+            warps: data.warps,
             started: Instant::now(),
             uniforms_written: false,
             depth: None,
         })
+    }
+
+    /// Cuts the camera to the scene tagged `tag`, as loading the map from it would place it; false when the map has
+    /// no such scene or it lands in a zone lit another way, which needs the map loaded from it.
+    pub(crate) fn warp(&mut self, tag: &str) -> bool {
+        match self.warps.get(&tag.to_ascii_lowercase()) {
+            Some(warp) if warp.zone_state == self.warp.zone_state => {
+                (self.eye, self.flight) = (warp.placement, None);
+                self.warp = warp.clone();
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Turns the pawns the player may turn at `speed` rotation units a second from now on; 0 stops them.
@@ -242,7 +262,7 @@ impl Scene {
         self.fly();
         let matrix = self.view(aspect);
         // Without fog, the range starts beyond any distance drawn.
-        let (fog_color, fog_range) = self.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
+        let (fog_color, fog_range) = self.warp.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
             (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, camera::NEAR, 0.0])
         });
         let bytes: Vec<u8> =
@@ -328,7 +348,9 @@ impl Scene {
             for (batches, vertices, indices) in sets {
                 pass.set_vertex_buffer(0, vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-                for batch in *batches {
+                // Other zones are closed off from the camera's; only its own emitters can be seen.
+                // ponytail: zones stand in for BSP portal visibility; add portals when a scene looks into another zone.
+                for batch in batches.iter().filter(|batch| batch.zone.is_none() || batch.zone == self.warp.zone) {
                     let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
                     pass.set_pipeline(pipeline);
                     pass.set_bind_group(1, &batch.group, &[]);
@@ -362,7 +384,7 @@ fn material_batch<'a>(
     let layer = material.layer.as_ref().and_then(|(stage, _, _)| view(&stage.texture));
     let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
     pipeline.prepare(device, draw);
-    Some(Batch { material, draw, fogged: true, soft: 0.0, uniform, group, indices })
+    Some(Batch { material, draw, fogged: true, soft: 0.0, uniform, group, indices, zone: None })
 }
 
 /// A vertex buffer the particles rewrite every frame, four corners a quad, and the index buffer of `quads` quads.

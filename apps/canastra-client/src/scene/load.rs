@@ -6,7 +6,7 @@ use std::path::Path;
 
 use l2_catalog::{Blend, Catalog, Material, Mesh};
 use ue2_assets::{Image, StaticMesh};
-use ue2_level::{Actor, Emitter, Fog, Level, Placement, Shot};
+use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
@@ -29,14 +29,17 @@ pub(crate) struct Batch {
 
 pub(crate) struct SceneData {
     pub(crate) camera: Placement,
-    /// Distance fog of the zone the camera is in.
-    pub(crate) fog: Option<Fog>,
+    /// The scene the camera was placed by, with the fog and zone it lands in.
+    pub(crate) warp: Warp,
+    /// Every scene's warp, by the scene's tag in lowercase.
+    pub(crate) warps: BTreeMap<String, Warp>,
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
     /// Opaque batches first, then blended ones, in drawing order.
     pub(crate) batches: Vec<Batch>,
     /// Decoded textures by path, for every stage of every batch and every emitter sprite.
     pub(crate) textures: HashMap<String, Image>,
+    /// The emitters of the zones the camera can warp to; each draws only while the camera is in its zone.
     pub(crate) emitters: Vec<Emitter>,
     /// RGB multiplier of sprites that take the sky's color.
     pub(crate) cloud_tint: [f32; 3],
@@ -100,14 +103,19 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     });
     let mut data = SceneData {
         camera,
-        fog: warp.fog,
+        warps: level.warps.iter().map(|(tag, warp)| (tag.to_ascii_lowercase(), warp.clone())).collect(),
         vertices: Vec::new(),
         indices: Vec::new(),
         batches: Vec::new(),
         textures: HashMap::new(),
-        // Other zones are closed off from the camera's; only its own emitters can be seen.
-        // ponytail: zones stand in for BSP portal visibility; add portals when a scene looks into another zone.
-        emitters: level.emitters.into_iter().filter(|emitter| emitter.zone == warp.zone).collect(),
+        // Only zones a warp reaches without loading the map again can show their emitters.
+        emitters: level
+            .emitters
+            .into_iter()
+            .filter(|emitter| {
+                level.warps.values().any(|other| other.zone == emitter.zone && other.zone_state == warp.zone_state)
+            })
+            .collect(),
         // The login keeps the hour the client's clock starts at.
         // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
         cloud_tint: environment
@@ -116,6 +124,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         catalog: Catalog::default(),
         actor_daylight,
         shots: level.shots.iter().map(|(tag, shots)| (tag.to_ascii_lowercase(), shots.clone())).collect(),
+        warp,
     };
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())

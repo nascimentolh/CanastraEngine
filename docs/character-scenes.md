@@ -250,3 +250,9 @@ Each step is checked against the real client: a dump of the files, or a screensh
    hangs from the head, and follow it as the character moves.
    - Weapons, rechecked against every race's screenshot, point as in H5 since the root bone plays its keys.
    - Not done: simulated cloth (`s`), whose meshes our catalog does not load yet.
+   *2026-09-16:* switching races no longer loads Lobby02 again. Human, Elf, Dark Elf, Orc and Dwarf stand in one
+   zone and the Kamael in another, all with no zone state, so the level lights the same whichever race it is
+   loaded from. A scene of the map already loaded now only cuts the camera there and takes that zone's fog; the
+   emitters of every zone a warp reaches load once and each draws only while the camera is in its zone. Scenes in
+   zones lit another way, such as the login and the select hall of lobby01, still load the map again. Captures of
+   every race match those taken with a fresh load.

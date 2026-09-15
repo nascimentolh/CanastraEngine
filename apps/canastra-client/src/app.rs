@@ -178,7 +178,11 @@ impl Running {
     fn follow_screen(&mut self) {
         let backdrop = self.lobby.backdrop(self.screen.markup());
         if backdrop != self.backdrop {
-            self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
+            // Another scene of the same map only moves the camera, when it lands in a zone lit the same way.
+            let same_map = backdrop.0 == self.backdrop.0;
+            if !(same_map && self.scene.as_mut().is_some_and(|scene| scene.warp(backdrop.1))) {
+                self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
+            }
             self.backdrop = backdrop;
             self.figures.clear();
             self.view.clear();
