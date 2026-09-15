@@ -1,7 +1,6 @@
 //! The creation screen: its combos and steppers bound to the draft, and the actions that change it.
 
 use canastra_data::class::Origin;
-use canastra_data::npc::Race;
 use canastra_protocol::game::{Appearance, Sex};
 
 use super::creation::{Draft, Look, RACES};
@@ -15,11 +14,15 @@ impl Lobby {
     /// Runs a creation screen action; false when the action is not one.
     pub(super) fn act_creation(&mut self, verb: &str, index: Option<usize>, screen: &mut Screen) -> bool {
         let choices = &self.choices;
+        if matches!(verb, "race" | "class" | "gender") {
+            self.zoomed = false;
+        }
         match (verb, index) {
             ("create", _) => return self.open_creation(screen),
+            ("zoom", _) => self.zoomed = !self.zoomed && self.draft.sex.is_some() && self.draft.class.is_some(),
             ("race", Some(index)) => {
                 if let Some(&(race, _)) = RACES.get(index) {
-                    self.draft.pick_race(choices, race);
+                    self.draft.pick_race(race);
                 }
             }
             ("class", Some(index)) => {
@@ -55,7 +58,6 @@ impl Lobby {
             return true;
         }
         self.draft = Draft::default();
-        self.draft.pick_race(&self.choices, Race::Human);
         screen.set("create.name".into(), String::new());
         self.bind_creation(screen);
         screen.status.clear();
@@ -73,7 +75,8 @@ impl Lobby {
         let draft = &self.draft;
         let choice = draft.choice(&self.choices);
         let race = RACES.iter().find(|(race, _)| *race == draft.race).map_or("", |(_, name)| name);
-        let gender = GENDERS.iter().find(|(sex, _)| *sex == draft.sex).map_or("", |(_, name)| name);
+        let gender =
+            GENDERS.iter().find(|(sex, _)| Some(*sex) == draft.sex).map_or("Choose a gender", |(_, name)| name);
         let Appearance { hair_style, hair_color, face } = draft.appearance;
         for (key, value) in [
             ("create.race", race.to_owned()),
@@ -82,6 +85,7 @@ impl Lobby {
             ("create.hair", letter(hair_style)),
             ("create.color", letter(hair_color)),
             ("create.face", letter(face)),
+            ("create.zoom", if self.zoomed { "−" } else { "+" }.to_owned()),
         ] {
             screen.set(key.into(), value);
         }

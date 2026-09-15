@@ -212,5 +212,7 @@ fn reads_actors_and_the_scene_camera() {
         level.warps.get("Logon_Warp"),
         Some(&Warp { placement: camera, fog: None, zone: None, zone_state: None })
     );
+    let warp = Shot { placement: camera, seconds: 0.0, curved: false, handles: [[0.0; 3]; 2] };
+    assert_eq!(level.shots.get("Logon_Warp").map(Vec::as_slice), Some(&[warp][..]));
     assert_eq!(level.actors[2].tag.as_deref(), Some("Logon_Warp"));
 }

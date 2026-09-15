@@ -7,6 +7,7 @@ mod cast;
 mod curves;
 mod daylight;
 mod deco;
+mod flight;
 mod load;
 mod mips;
 mod particles;
@@ -16,16 +17,17 @@ mod random;
 mod sky;
 mod terrain;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
 
 use l2_catalog::{Catalog, Material, Stage, UvModifier};
-use ue2_level::Fog;
+use ue2_level::{Fog, Placement, Shot};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::gpu::Gpu;
+pub(crate) use flight::Route;
 use load::Vertex;
 use particles::System;
 use pawns::Pawn;
@@ -70,8 +72,13 @@ pub(crate) struct Scene {
     pawn_batches: Vec<Batch>,
     pawn_vertices: wgpu::Buffer,
     pawn_indices: wgpu::Buffer,
+    /// Where the map was loaded from: level, particle and pawn vertices are placed relative to it.
     camera: [f32; 3],
-    rotation: [i32; 3],
+    /// Where the camera stands now.
+    eye: Placement,
+    /// Every scene's camera shots, by the scene's tag in lowercase, and the camera's move along some, if moving.
+    shots: BTreeMap<String, Vec<Shot>>,
+    flight: Option<flight::Flight>,
     catalog: Catalog,
     /// The light on pawns in world zones; pawns in zones with states draw at full brightness.
     actor_daylight: Option<daylight::Daylight>,
@@ -182,7 +189,9 @@ impl Scene {
             pawn_vertices,
             pawn_indices,
             camera: data.camera.location,
-            rotation: data.camera.rotation,
+            eye: data.camera,
+            shots: data.shots,
+            flight: None,
             catalog: data.catalog,
             actor_daylight: data.actor_daylight,
             fog: data.fog,
@@ -197,8 +206,7 @@ impl Scene {
     pub(crate) fn labels(&self, size: [u32; 2]) -> Vec<(&str, [f32; 2])> {
         let [width, height] = size.map(|side| side as f32);
         // Columns of world x, y, z and w; rows clip x, clip y, depth and the distance along the view.
-        let [[xx, xy, _, xw], [yx, yy, _, yw], [zx, zy, _, zw], [wx, wy, _, ww]] =
-            camera::view_projection(self.rotation, FOV, width / height.max(1.0));
+        let [[xx, xy, _, xw], [yx, yy, _, yw], [zx, zy, _, zw], [wx, wy, _, ww]] = self.view(width / height.max(1.0));
         let time = self.started.elapsed().as_secs_f32();
         self.pawns
             .iter()
@@ -218,7 +226,8 @@ impl Scene {
     pub(crate) fn draw(&mut self, gpu: &Gpu, frame: &wgpu::Texture) -> wgpu::CommandBuffer {
         let size = gpu.size();
         let aspect = size[0] as f32 / size[1].max(1) as f32;
-        let matrix = camera::view_projection(self.rotation, FOV, aspect);
+        self.fly();
+        let matrix = self.view(aspect);
         // Without fog, the range starts beyond any distance drawn.
         let (fog_color, fog_range) = self.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
             (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, camera::NEAR, 0.0])
@@ -242,7 +251,7 @@ impl Scene {
         }
         let mut sprites = Vec::new();
         for system in &self.systems {
-            system.quads(time, self.rotation, &mut sprites);
+            system.quads(time, self.eye.rotation, &mut sprites);
         }
         gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
         if !self.pawns.is_empty() {

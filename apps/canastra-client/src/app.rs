@@ -36,6 +36,8 @@ struct Running {
     backdrop: (&'static str, &'static str),
     /// The characters standing in `scene`.
     figures: Vec<Figure>,
+    /// The camera view `scene` shows or is flying to, as the lobby names it.
+    view: String,
     client_root: PathBuf,
     renderer: Renderer,
     lobby: Lobby,
@@ -77,6 +79,7 @@ impl App {
             scene,
             backdrop,
             figures: Vec::new(),
+            view: String::new(),
             client_root,
             renderer,
             lobby,
@@ -151,6 +154,14 @@ impl Running {
             self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
             self.backdrop = backdrop;
             self.figures.clear();
+            self.view.clear();
+        }
+        let view = self.lobby.view(self.screen.markup());
+        if view != self.view {
+            if let Some(scene) = &mut self.scene {
+                scene.travel(&self.lobby.routes(self.screen.markup(), &self.view, &view));
+            }
+            self.view = view;
         }
         let figures = self.lobby.figures(self.screen.markup());
         if figures != self.figures

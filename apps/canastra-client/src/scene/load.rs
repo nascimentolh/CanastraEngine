@@ -1,12 +1,12 @@
 //! Builds a map's static geometry as seen from one of its scene cameras: every static mesh placed in
 //! world space relative to the camera, merged into one buffer range per material.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use l2_catalog::{Blend, Catalog, Material, Mesh};
 use ue2_assets::{Image, StaticMesh};
-use ue2_level::{Actor, Emitter, Fog, Level, Placement};
+use ue2_level::{Actor, Emitter, Fog, Level, Placement, Shot};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
@@ -44,6 +44,8 @@ pub(crate) struct SceneData {
     pub(crate) catalog: Catalog,
     /// The light on characters, in world zones.
     pub(crate) actor_daylight: Option<Daylight>,
+    /// Every scene's camera shots, by the scene's tag in lowercase.
+    pub(crate) shots: BTreeMap<String, Vec<Shot>>,
 }
 
 /// Geometry that draws with one material.
@@ -113,6 +115,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
             .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
         catalog: Catalog::default(),
         actor_daylight,
+        shots: level.shots.iter().map(|(tag, shots)| (tag.to_ascii_lowercase(), shots.clone())).collect(),
     };
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())

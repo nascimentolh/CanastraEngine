@@ -6,6 +6,7 @@
 mod bsp;
 mod emitters;
 mod lighting;
+mod shots;
 mod terrain;
 
 use std::collections::BTreeMap;
@@ -16,6 +17,7 @@ use ue2_package::{ObjectRef, Package};
 pub use bsp::BspPolygon;
 pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
 pub use lighting::TerrainSector;
+pub use shots::Shot;
 pub use terrain::{DecoLayer, Terrain, TerrainLayer};
 
 /// Pitch, yaw and roll in Unreal units, 65536 to a full turn.
@@ -75,6 +77,8 @@ pub struct Level {
     pub actors: Vec<Actor>,
     /// Where each scene that starts with a warp puts the camera, by the scene's tag.
     pub warps: BTreeMap<String, Warp>,
+    /// Every scene's camera shots, by the scene's tag.
+    pub shots: BTreeMap<String, Vec<Shot>>,
     pub terrains: Vec<Terrain>,
     pub emitters: Vec<Emitter>,
     /// The level's BSP polygons that draw.
@@ -116,7 +120,9 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
         level.actors.push(actor);
     }
     for (tag, properties) in scenes {
-        if let (Some(tag), Some(warp)) = (tag, first_warp(package, file, &properties)?) {
+        let Some(tag) = tag else { continue };
+        level.shots.insert(tag.clone(), shots::read(package, file, &properties)?);
+        if let Some(warp) = first_warp(package, file, &properties)? {
             level.warps.insert(tag, warp);
         }
     }

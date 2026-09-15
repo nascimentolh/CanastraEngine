@@ -215,3 +215,14 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - Lobby02 holds a scene per chosen class and gender (`Elf_Knight_Kman`, `Elf_Kman_Kwoman`) and a chest
      close-up (`Elf_Kman_Chest`), each ActionMoveCamera moves along interpolation points; Fermata offers the
      same with a rotate and zoom strip after gender selection. Still to build.
+   *2026-09-16:* the creation camera. Lobby02's scenes hold camera moves as well as warps: each ActionMoveCamera
+   names an interpolation point, a duration and, with `PathStyle` 1, a Bezier path through the handles around
+   its ends (`StartControlPoint` leaving a point, `EndControlPoint` arriving at it). The client reads every
+   scene's shots and flies between the views H5 shows: the race (`Elf`), then a class's pair once the class is
+   picked (`Elf_Knight`, `Elf_Wizard`), then one character once the gender is (`Elf_Knight_Kman`), a cut when
+   the gender changes (`Elf_Kman_Kwoman`) and a close-up on the chest behind a + button (`Elf_Kman_Chest`,
+   played back to zoom out). Views with no scene between them cut to where the view's own scene ends. Race,
+   class and gender now start unchosen, as in H5.
+   - Level, particle and pawn vertices stay relative to where the map was loaded; a moving camera only shifts
+     the view matrix.
+   - Still to do: the camera's pace along each path (even in time here) and rotating the character.

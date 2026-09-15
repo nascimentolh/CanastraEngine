@@ -52,5 +52,8 @@
             <button text="Cancel" action="cancel"/>
         </row>
     </window>
+    <row id="view">
+        <button class="view-button" bind="create.zoom" text="+" action="zoom"/>
+    </row>
     <label id="version" bind="app.version" text="?"/>
 </ui>

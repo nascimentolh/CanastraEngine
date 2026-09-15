@@ -73,6 +73,9 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 /* The lobby's 3D scenes keep their middle for the characters. */
 #characters { position: absolute; right: 24px; top: 24px; width: 360px }
 #create { position: absolute; left: 24px; top: 24px; width: 300px }
+/* The creation camera's close-up toggle, under the chosen character. */
+#view { position: absolute; left: 0px; right: 0px; bottom: 36px; justify-content: center }
+.view-button { flex-grow: 0; width: 40px; height: 40px; padding: 0; font-family: Inter; font-size: 22px; font-weight: 400 }
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 

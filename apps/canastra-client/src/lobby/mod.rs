@@ -5,6 +5,7 @@ mod creation;
 mod creation_screen;
 mod figures;
 mod messages;
+mod views;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
@@ -13,7 +14,7 @@ use canastra_protocol::game::CharacterSummary;
 use canastra_protocol::login::ServerEntry;
 
 use crate::network::{Network, Reply, Request};
-use crate::scene::Figure;
+use crate::scene::{Figure, Route};
 use crate::screen::Screen;
 use creation::{Choice, Draft};
 
@@ -38,6 +39,8 @@ pub(crate) struct Lobby {
     selected: usize,
     choices: Vec<Choice>,
     draft: Draft,
+    /// Whether the creation camera closes in on the chosen character.
+    zoomed: bool,
 }
 
 impl Lobby {
@@ -51,6 +54,7 @@ impl Lobby {
             selected: 0,
             choices,
             draft: Draft::default(),
+            zoomed: false,
         }
     }
 
@@ -135,12 +139,28 @@ impl Lobby {
         }
     }
 
+    /// The camera view of the scene behind `markup`, as `views` names them; empty for a scene's own camera.
+    pub(crate) fn view(&self, markup: &str) -> String {
+        match markup {
+            CREATE_SCREEN => {
+                let archetype = self.draft.choice(&self.choices).map(|choice| choice.archetype);
+                views::view(archetype, self.draft.sex, self.zoomed)
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// The camera routes from view `from` to view `to` of the scene behind `markup`.
+    pub(crate) fn routes(&self, markup: &str, from: &str, to: &str) -> Vec<Route> {
+        views::routes(self.backdrop(markup).1, from, to)
+    }
+
     /// The characters to stand in the scene behind `markup`.
     pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
         match (&self.data, markup) {
             (Ok(data), CHARACTERS_SCREEN) => figures::select(data, &self.characters, self.selected),
             (Ok(data), CREATE_SCREEN) => {
-                let chosen = self.draft.choice(&self.choices).map(|choice| (choice.archetype, self.draft.sex));
+                let chosen = self.draft.choice(&self.choices).map(|choice| choice.archetype).zip(self.draft.sex);
                 figures::creation(data, self.draft.race, chosen, self.draft.appearance)
             }
             _ => Vec::new(),
