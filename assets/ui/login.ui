@@ -1,16 +1,18 @@
 <ui>
     <window id="login">
-        <column class="field">
-            <label class="caption" text="ACCOUNT"/>
-            <input bind="login.account" placeholder="Your account name"/>
-        </column>
-        <column class="field">
-            <label class="caption" text="PASSWORD"/>
-            <input bind="login.password" type="password" placeholder="Your password" action="login"/>
-        </column>
+        <row class="field">
+            <label class="caption" text="Account"/>
+            <input bind="login.account" placeholder="Account name"/>
+        </row>
+        <row class="field">
+            <label class="caption" text="Password"/>
+            <input bind="login.password" type="password" placeholder="Password" action="login"/>
+        </row>
         <label class="status" bind="app.status" text=""/>
-        <button class="primary" text="LOG IN" action="login"/>
-        <button class="quiet" text="Exit game" action="exit"/>
+        <row class="actions">
+            <button class="primary" text="Log In" action="login"/>
+            <button text="Exit" action="exit"/>
+        </row>
     </window>
     <label id="version" bind="app.version" text="?"/>
 </ui>
