@@ -1,5 +1,5 @@
 //! Assets of an installed client found by path (`Package.Name` or `Package.Group.Name`) and read in
-//! place: textures, static meshes and the texture a material draws with. Packages load on first use
+//! place: textures, static and skeletal meshes, animations and the texture a material draws with. Packages load on first use
 //! and stay loaded.
 
 mod material;
@@ -8,13 +8,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ue2_assets::{Image, StaticMesh};
+use ue2_assets::{Image, MeshAnimation, SkeletalMesh, StaticMesh};
 use ue2_package::{ObjectRef, Package};
 
 pub use material::{Blend, Combine, IDENTITY, Material, Stage, UvMatrix, UvModifier};
 
 /// Folders of the client that hold asset packages, with the extension used there.
-const FOLDERS: [(&str, &str); 3] = [("SysTextures", "utx"), ("Textures", "utx"), ("StaticMeshes", "usx")];
+const FOLDERS: [(&str, &str); 4] =
+    [("SysTextures", "utx"), ("Textures", "utx"), ("StaticMeshes", "usx"), ("Animations", "ukx")];
 
 /// Deeper material chains than this are treated as cycles.
 const MAX_MATERIAL_DEPTH: usize = 8;
@@ -92,6 +93,22 @@ impl Catalog {
         let materials =
             mesh.materials.iter().map(|&material| full_path(&package_name, &loaded.package, material)).collect();
         Some(Mesh { mesh, materials })
+    }
+
+    /// The skeletal mesh at `path`, with the path of its default animation.
+    pub fn skeletal_mesh(&mut self, path: &str) -> Option<(SkeletalMesh, Option<String>)> {
+        let package_name = package_name(path)?;
+        let (loaded, index) = self.object(path, "SkeletalMesh")?;
+        let export = loaded.package.exports().get(index)?;
+        let mesh = ue2_assets::read_skeletal_mesh(&loaded.package, &loaded.file, export).ok()?;
+        let animation = full_path(&package_name, &loaded.package, mesh.animation);
+        Some((mesh, animation))
+    }
+
+    pub fn mesh_animation(&mut self, path: &str) -> Option<MeshAnimation> {
+        let (loaded, index) = self.object(path, "MeshAnimation")?;
+        let export = loaded.package.exports().get(index)?;
+        ue2_assets::read_mesh_animation(&loaded.package, &loaded.file, export).ok()
     }
 
     /// The loaded package and export index of `path`, when its class is `class` (any when empty).

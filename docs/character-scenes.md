@@ -103,6 +103,16 @@ Each step is checked against the real client: a dump of the files, or a screensh
    after its warp.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
+   *2026-09-15:* done, on the CPU. A Human Fighter's default body (`Chargrp` record 0: face, both hair
+   meshes, gloves, upper, lower and boots, each with its texture) stands in the first `Logongrp` slot and
+   loops `Wait_Hand_MFighter`. Findings:
+   - Parts are placed without `MeshOrigin`: scaled, turned by `RotOrigin`, then by the pawn's yaw at the
+     slot. Subtracting or adding the origin sinks or lifts the body by its pelvis height.
+   - Unreal Engine 2 stores every bone rotation conjugated except the root's. Of the four conventions
+     captured, only that one gives the idle pose with the arms at the sides, as H5's characters stand.
+   - Hair meshes name no animation, yet share the body's skeleton; every part plays the body's sequence,
+     or the hair stays in the bind pose over a moving head.
+   - The lobby now loads the hall from `Char_Select_Warp` when the character list shows.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
    meshes a body uses by race, sex and archetype, and the scene's pawn slots. Equipment models come from
    items, which already carry them.

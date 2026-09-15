@@ -9,6 +9,7 @@ mod deco;
 mod load;
 mod mips;
 mod particles;
+mod pawns;
 mod pipeline;
 mod random;
 mod sky;
@@ -26,6 +27,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use crate::gpu::Gpu;
 use load::Vertex;
 use particles::System;
+use pawns::Pawn;
 use pipeline::{Draw, Pipeline, depth_texture, material_uniform};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
@@ -61,6 +63,12 @@ pub(crate) struct Scene {
     sprite_batches: Vec<Batch>,
     particle_vertices: wgpu::Buffer,
     particle_indices: wgpu::Buffer,
+    pawns: Vec<Pawn>,
+    /// One batch per pawn part, into the pawn buffers the parts fill in order.
+    pawn_batches: Vec<Batch>,
+    pawn_vertices: wgpu::Buffer,
+    pawn_indices: wgpu::Buffer,
+    camera: [f32; 3],
     rotation: [i32; 3],
     fog: Option<Fog>,
     /// Zero of the clock materials and particles run on.
@@ -125,6 +133,14 @@ impl Scene {
             sprite_batches.extend(batch(material, draw, sprite.fogged, soft, start..end));
         }
 
+        let pawn_layout = pawns::layout(&data.pawns);
+        let (pawn_vertices, pawn_indices) = pawn_buffers(device, &pawn_layout);
+        let pawn_batches: Vec<Batch> = pawn_layout
+            .ranges
+            .into_iter()
+            .filter_map(|(material, range)| batch(material.clone(), Draw::surface(material.blend), true, 0.0, range))
+            .collect();
+
         let vertices = buffer(device, "scene vertices", wgpu::BufferUsages::VERTEX, &vertex_bytes(&data.vertices));
         let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
         let particle_vertices = device.create_buffer(&wgpu::BufferDescriptor {
@@ -157,6 +173,11 @@ impl Scene {
             sprite_batches,
             particle_vertices,
             particle_indices,
+            pawns: data.pawns,
+            pawn_batches,
+            pawn_vertices,
+            pawn_indices,
+            camera: data.camera.location,
             rotation: data.camera.rotation,
             fog: data.fog,
             started: Instant::now(),
@@ -177,7 +198,7 @@ impl Scene {
             matrix.iter().chain([&fog_color, &fog_range]).flatten().flat_map(|value| value.to_le_bytes()).collect();
         gpu.queue.write_buffer(&self.globals, 0, &bytes);
         let time = self.started.elapsed().as_secs_f32();
-        for batch in self.batches.iter().chain(&self.sprite_batches) {
+        for batch in self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches) {
             gpu.queue.write_buffer(
                 &batch.uniform,
                 0,
@@ -192,6 +213,13 @@ impl Scene {
             system.quads(time, self.rotation, &mut sprites);
         }
         gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
+        if !self.pawns.is_empty() {
+            let mut skinned = Vec::new();
+            for pawn in &self.pawns {
+                pawn.write(time, self.camera, &mut skinned);
+            }
+            gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
+        }
         if self.depth.as_ref().is_none_or(|(_, depth_size, _)| *depth_size != size) {
             let view = depth_texture(&gpu.device, size);
             let group = self.pipeline.globals_group(&gpu.device, &self.globals, &view);
@@ -207,11 +235,14 @@ impl Scene {
         // Level geometry first, writing depth; then particles over it in a pass that only reads depth, so
         // soft sprites can sample it.
         // ponytail: particle systems draw in level order, not sorted by distance; sort them if overlaps show.
-        let passes = [
-            (&self.batches, &self.vertices, &self.indices, &self.globals_group, true),
-            (&self.sprite_batches, &self.particle_vertices, &self.particle_indices, particle_globals, false),
+        // Characters draw with the level geometry, from their own buffers.
+        let level = [
+            (&self.batches, &self.vertices, &self.indices),
+            (&self.pawn_batches, &self.pawn_vertices, &self.pawn_indices),
         ];
-        for (batches, vertices, indices, globals, first) in passes {
+        let sprites = [(&self.sprite_batches, &self.particle_vertices, &self.particle_indices)];
+        let passes: [(&[_], _, bool); 2] = [(&level, &self.globals_group, true), (&sprites, particle_globals, false)];
+        for (sets, globals, first) in passes {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -234,17 +265,31 @@ impl Scene {
                 multiview_mask: None,
             });
             pass.set_bind_group(0, globals, &[]);
-            pass.set_vertex_buffer(0, vertices.slice(..));
-            pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-            for batch in batches {
-                let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(1, &batch.group, &[]);
-                pass.draw_indexed(batch.indices.clone(), 0, 0..1);
+            for (batches, vertices, indices) in sets {
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                for batch in *batches {
+                    let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(1, &batch.group, &[]);
+                    pass.draw_indexed(batch.indices.clone(), 0, 0..1);
+                }
             }
         }
         encoder.finish()
     }
+}
+
+/// A vertex buffer the pawns rewrite every frame and their fixed index buffer; never empty.
+fn pawn_buffers(device: &wgpu::Device, layout: &pawns::Layout) -> (wgpu::Buffer, wgpu::Buffer) {
+    let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("pawn vertices"),
+        size: (layout.vertices.max(1) * size_of::<Vertex>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let indices = if layout.indices.is_empty() { vec![0; 3] } else { layout.indices.clone() };
+    (vertices, buffer(device, "pawn indices", wgpu::BufferUsages::INDEX, &index_bytes(&indices)))
 }
 
 fn buffer(device: &wgpu::Device, label: &str, usage: wgpu::BufferUsages, contents: &[u8]) -> wgpu::Buffer {

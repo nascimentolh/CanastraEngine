@@ -10,6 +10,7 @@ use ue2_level::{Actor, Emitter, Fog, Level, Placement};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
+use super::pawns::{PartSource, Pawn};
 use super::{bsp, camera, deco, sky, terrain};
 
 /// The hour world zones are shown at. H5's lobby clock runs from 22:00 at six times real time; this is the hour
@@ -40,6 +41,8 @@ pub(crate) struct SceneData {
     pub(crate) emitters: Vec<Emitter>,
     /// RGB multiplier of sprites that take the sky's color.
     pub(crate) cloud_tint: [f32; 3],
+    /// Characters standing in the scene.
+    pub(crate) pawns: Vec<Pawn>,
 }
 
 /// Geometry that draws with one material.
@@ -68,6 +71,26 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, daylight.as_ref());
     let bsp_daylight = daylight_for(["BSPAmbient", "HSVBSPLight"]);
     let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, bsp_daylight.as_ref());
+    // ponytail: one Human Fighter stands in the first slot until the account's characters are placed from their
+    // class and appearance.
+    let pawns = if camera_tag == "Char_Select_Warp" {
+        let part = |mesh: &str, texture: &str| PartSource {
+            mesh: format!("Fighter.MFighter_{mesh}"),
+            texture: format!("MFighter.MFighter_{texture}"),
+        };
+        let parts = [
+            part("m000_f", "m000_t00_f"),
+            part("m000_m00_ah", "m000_t00_m00_ah"),
+            part("m000_m00_bh", "m000_t00_m00_bh"),
+            part("m001_g", "m001_t02_g"),
+            part("m001_u", "m001_t02_u"),
+            part("m001_l", "m001_t02_l"),
+            part("m001_b", "m001_t02_b"),
+        ];
+        vec![Pawn::load(&mut catalog, &parts, [150_995.0, -246_683.0, -8117.0], [0, -26408, 0], "Wait_Hand_MFighter")]
+    } else {
+        Vec::new()
+    };
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
     let sky = match &environment {
@@ -106,7 +129,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         cloud_tint: environment
             .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
             .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
+        pawns,
     };
+    for (material, _) in super::pawns::layout(&data.pawns).ranges {
+        decode(&mut data.textures, &mut catalog, &material.base.texture);
+    }
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())
     {

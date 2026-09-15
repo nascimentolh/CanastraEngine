@@ -14,9 +14,22 @@ use crate::screen::Screen;
 use creation::{Choice, Draft};
 
 pub(crate) const LOGIN_SCREEN: &str = "login.ui";
+/// The map behind the lobby and the scene that places the camera for each screen.
+const MAP: &str = "lobby01.unr";
+const LOGIN_CAMERA: &str = "Logon_Warp";
+const SELECT_CAMERA: &str = "Char_Select_Warp";
 const SERVERS_SCREEN: &str = "servers.ui";
 const CHARACTERS_SCREEN: &str = "characters.ui";
 const CREATE_SCREEN: &str = "create.ui";
+
+/// The map and camera scene shown behind `markup`.
+// ponytail: creation stands in the select hall until its race scenes in Lobby02 are wired.
+pub(crate) fn backdrop(markup: &str) -> (&'static str, &'static str) {
+    match markup {
+        CHARACTERS_SCREEN | CREATE_SCREEN => (MAP, SELECT_CAMERA),
+        _ => (MAP, LOGIN_CAMERA),
+    }
+}
 
 pub(crate) struct Lobby {
     /// The network thread, or why it could not start.

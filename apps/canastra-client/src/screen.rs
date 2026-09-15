@@ -75,6 +75,11 @@ impl Screen {
         }
     }
 
+    /// File name of the markup shown.
+    pub(crate) fn markup(&self) -> &str {
+        &self.markup
+    }
+
     /// The value typed or set under `key`.
     pub(crate) fn value(&self, key: &str) -> &str {
         self.values.get(key).map_or("", String::as_str)

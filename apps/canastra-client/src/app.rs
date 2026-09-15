@@ -11,15 +11,11 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
-use crate::lobby::{LOGIN_SCREEN, Lobby};
+use crate::lobby::{self, LOGIN_SCREEN, Lobby};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use crate::screen::Screen;
-
-/// The map behind the login screen and the scene that places its camera.
-const LOGIN_MAP: &str = "lobby01.unr";
-const LOGIN_CAMERA: &str = "Logon_Warp";
 
 pub(crate) struct App {
     client_root: PathBuf,
@@ -35,6 +31,9 @@ struct Running {
     modifiers: ModifiersState,
     /// `None` when the client's map could not be loaded; the UI then draws over black.
     scene: Option<Scene>,
+    /// The map and camera scene `scene` was loaded for.
+    backdrop: (&'static str, &'static str),
+    client_root: PathBuf,
     renderer: Renderer,
     lobby: Lobby,
     gpu: Gpu,
@@ -56,14 +55,12 @@ impl App {
         // ponytail: fonts load once at start; F5 reloads markup and CSS but not new font files.
         let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
-        let started = std::time::Instant::now();
-        let scene = Scene::load(&gpu, &self.client_root, LOGIN_MAP, LOGIN_CAMERA)
-            .inspect(|_| println!("scene loaded in {:?}", started.elapsed()))
-            .inspect_err(|error| eprintln!("scene: {error}"))
-            .ok();
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
         let lobby = Lobby::new(network, game_data());
-        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, renderer, lobby, gpu })
+        let backdrop = lobby::backdrop(LOGIN_SCREEN);
+        let scene = load_scene(&gpu, &self.client_root, backdrop);
+        let client_root = self.client_root.clone();
+        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, backdrop, client_root, renderer, lobby, gpu })
     }
 }
 
@@ -113,7 +110,18 @@ impl Running {
         } else if !self.lobby.act(action, &mut self.screen) {
             eprintln!("unknown action `{action}`");
         }
+        self.follow_screen();
         self.gpu.window.request_redraw();
+    }
+
+    /// Loads the scene the shown screen stands in, when it changed.
+    // ponytail: loads block the window for a moment; load in the background if it shows.
+    fn follow_screen(&mut self) {
+        let backdrop = lobby::backdrop(self.screen.markup());
+        if backdrop != self.backdrop {
+            self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
+            self.backdrop = backdrop;
+        }
     }
 }
 
@@ -160,6 +168,7 @@ impl ApplicationHandler<Reply> for App {
     fn user_event(&mut self, _: &ActiveEventLoop, reply: Reply) {
         if let Some(running) = &mut self.running {
             running.lobby.reply(reply, &mut running.screen);
+            running.follow_screen();
             running.gpu.window.request_redraw();
         }
     }
@@ -175,6 +184,15 @@ impl ApplicationHandler<Reply> for App {
         let blink = self.running.as_ref().and_then(|running| running.screen.next_blink());
         event_loop.set_control_flow(blink.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
+}
+
+/// The scene of `map` framed by `camera`, or `None` with the reason logged.
+fn load_scene(gpu: &Gpu, client_root: &std::path::Path, (map, camera): (&str, &str)) -> Option<Scene> {
+    let started = std::time::Instant::now();
+    Scene::load(gpu, client_root, map, camera)
+        .inspect(|_| println!("scene loaded in {:?}", started.elapsed()))
+        .inspect_err(|error| eprintln!("scene: {error}"))
+        .ok()
 }
 
 /// The game data at `CANASTRA_GAME_DATA`, by default `gamedata.cana` in the working folder.
