@@ -1,0 +1,12 @@
+[package]
+name = "l2-env"
+description = "Time-of-day environment read from a Lineage II client's Env.int and TimeEnv files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+l2-crypto.workspace = true
+
+[lints]
+workspace = true

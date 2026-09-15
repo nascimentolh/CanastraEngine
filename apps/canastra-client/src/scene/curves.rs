@@ -90,6 +90,7 @@ mod tests {
             draw_style: DrawStyle::Translucent,
             z_test: true,
             fogged: true,
+            cloud_color: false,
             projection_normal: None,
         };
         assert_eq!(fade(&sprite, 1.0, 10.0), 0.5);

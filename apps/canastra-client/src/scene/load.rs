@@ -30,6 +30,8 @@ pub(crate) struct SceneData {
     /// Decoded textures by path, for every stage of every batch and every emitter sprite.
     pub(crate) textures: HashMap<String, Image>,
     pub(crate) emitters: Vec<Emitter>,
+    /// RGB multiplier of sprites that take the sky's color.
+    pub(crate) cloud_tint: [f32; 3],
 }
 
 /// Geometry that draws with one material.
@@ -115,6 +117,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         // Other zones are closed off from the camera's; only its own emitters can be seen.
         // ponytail: zones stand in for BSP portal visibility; add portals when a scene looks into another zone.
         emitters: level.emitters.into_iter().filter(|emitter| emitter.zone == warp.zone).collect(),
+        // The login keeps the hour the client's clock starts at.
+        // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
+        cloud_tint: l2_env::Environment::read(client_root)
+            .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
+            .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
     };
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())

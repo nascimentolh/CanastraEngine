@@ -10,6 +10,7 @@ canastra-ui.workspace = true
 glyphon.workspace = true
 l2-catalog.workspace = true
 l2-crypto.workspace = true
+l2-env.workspace = true
 pollster.workspace = true
 ue2-assets.workspace = true
 ue2-level.workspace = true

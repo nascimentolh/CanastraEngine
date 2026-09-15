@@ -15,6 +15,8 @@ pub(crate) struct System {
     origin: [f32; 3],
     particles: Vec<Particle>,
     random: Random,
+    /// RGB multiplier: the sky's color for sprites that use it, white otherwise.
+    tint: [f32; 3],
 }
 
 struct Particle {
@@ -32,8 +34,8 @@ struct Particle {
 }
 
 /// One system per sprite emitter, started as if it had been running a whole lifetime, as Unreal's
-/// warmup does.
-pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3]) -> Vec<System> {
+/// warmup does. Sprites that use the cloud color take `cloud_tint`.
+pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]) -> Vec<System> {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
     emitters
         .iter()
@@ -51,7 +53,8 @@ pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3]) -> Vec<System> {
                     spawn(sprite, &mut random, born, lifetime)
                 })
                 .collect();
-            System { sprite: sprite.clone(), origin, particles, random }
+            let tint = if sprite.cloud_color { cloud_tint } else { [1.0; 3] };
+            System { sprite: sprite.clone(), origin, particles, random, tint }
         })
         .collect()
 }
@@ -80,8 +83,8 @@ impl System {
             let center = self.origin_plus(particle, age);
             let size = particle.size * size_at(&self.sprite, life);
             let mut color = color_at(&self.sprite, life);
-            for (channel, multiplier) in color.iter_mut().zip(particle.color) {
-                *channel *= multiplier;
+            for ((channel, multiplier), tint) in color.iter_mut().zip(particle.color).zip(self.tint) {
+                *channel *= multiplier * tint;
             }
             color[3] *= self.sprite.opacity * fade(&self.sprite, age, particle.lifetime);
             let (sin, cos) = ((particle.spin[0] + particle.spin[1] * age) * std::f32::consts::TAU).sin_cos();

@@ -53,6 +53,8 @@ pub struct SpriteEmitter {
     pub draw_style: DrawStyle,
     pub z_test: bool,
     pub fogged: bool,
+    /// Tinted by the time of day's sky color.
+    pub cloud_color: bool,
     /// The plane sprites lie in instead of facing the camera.
     pub projection_normal: Option<[f32; 3]>,
 }
@@ -150,6 +152,7 @@ fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
             .unwrap_or(DrawStyle::Translucent),
         z_test: flag("ZTest", true),
         fogged: !flag("DisableFogging", false),
+        cloud_color: flag("UseCloudColor", false),
         // PTDU_Normal and the modes built on it lay sprites in ProjectionNormal's plane.
         projection_normal: matches!(get("UseDirectionAs").and_then(Property::byte), Some(4..=6))
             .then(|| get("ProjectionNormal").and_then(Property::vector).unwrap_or([0.0, 0.0, 1.0])),

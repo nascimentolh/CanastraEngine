@@ -26,6 +26,7 @@ crates/      canastra-migrate    legacy client tables + server XML -> game data,
              ue2-package         UE2 package tables: names, imports, exports, object paths
              ue2-core            bounds-checked binary reader (compact index, FString, UTF-16)
              l2-crypto           Lineage2Ver111 / 121 (XOR) and 413 (RSA + zlib)
+             l2-env              Env.int and TimeEnv time-of-day color ramps
 ```
 
 ## Commands

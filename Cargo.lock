@@ -587,6 +587,7 @@ dependencies = [
  "glyphon",
  "l2-catalog",
  "l2-crypto",
+ "l2-env",
  "pollster 0.4.0",
  "ue2-assets",
  "ue2-level",
@@ -1841,6 +1842,13 @@ name = "l2-dat-h5"
 version = "0.1.0"
 dependencies = [
  "l2-dat",
+]
+
+[[package]]
+name = "l2-env"
+version = "0.1.0"
+dependencies = [
+ "l2-crypto",
 ]
 
 [[package]]

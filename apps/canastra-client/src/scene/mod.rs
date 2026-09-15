@@ -98,7 +98,7 @@ impl Scene {
             .filter_map(|level| batch(level.material.clone(), Draw::surface(level.material.blend), true, level.indices))
             .collect();
 
-        let mut systems = particles::start(&data.emitters, data.camera.location);
+        let mut systems = particles::start(&data.emitters, data.camera.location, data.cloud_tint);
         systems.retain(|system| system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path)));
         let mut quads = 0;
         let mut sprite_batches = Vec::new();

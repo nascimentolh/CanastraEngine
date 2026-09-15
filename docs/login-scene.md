@@ -91,6 +91,13 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
   found by shape after variable L2 data). The login camera's zone is in state `CurZoneState = 2`,
   whose maps are the darkest, matching the dark hills of the H5 login. `bUnlit` actors (sky, moon)
   stay at full brightness; movers have no stored lighting and draw unlit for now.
+- **Cloud color, drawn now:** `l2-env` reads `system/Env.int` (the clock starts at 22h) and the
+  hourly ramps of `TimeEnv0.int`. Sprites with `UseCloudColor` (the haze, clouds and screen wash of
+  lobby01) are tinted by `SkyBoxColor` at the start hour, (98, 107, 159). Measured against the H5
+  screenshot, this turned the brown haze over the tree and hills into its blue-gray: hills
+  (31, 29, 32) against H5's (32, 30, 36), trunk (30, 29, 36) against (43, 47, 54). `CloudColor1` and
+  `HazeringColor` both left it brown. The moon and the bright horizon stay darker than H5, which the
+  moon shader's missing self-illumination explains, not the tint.
 - **Time of day, next:** `system/Env.int` starts the clock at 22h with 8 terrain shadow maps and 8
   actor light sets per day, and `TimeEnv0..3.int` give hourly ambient colors and HSV lights for
   terrain, static meshes, actors and BSP, plus sky, cloud and haze colors. Fermata reads the same
