@@ -1,8 +1,5 @@
 <ui>
     <window id="login">
-        <label class="title" text="CANASTRA"/>
-        <label class="subtitle" text="LINEAGE II · HIGH FIVE"/>
-        <row class="divider"/>
         <column class="field">
             <label class="caption" text="ACCOUNT"/>
             <input bind="login.account" placeholder="Your account name"/>
