@@ -9,7 +9,7 @@ use ue2_assets::Image;
 use ue2_level::{Emitter, Fog, Level, Placement};
 use ue2_package::Package;
 
-use super::{camera, terrain};
+use super::{camera, deco, terrain};
 
 /// Position relative to the camera, UV, then an RGBA multiplier (white for level geometry).
 pub(crate) type Vertex = [f32; 9];
@@ -49,7 +49,8 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let mut materials: HashMap<String, Option<Material>> = HashMap::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
 
-    for actor in &level.actors {
+    let decorations = deco::actors(&level.terrains, &mut catalog, camera.location, warp.zone_state);
+    for actor in level.actors.iter().chain(&decorations) {
         let Some(path) = &actor.static_mesh else { continue };
         let mesh = meshes.entry(path.clone()).or_insert_with(|| catalog.static_mesh(path));
         let Some(Mesh { mesh, materials: slots }) = mesh.as_ref() else { continue };

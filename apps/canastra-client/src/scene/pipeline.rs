@@ -227,7 +227,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
         Blend::Darken => 3.0,
     } + if fogged { 0.0 } else { 10.0 };
     let cutoff = match material.blend {
-        Blend::Masked => 0.5,
+        Blend::Masked => material.alpha_ref.map_or(0.5, |alpha_ref| f32::from(alpha_ref) / 255.0),
         // Fully transparent texels would still write depth over what lies behind them.
         Blend::Alpha => 0.02,
         _ => 0.0,

@@ -168,14 +168,14 @@ fn curve<'a>(package: &'a Package, points: Option<&Property<'a>>, value: &str) -
 }
 
 /// A `Range` struct: `Min` and `Max`.
-fn range_of(package: &Package, range: &Property<'_>) -> Range {
+pub(crate) fn range_of(package: &Package, range: &Property<'_>) -> Range {
     let fields = range.fields(package).unwrap_or_default();
     let value = |name| find(&fields, name).and_then(Property::float).unwrap_or(0.0);
     [value("Min"), value("Max")]
 }
 
 /// A `RangeVector` struct: a `Range` on each of `X`, `Y` and `Z`.
-fn range_vector(package: &Package, ranges: &Property<'_>) -> [Range; 3] {
+pub(crate) fn range_vector(package: &Package, ranges: &Property<'_>) -> [Range; 3] {
     let fields = ranges.fields(package).unwrap_or_default();
     ["X", "Y", "Z"].map(|axis| find(&fields, axis).map_or([0.0; 2], |range| range_of(package, range)))
 }

@@ -2,11 +2,12 @@
 //! box around the emitter, moving with velocity and acceleration, sized and colored by curves over
 //! their life, fading in and out, spinning, and respawning when they die.
 
-use ue2_level::{DrawStyle, Emitter, Range, SpriteEmitter};
+use ue2_level::{DrawStyle, Emitter, SpriteEmitter};
 
 use super::camera;
 use super::curves::{color_at, fade, size_at};
 use super::load::Vertex;
+use super::random::Random;
 
 pub(crate) struct System {
     pub(crate) sprite: SpriteEmitter,
@@ -179,23 +180,6 @@ fn mix(first: [f32; 3], second: [f32; 3], a: f32, b: f32) -> [f32; 3] {
         *out = *out * a + second * b;
     }
     out
-}
-
-/// A small deterministic generator, so a scene looks the same on every start.
-struct Random(u64);
-
-impl Random {
-    /// Uniform in [0, 1).
-    fn unit(&mut self) -> f32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 >> 40) as f32 / (1u64 << 24) as f32
-    }
-
-    fn range(&mut self, [min, max]: Range) -> f32 {
-        min + (max - min) * self.unit()
-    }
 }
 
 #[cfg(test)]

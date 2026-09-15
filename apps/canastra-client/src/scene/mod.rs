@@ -3,10 +3,12 @@
 
 mod camera;
 mod curves;
+mod deco;
 mod load;
 mod mips;
 mod particles;
 mod pipeline;
+mod random;
 mod terrain;
 
 use std::collections::HashMap;
@@ -107,6 +109,7 @@ impl Scene {
                 layer: None,
                 blend: particles::blend(sprite.draw_style),
                 color: [255; 4],
+                alpha_ref: None,
             };
             let draw = Draw { blend: material.blend, depth_test: sprite.z_test, depth_write: false };
             let start = u32::try_from(quads * 6).map_err(|_| "too many particles")?;

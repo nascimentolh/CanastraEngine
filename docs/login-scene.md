@@ -57,7 +57,14 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    opaque with the others blended by their alpha maps' red channel. The tree's base lands within 50
    units of the ground this computes. Textures now upload with box-filtered mips, which removed the
    ground's shimmer. The hills and the tree on its hill match the H5 screenshot; zone fog is still
-   missing, and edge turns and terrain lighting are not modeled.
+   missing, and edge turns and terrain lighting are not modeled. **Decorations:** the terrain's two
+   DecoLayers scatter `L2_Lobby.L2lobb1grass` and `L2lobb2grass` over the quads their density maps
+   paint. Each quad gets `MaxPerQuad` chances, each taken with the map's weight times
+   `DensityMultiplier` read as a percentage, which gives the sparse tufts along the H5 horizon (the
+   plain factor saturates into a wall of bushes). Placements take a random point in the quad, the
+   interpolated height, a random yaw and scale, and the terrain's intensity; they draw as static
+   meshes up to the far `FadeoutRadius`. The grass shaders cut out by `AlphaTest` and `AlphaRef`,
+   which materials now honor.
 5. Emitters: sprite particles. **Done, after zone fog:** the camera's zone fog (#a8afbf from 200 to
    50000 units) fades surfaces by view distance, towards its color for opaque and alpha surfaces and
    towards the neutral value for the others. `ue2-level` reads each Emitter's SpriteEmitters (counts,

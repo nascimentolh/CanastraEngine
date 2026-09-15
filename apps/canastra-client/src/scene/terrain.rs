@@ -6,7 +6,7 @@ use ue2_level::Terrain;
 use super::load::{Group, Vertex};
 
 /// Heights are stored around this middle value.
-const ZERO_HEIGHT: f32 = 32768.0;
+pub(super) const ZERO_HEIGHT: f32 = 32768.0;
 
 /// The terrains' layers, bottom first, each with the geometry it paints.
 pub(super) fn groups(
@@ -79,7 +79,7 @@ fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3], zone_state: Op
 
 /// Each vertex's precomputed intensity for the zone's state, from the sector covering it; vertices no
 /// sector covers stay fully lit.
-fn intensities(terrain: &Terrain, width: usize, height: usize, zone_state: Option<u8>) -> Vec<f32> {
+pub(super) fn intensities(terrain: &Terrain, width: usize, height: usize, zone_state: Option<u8>) -> Vec<f32> {
     let mut light = vec![1.0; width * height];
     let state = usize::from(zone_state.unwrap_or(0));
     for sector in &terrain.sectors {
@@ -114,6 +114,7 @@ mod tests {
             // the second. Quad 4 is a hole.
             visible_quads: vec![!(1 << 4)],
             sectors: Vec::new(),
+            deco_layers: Vec::new(),
         };
         let map = Heightmap {
             width: 3,
@@ -142,6 +143,7 @@ mod tests {
             layers: Vec::new(),
             visible_quads: Vec::new(),
             sectors: vec![sector],
+            deco_layers: Vec::new(),
         };
         // A 3×2 grid: the sector covers columns 1 and 2 of both rows; column 0 stays lit.
         assert_eq!(intensities(&terrain, 3, 2, Some(1)), [1.0, 0.2, 0.2, 1.0, 0.2, 0.2]);

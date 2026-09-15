@@ -14,7 +14,7 @@ use ue2_package::{ObjectRef, Package};
 
 pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
 pub use lighting::TerrainSector;
-pub use terrain::{Terrain, TerrainLayer};
+pub use terrain::{DecoLayer, Terrain, TerrainLayer};
 
 /// Pitch, yaw and roll in Unreal units, 65536 to a full turn.
 pub type Rotator = [i32; 3];

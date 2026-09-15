@@ -8,7 +8,7 @@ use crate::{Catalog, MAX_MATERIAL_DEPTH, full_path, package_name};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Blend {
     Opaque,
-    /// Cut out where alpha is below half.
+    /// Cut out where alpha is below the material's alpha reference.
     Masked,
     Alpha,
     Additive,
@@ -53,6 +53,8 @@ pub struct Material {
     pub blend: Blend,
     /// RGBA multiplier, 255 when untinted.
     pub color: [u8; 4],
+    /// Alpha out of 255 below which a masked material is cut out; `None` cuts below half.
+    pub alpha_ref: Option<u8>,
 }
 
 /// Rows of a 2×3 affine transform of texture coordinates.
@@ -116,10 +118,14 @@ impl Catalog {
                     Blend::Opaque
                 },
                 color: [255; 4],
+                alpha_ref: None,
             },
             "shader" => {
                 let mut material = inner(self, &node.diffuse).or_else(|| inner(self, &node.self_illumination))?;
                 material.blend = match node.output_blending {
+                    // ponytail: an Opacity map is taken to be the diffuse texture's own alpha, as foliage shaders set it.
+                    0 if node.alpha_test.is_some() => Blend::Masked,
+                    0 if node.opacity => Blend::Alpha,
                     0 => material.blend,
                     1 => Blend::Masked,
                     2 => Blend::Modulate,
@@ -128,12 +134,13 @@ impl Catalog {
                     5 => Blend::Brighten,
                     _ => return None,
                 };
+                material.alpha_ref = node.alpha_test.or(material.alpha_ref);
                 material
             }
             "finalblend" => {
                 let mut material = inner(self, &node.material)?;
                 material.blend = match node.frame_buffer_blending {
-                    0 if node.alpha_test => Blend::Masked,
+                    0 if node.alpha_test.is_some() => Blend::Masked,
                     0 => Blend::Opaque,
                     1 => Blend::Modulate,
                     5 => Blend::Darken,
@@ -142,6 +149,7 @@ impl Catalog {
                     6 => Blend::Brighten,
                     _ => return None,
                 };
+                material.alpha_ref = node.alpha_test.or(material.alpha_ref);
                 material
             }
             "colormodifier" => {
@@ -192,6 +200,7 @@ impl Catalog {
         let flag = |name| get(name).and_then(Property::bool).unwrap_or(false);
         let byte = |name| get(name).and_then(Property::byte).unwrap_or(0);
         let float = |name, default| get(name).and_then(Property::float).unwrap_or(default);
+        let alpha_ref = get("AlphaRef").and_then(|value| value.byte().or_else(|| u8::try_from(value.int()?).ok()));
         let reference = |name| full_path(&package_name, package, get(name)?.object(package)?);
         Some(Node {
             class: package.class_name(export).to_ascii_lowercase(),
@@ -202,7 +211,10 @@ impl Catalog {
             material2: reference("Material2"),
             alpha_texture: flag("bAlphaTexture"),
             masked: flag("bMasked"),
-            alpha_test: flag("AlphaTest"),
+            alpha_test: flag("AlphaTest").then(|| alpha_ref.unwrap_or(0)),
+            opacity: get("Opacity")
+                .and_then(|opacity| opacity.object(package))
+                .is_some_and(|opacity| !matches!(opacity, ue2_package::ObjectRef::Null)),
             modulate: if flag("Modulate4X") {
                 4.0
             } else if flag("Modulate2X") {
@@ -247,7 +259,10 @@ struct Node {
     material2: Option<String>,
     alpha_texture: bool,
     masked: bool,
-    alpha_test: bool,
+    /// The alpha reference when the material cuts out by alpha.
+    alpha_test: Option<u8>,
+    /// Whether a Shader sets an Opacity map.
+    opacity: bool,
     /// Combiner factor: 1, 2 or 4.
     modulate: f32,
     output_blending: u8,
