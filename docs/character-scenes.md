@@ -169,3 +169,21 @@ Each step is checked against the real client: a dump of the files, or a screensh
    as an overlay, drawn after everything and hit first. The limits of five male and seven female hair styles,
    four colors and three faces now live in the protocol, shared by client and server. Still to do: hair color
    on the model, held weapons, and the camera closing in on the chosen model as H5 does.
+   *2026-09-16:* held weapons and shields. What the client and Fermata show, not guessed:
+   - The client's `Engine.u` gives `Pawn` its bones by default properties: `RightHandBone=Weapon_R_Bone`,
+     `LeftHandBone=Weapon_L_Bone`, `LeftArmBone=Shield_L_Bone`, `RootBone=bip01`. The attaching itself is native
+     code in `Engine.dll`, whose code section is packed and cannot be read statically.
+   - Fermata's assembly (`char_pawn`) picks the bone from candidate lists by slot (`Weapon_R_Bone`, `Sword Bone`,
+     `Weapon Bone`, `Bow Bone`, `Bip01 R Hand`; shields `Shield_L_Bone` first; bows in the left hand), attaches
+     with an identity offset, and builds its bind skeleton conjugating only the root, with its matrices the
+     transpose of ours: the same skeleton.
+   - Weapons are one-bone `SkeletalMesh`es in `LineageWeapons.ukx`, drawn in the bone's frame. A character holding
+     one plays the idle of its grip (`Wait_1HS`, `Wait_2HS`, `Wait_Pole`, `Wait_Bow`, `Wait_Dual`).
+   - `Weapongrp`'s scales and offsets belong to the enchant effect and the rough range mesh, not to the weapon.
+   - Weapon materials are a `FinalBlend` alpha blend with `AlphaTest` at 120 to 160 over a `Shader`: the alpha
+     test now applies to alpha blends, and a `Shader` without an Opacity map no longer blends by its diffuse alpha,
+     which made them see-through.
+   - Still to do: some weapons point differently from H5.
+   *2026-09-16:* frame time. Rewriting every material's uniform each frame took 17 ms in lobby01 and 55 ms in
+   Lobby02; only panning and rotating materials are rewritten now. Creation went from 8 to about 40 fps, the
+   select hall to 60.

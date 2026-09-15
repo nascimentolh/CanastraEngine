@@ -21,8 +21,12 @@ impl Transform {
         }
     }
 
-    fn apply(self, point: [f32; 3]) -> [f32; 3] {
+    pub(super) fn apply(self, point: [f32; 3]) -> [f32; 3] {
         add(rotate(self.rotation, point), self.translation)
+    }
+
+    pub(super) fn rotate(self, direction: [f32; 3]) -> [f32; 3] {
+        rotate(self.rotation, direction)
     }
 
     fn inverse(self) -> Self {

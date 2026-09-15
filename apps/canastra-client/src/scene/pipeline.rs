@@ -258,8 +258,11 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     let cutoff = match material.blend {
         // Unreal's alpha test passes texels above the reference, so a reference of 0 still cuts fully clear ones.
         Blend::Masked => material.alpha_ref.map_or(0.5, |alpha_ref| (f32::from(alpha_ref) + 0.5) / 255.0),
-        // Fully transparent texels would still write depth over what lies behind them.
-        Blend::Alpha | Blend::AlphaAdditive => 0.02,
+        // Fully transparent texels would still write depth over what lies behind them; an alpha test cuts more, as
+        // weapons blended with a reference of 160 are solid.
+        Blend::Alpha | Blend::AlphaAdditive => {
+            material.alpha_ref.map_or(0.02, |alpha_ref| ((f32::from(alpha_ref) + 0.5) / 255.0).max(0.02))
+        }
         _ => 0.0,
     };
     let masked = if material.blend == Blend::Masked { 1.0 } else { 0.0 };

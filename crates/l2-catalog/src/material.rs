@@ -143,6 +143,8 @@ impl Catalog {
                     // depth buffer: foliage stays soft instead of turning into solid cards.
                     0 if node.opacity => Blend::Alpha,
                     0 if node.alpha_test.is_some() => Blend::Masked,
+                    // Without an Opacity map the diffuse alpha does not blend; a weapon's specularity mask is not see-through.
+                    0 if material.blend == Blend::Alpha => Blend::Opaque,
                     0 => material.blend,
                     1 => Blend::Masked,
                     2 => Blend::Modulate,

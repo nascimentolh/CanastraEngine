@@ -35,6 +35,7 @@ impl Scene {
             })
             .collect();
         (self.pawn_vertices, self.pawn_indices) = pawn_buffers(device, &layout);
+        self.uniforms_written = false;
     }
 }
 

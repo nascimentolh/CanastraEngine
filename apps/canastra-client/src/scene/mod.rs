@@ -21,7 +21,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
 
-use l2_catalog::{Catalog, Material, Stage};
+use l2_catalog::{Catalog, Material, Stage, UvModifier};
 use ue2_level::Fog;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
@@ -29,7 +29,7 @@ use crate::gpu::Gpu;
 use load::Vertex;
 use particles::System;
 use pawns::Pawn;
-pub(crate) use pawns::{Figure, PartSource};
+pub(crate) use pawns::{Figure, HeldSource, PartSource};
 use pipeline::{Draw, Pipeline, depth_texture, material_uniform, target};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
@@ -78,6 +78,8 @@ pub(crate) struct Scene {
     fog: Option<Fog>,
     /// Zero of the clock materials and particles run on.
     started: Instant,
+    /// Whether every batch's uniform holds its material; after that only animated materials are rewritten.
+    uniforms_written: bool,
     /// Depth target, the size it was made for, the globals group particles read it through, and the
     /// multisampled color target resolved into the window's frame.
     depth: Option<(wgpu::TextureView, [u32; 2], wgpu::BindGroup, wgpu::TextureView)>,
@@ -183,6 +185,7 @@ impl Scene {
             actor_daylight: data.actor_daylight,
             fog: data.fog,
             started: Instant::now(),
+            uniforms_written: false,
             depth: None,
         })
     }
@@ -200,13 +203,16 @@ impl Scene {
             matrix.iter().chain([&fog_color, &fog_range]).flatten().flat_map(|value| value.to_le_bytes()).collect();
         gpu.queue.write_buffer(&self.globals, 0, &bytes);
         let time = self.started.elapsed().as_secs_f32();
-        for batch in self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches) {
+        // Most materials never change; rewriting all their uniforms each frame cost Lobby02 over 50 ms.
+        let batches = self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches);
+        for batch in batches.filter(|batch| !self.uniforms_written || animated(&batch.material)) {
             gpu.queue.write_buffer(
                 &batch.uniform,
                 0,
                 &material_uniform(&batch.material, time, batch.fogged, batch.soft),
             );
         }
+        self.uniforms_written = true;
         for system in &mut self.systems {
             system.update(time);
         }
@@ -282,6 +288,14 @@ impl Scene {
         }
         encoder.finish()
     }
+}
+
+/// Whether `material`'s uniform changes with time: its stages pan or rotate.
+fn animated(material: &Material) -> bool {
+    std::iter::once(&material.base)
+        .chain(material.layer.as_ref().map(|(stage, _, _)| stage))
+        .flat_map(|stage| &stage.uv)
+        .any(|modifier| matches!(modifier, UvModifier::Pan(_) | UvModifier::Rotate { .. }))
 }
 
 /// The batch that draws `indices` with `material`, fogged and hard-edged, when its textures have views.

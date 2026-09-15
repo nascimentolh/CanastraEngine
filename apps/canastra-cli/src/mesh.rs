@@ -70,7 +70,10 @@ pub(crate) fn run(input: &Path, object: Option<&str>) -> Result {
         println!("  section {section:?} material {}", package.object_path(*material));
     }
     for (index, bone) in mesh.bones.iter().enumerate() {
-        println!("  bone {index:>3} {:<24} parent {:>3} at {:?}", bone.name, bone.parent, bone.position);
+        println!(
+            "  bone {index:>3} {:<24} parent {:>3} at {:?} turned {:?}",
+            bone.name, bone.parent, bone.position, bone.rotation
+        );
     }
     Ok(())
 }

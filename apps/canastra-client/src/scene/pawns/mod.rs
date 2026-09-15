@@ -2,6 +2,7 @@
 //! reposed on the CPU every frame.
 // ponytail: CPU skinning suits the few characters of the lobby; move it to the GPU when crowds need it.
 
+mod held;
 mod skeleton;
 
 use std::ops::Range;
@@ -12,12 +13,15 @@ use ue2_assets::{MeshAnimation, SkeletalMesh, SkinVertex};
 use super::camera;
 use super::daylight::Daylight;
 use super::load::Vertex;
+use held::Held;
+pub(crate) use held::HeldSource;
 use skeleton::Transform;
 
 /// A character to stand in the scene, as client paths.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Figure {
     pub(crate) parts: Vec<PartSource>,
+    pub(crate) held: Vec<HeldSource>,
     pub(crate) location: [f32; 3],
     /// Unreal rotation units.
     pub(crate) yaw: i32,
@@ -34,6 +38,7 @@ pub(crate) struct PartSource {
 
 pub(crate) struct Pawn {
     parts: Vec<Part>,
+    held: Vec<Held>,
     location: [f32; 3],
     axes: [[f32; 3]; 3],
 }
@@ -73,36 +78,52 @@ impl Pawn {
         let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
         let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
         let sequence = format!("{}_{}", figure.sequence, suffix.unwrap_or_default());
-        let parts = loaded
+        if animation.as_ref().is_some_and(|animation| {
+            !animation.sequences.iter().any(|found| found.name.eq_ignore_ascii_case(&sequence))
+        }) {
+            eprintln!("pawn: no sequence {sequence} in {}", animation_path.as_deref().unwrap_or_default());
+        }
+        let parts: Vec<Part> = loaded
             .into_iter()
             .map(|(skinned, sections)| Part::new(skinned.mesh, sections, animation.as_ref(), &sequence))
             .collect();
-        Self { parts, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
+        let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
+        Self { parts, held, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
     }
 
-    /// Writes every part's vertices at scene time `time`, relative to `camera` and lit by `daylight` if given,
-    /// part after part.
+    /// Writes the vertices of every part, then of everything held, at scene time `time`, relative to `camera`
+    /// and lit by `daylight` if given.
     pub(crate) fn write(&self, time: f32, camera: [f32; 3], daylight: Option<&Daylight>, out: &mut Vec<Vertex>) {
-        for part in &self.parts {
-            let pose = part.pose(time);
+        let poses: Vec<Vec<Transform>> = self.parts.iter().map(|part| part.pose(time)).collect();
+        // Places a vertex given in the space of `part`'s skeleton.
+        let mut push = |part: &Part, position: [f32; 3], normal: [f32; 3], uv: [f32; 2]| {
+            let turned = camera::place(position, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+            let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
+            for (at, camera) in at.iter_mut().zip(camera) {
+                *at -= camera;
+            }
+            let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
+                let turned = camera::place(normal, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+                daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), 1.0)
+            });
+            out.push([at[0], at[1], at[2], uv[0], uv[1], r, g, b, 1.0]);
+        };
+        for (part, pose) in self.parts.iter().zip(&poses) {
             for vertex in &part.mesh.vertices {
-                let skinned = skeleton::skin(vertex, &part.bind, &pose);
-                let turned = camera::place(skinned, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
-                let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
-                for (at, camera) in at.iter_mut().zip(camera) {
-                    *at -= camera;
-                }
-                let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
-                    // The normal skins as the offset between the vertex and a point one unit along it.
-                    let tip = skeleton::skin(
-                        &SkinVertex { position: skeleton::add(vertex.position, vertex.normal), ..*vertex },
-                        &part.bind,
-                        &pose,
-                    );
-                    let turned = camera::place(sub(tip, skinned), part.mesh.scale, &part.mesh_axes, [0.0; 3]);
-                    daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), 1.0)
-                });
-                out.push([at[0], at[1], at[2], vertex.uv[0], vertex.uv[1], r, g, b, 1.0]);
+                let skinned = skeleton::skin(vertex, &part.bind, pose);
+                // The normal skins as the offset between the vertex and a point one unit along it.
+                let tip = SkinVertex { position: skeleton::add(vertex.position, vertex.normal), ..*vertex };
+                push(part, skinned, sub(skeleton::skin(&tip, &part.bind, pose), skinned), vertex.uv);
+            }
+        }
+        for held in &self.held {
+            let (Some(part), Some(&bone)) =
+                (self.parts.get(held.part), poses.get(held.part).and_then(|pose| pose.get(held.bone)))
+            else {
+                continue;
+            };
+            for (position, normal, uv) in held.vertices(bone) {
+                push(part, position, normal, uv);
             }
         }
     }
@@ -134,15 +155,19 @@ pub(crate) struct Layout {
 
 pub(crate) fn layout(pawns: &[Pawn]) -> Layout {
     let (mut indices, mut ranges, mut vertices) = (Vec::new(), Vec::new(), 0);
-    for part in pawns.iter().flat_map(|pawn| &pawn.parts) {
-        let base = u32::try_from(vertices).unwrap_or(u32::MAX);
-        for (material, range) in &part.sections {
-            let start = u32::try_from(indices.len()).unwrap_or(u32::MAX);
-            let section = part.mesh.indices.get(range.clone()).unwrap_or_default();
-            indices.extend(section.iter().map(|&index| base.saturating_add(u32::from(index))));
-            ranges.push((material.clone(), start..u32::try_from(indices.len()).unwrap_or(u32::MAX)));
+    for pawn in pawns {
+        let parts = pawn.parts.iter().map(|part| (&part.mesh.indices, &part.sections, part.mesh.vertices.len()));
+        let held = pawn.held.iter().map(|held| (&held.mesh.indices, &held.sections, held.mesh.vertices.len()));
+        for (mesh_indices, sections, count) in parts.chain(held) {
+            let base = u32::try_from(vertices).unwrap_or(u32::MAX);
+            for (material, range) in sections {
+                let start = u32::try_from(indices.len()).unwrap_or(u32::MAX);
+                let section = mesh_indices.get(range.clone()).unwrap_or_default();
+                indices.extend(section.iter().map(|&index| base.saturating_add(u32::from(index))));
+                ranges.push((material.clone(), start..u32::try_from(indices.len()).unwrap_or(u32::MAX)));
+            }
+            vertices += count;
         }
-        vertices += part.mesh.vertices.len();
     }
     Layout { indices, ranges, vertices }
 }

@@ -4,14 +4,14 @@ use canastra_data::GameData;
 use canastra_data::appearance::{Look, Stand, body_of};
 use canastra_data::class::Archetype;
 use canastra_data::id::ItemId;
-use canastra_data::item::{Body, EquipSlot, ItemKind, ItemModel};
+use canastra_data::item::{Body, EquipSlot, Item, ItemKind, ItemModel};
 use canastra_data::npc::Race;
 use canastra_protocol::game::{Appearance, CharacterSummary, Sex};
 
-use crate::scene::{Figure, PartSource};
+use crate::scene::{Figure, HeldSource, PartSource};
 
-/// The idle sequence characters loop in the lobby.
-const IDLE: &str = "Wait_Hand";
+/// The client's grip of bows, which hang from the left hand.
+const BOW_GRIP: u32 = 5;
 /// How far behind the last slot H5 stands the selected character, on the rune circle's far edge. Measured
 /// from an H5 screenshot, where the other slots fall exactly where the camera puts them.
 const SELECTED_STEP_BACK: f32 = 65.0;
@@ -102,10 +102,53 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
             }
         }
     }
+    let items: Vec<&Item> = gear.iter().filter_map(|id| data.items.get(id)).collect();
+    let in_hands = items.iter().flat_map(|item| held(item)).collect();
+    let grip = items.iter().find_map(|item| match &item.visual.model {
+        ItemModel::Held(model) if model.grip != 0 => Some(model.grip),
+        _ => None,
+    });
     let head =
         [look.faces.get(face), hair.and_then(|style| style.front.as_ref()), hair.and_then(|style| style.back.as_ref())];
     let parts = head.into_iter().flatten().map(part).chain(slots.into_iter().flat_map(|(_, parts)| parts)).collect();
-    Some(Figure { parts, location: stand.location, yaw: stand.yaw, sequence: IDLE })
+    Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip) })
+}
+
+/// The idle a character plays holding a weapon of the client's `grip`, or none.
+fn idle(grip: Option<u32>) -> &'static str {
+    match grip {
+        Some(1) => "Wait_1HS",
+        Some(2) => "Wait_2HS",
+        Some(4) => "Wait_Pole",
+        Some(BOW_GRIP) => "Wait_Bow",
+        Some(7) => "Wait_Dual",
+        _ => "Wait_Hand",
+    }
+}
+
+/// What `item` puts in the character's hands: a shield on the left arm, a bow in the left hand, and weapons in
+/// the right hand, a paired weapon's second piece in the left.
+fn held(item: &Item) -> Vec<HeldSource> {
+    let ItemModel::Held(model) = &item.visual.model else { return Vec::new() };
+    let slot = match &item.kind {
+        ItemKind::Weapon(weapon) => weapon.slot,
+        ItemKind::Armor(armor) => armor.slot,
+        ItemKind::Etc(etc) => etc.slot,
+    };
+    model
+        .parts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, part)| {
+            let bone = match (slot, model.grip, index) {
+                (EquipSlot::LeftHand, _, _) => "Shield_L_Bone",
+                (_, BOW_GRIP, _) | (_, _, 1) => "Weapon_L_Bone",
+                _ => "Weapon_R_Bone",
+            };
+            let textures = part.textures.iter().map(|texture| texture.path().to_owned()).collect();
+            Some(HeldSource { mesh: part.mesh.as_ref()?.path().to_owned(), textures, bone })
+        })
+        .collect()
 }
 
 fn part(look: &Look) -> PartSource {
