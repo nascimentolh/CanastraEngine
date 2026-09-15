@@ -1,8 +1,8 @@
-//! The game server's TOML configuration. `CANASTRA_NOISE_PRIVATE` and `CANASTRA_NOISE_PUBLIC` override
-//! its keys, as containers pass secrets.
+//! The game server's TOML configuration. `CANASTRA_DATABASE_URL`, `CANASTRA_NOISE_PRIVATE` and
+//! `CANASTRA_NOISE_PUBLIC` override the file, as containers pass secrets.
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use canastra_net::Keypair;
 use serde::Deserialize;
@@ -20,9 +20,32 @@ pub(crate) struct Config {
     /// Where players reach this server, as `host:port`.
     pub(crate) public_address: String,
     pub(crate) capacity: u32,
+    #[serde(default)]
+    pub(crate) database_url: String,
+    /// The game data file (`.cana`) this server plays by.
+    pub(crate) game_data: PathBuf,
     pub(crate) login: Login,
     #[serde(default)]
+    pub(crate) characters: Characters,
+    #[serde(default)]
     pub(crate) keys: Keys,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Characters {
+    /// Characters an account may have on this server.
+    pub(crate) slots: u32,
+    /// A regular expression the whole name must match.
+    pub(crate) name_pattern: String,
+    /// Words names may not contain, ignoring case.
+    pub(crate) forbidden_names: Vec<String>,
+}
+
+impl Default for Characters {
+    fn default() -> Self {
+        Self { slots: 7, name_pattern: "[A-Za-z0-9]{2,16}".into(), forbidden_names: Vec::new() }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,12 +73,16 @@ impl Config {
         let text = std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let mut config: Self = toml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
         for (name, field) in [
+            ("CANASTRA_DATABASE_URL", &mut config.database_url),
             ("CANASTRA_NOISE_PRIVATE", &mut config.keys.noise_private),
             ("CANASTRA_NOISE_PUBLIC", &mut config.keys.noise_public),
         ] {
             if let Ok(value) = std::env::var(name) {
                 *field = value;
             }
+        }
+        if config.database_url.is_empty() {
+            return Err("database_url is not set".into());
         }
         Ok(config)
     }
@@ -93,7 +120,7 @@ mod tests {
     fn keygen_output_loads_as_keys() {
         let text = format!(
             "id = 1\nname = \"Canastra\"\nplayers = \"0.0.0.0:7777\"\npublic_address = \"127.0.0.1:7777\"\n\
-             capacity = 100\n[login]\naddress = \"127.0.0.1:2107\"\npublic_key = \"{}\"\nticket_public = \"{}\"\n{}",
+             capacity = 100\ngame_data = \"gamedata.cana\"\n[login]\naddress = \"127.0.0.1:2107\"\npublic_key = \"{}\"\nticket_public = \"{}\"\n{}",
             "00".repeat(32),
             canastra_net::ticket::Issuer::generate().unwrap().public_hex(),
             keygen().unwrap()

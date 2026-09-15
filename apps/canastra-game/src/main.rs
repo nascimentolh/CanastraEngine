@@ -1,17 +1,18 @@
-//! `canastra-game`: a game server. For now it keeps itself registered with the login server and admits
-//! players by their tickets; characters and the world come next.
+//! `canastra-game`: a game server. It keeps itself registered with the login server, admits players by
+//! their tickets and keeps their characters; the world comes next.
 
-mod admission;
 mod config;
+mod players;
 mod registration;
 
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use admission::Admission;
+use canastra_db::Database;
 use canastra_protocol::ServerId;
 use config::{Config, Result};
+use players::{Admission, Lobby, NameRules, Players};
 use tokio::net::TcpListener;
 
 const USAGE: &str = "usage:
@@ -44,12 +45,28 @@ async fn main() -> ExitCode {
 async fn serve(path: &Path) -> Result {
     let config = Config::load(path)?;
     let (keys, login_key) = (config.keypair()?, config.login_key()?);
-    let admission = Arc::new(Admission::new(ServerId(config.id), config.capacity, keys.clone(), config.tickets()?));
-    let players = TcpListener::bind(config.players).await?;
+    let bytes = std::fs::read(&config.game_data).map_err(|error| format!("{}: {error}", config.game_data.display()))?;
+    let data =
+        canastra_data::format::decode(&bytes).map_err(|error| format!("{}: {error}", config.game_data.display()))?;
+    tracing::info!(classes = data.classes.len(), items = data.items.len(), "game data loaded");
+    let id = ServerId(config.id);
+    let lobby = Lobby {
+        server: id,
+        database: Database::connect(&config.database_url).await?,
+        data,
+        names: NameRules::new(&config.characters.name_pattern, &config.characters.forbidden_names)?,
+        slots: config.characters.slots,
+    };
+    let players = Arc::new(Players {
+        keys: keys.clone(),
+        admission: Admission::new(id, config.capacity, config.tickets()?),
+        lobby,
+    });
+    let listener = TcpListener::bind(config.players).await?;
     tracing::info!(players = %config.players, "game server listening");
-    tokio::spawn(admission::listen(players, admission.clone()));
+    tokio::spawn(players::listen(listener, players.clone()));
     tokio::select! {
-        result = registration::keep_registered(&config, &keys, &login_key, &admission.online) => result,
+        result = registration::keep_registered(&config, &keys, &login_key, &players.admission.online) => result,
         signal = tokio::signal::ctrl_c() => {
             tracing::info!("game server stopping");
             signal.map_err(Into::into)

@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+canastra-data.workspace = true
 postcard.workspace = true
 serde.workspace = true
 

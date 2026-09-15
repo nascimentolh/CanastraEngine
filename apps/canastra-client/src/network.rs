@@ -142,6 +142,7 @@ async fn handle(server: &LoginAddress, session: &mut Session, request: Request) 
                 }
                 GameServer::UpdateRequired { .. } => Ok(Reply::UpdateRequired),
                 GameServer::Refused(refusal) => Ok(Reply::GameRefused(refusal)),
+                other => Err(format!("unexpected reply to hello: {other:?}")),
             }
         }
     }

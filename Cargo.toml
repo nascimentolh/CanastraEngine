@@ -33,6 +33,7 @@ hex = "0.4"
 num-bigint = "0.4"
 pollster = "0.4"
 postcard = { version = "1", default-features = false, features = ["alloc"] }
+regex = "1"
 roxmltree = "0.20"
 serde = { version = "1", features = ["derive"] }
 snow = "0.10"

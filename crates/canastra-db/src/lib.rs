@@ -2,11 +2,12 @@
 //! is always at the schema this build expects.
 
 mod accounts;
-mod password;
+mod characters;
 
 use std::fmt;
 
 pub use accounts::{Authentication, NameError, validate_name};
+pub use characters::{Creation, NewRecord};
 
 pub struct Database {
     pool: sqlx::PgPool,

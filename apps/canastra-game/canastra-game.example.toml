@@ -1,4 +1,12 @@
-# Copy to canastra-game.toml. Fill [keys] from `canastra-game keygen` and add its public key to the
+# Copy to canastra-game.toml. Fill [characters]
+# Characters an account may have on this server.
+slots = 7
+# A regular expression the whole name must match.
+name_pattern = "[A-Za-z0-9]{2,16}"
+# Words names may not contain, ignoring case.
+forbidden_names = ["admin", "gm"]
+
+[keys] from `canastra-game keygen` and add its public key to the
 # login server's [[authorized]] list under the same id.
 
 # This server's id, as the login server authorizes it.
@@ -9,6 +17,9 @@ players = "0.0.0.0:7777"
 # Where players reach this server.
 public_address = "127.0.0.1:7777"
 capacity = 1000
+database_url = "postgres://canastra:canastra@localhost:5433/canastra"
+# The game data file this server plays by, from `canastra migrate`.
+game_data = "gamedata.cana"
 
 [login]
 # The login server's internal game_servers address.

@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 
 use canastra_protocol::AccountId;
 
-use crate::{Database, Error, password};
+use crate::{Database, Error};
+
+mod password;
 
 /// The outcome of checking an account name and password.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
