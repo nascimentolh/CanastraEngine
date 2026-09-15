@@ -68,7 +68,7 @@ impl Running {
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());
         let Some(frame) = self.gpu.frame() else { return };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let scene = self.scene.as_mut().map(|scene| scene.draw(&self.gpu, &view));
+        let scene = self.scene.as_mut().map(|scene| scene.draw(&self.gpu, &frame.texture));
         match self.renderer.render(&self.gpu, &view, &self.screen.frame, scene.is_none()) {
             Ok(ui) => {
                 self.gpu.queue.submit(scene.into_iter().chain([ui]));

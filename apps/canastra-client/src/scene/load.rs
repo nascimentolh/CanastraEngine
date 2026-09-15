@@ -103,7 +103,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     groups.sort_by_key(|(material, _)| match material.blend {
         Blend::Opaque | Blend::Masked => 0,
         Blend::Alpha => 1,
-        Blend::Modulate | Blend::Brighten | Blend::Additive | Blend::Darken => 2,
+        Blend::Modulate | Blend::Brighten | Blend::Translucent | Blend::Darken => 2,
     });
     let mut data = SceneData {
         camera,

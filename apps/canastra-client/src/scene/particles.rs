@@ -148,7 +148,7 @@ pub(crate) fn blend(style: DrawStyle) -> l2_catalog::Blend {
     match style {
         DrawStyle::Regular => Blend::Opaque,
         DrawStyle::AlphaBlend | DrawStyle::AlphaModulate => Blend::Alpha,
-        DrawStyle::Translucent => Blend::Additive,
+        DrawStyle::Translucent => Blend::Translucent,
         DrawStyle::Modulated => Blend::Modulate,
         DrawStyle::Darken => Blend::Darken,
         DrawStyle::Brighten => Blend::Brighten,

@@ -104,10 +104,11 @@ impl Pipeline {
         let blend = match draw.blend {
             Blend::Opaque | Blend::Masked => None,
             Blend::Alpha => Some(wgpu::BlendState::ALPHA_BLENDING),
-            Blend::Additive => Some(color(One, One)),
+            // Fermata, from the original client: Translucent is a screen blend.
+            // ponytail: Brighten keeps the same factors until evidence of its own shows up.
+            Blend::Translucent | Blend::Brighten => Some(color(One, OneMinusSrc)),
             // Unreal's modulate doubles: source times destination, twice.
             Blend::Modulate => Some(color(Dst, Src)),
-            Blend::Brighten => Some(color(One, OneMinusSrc)),
             Blend::Darken => Some(color(Zero, OneMinusSrc)),
         };
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -159,7 +160,7 @@ impl Pipeline {
         self.pipelines.get(&draw)
     }
 
-    /// Uploads `image` and its mips as gamma-space texels; the shader converts after combining.
+    /// Uploads `image` and its mips as gamma-space texels, which the scene blends as they are.
     pub(super) fn texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Image) -> wgpu::TextureView {
         let (levels, texels) = super::mips::chain(image.width, image.height, &image.rgba);
         device
@@ -222,7 +223,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     // batch fog does not touch.
     let fog = match material.blend {
         Blend::Opaque | Blend::Masked | Blend::Alpha => 0.0,
-        Blend::Additive | Blend::Brighten => 1.0,
+        Blend::Translucent | Blend::Brighten => 1.0,
         Blend::Modulate => 2.0,
         Blend::Darken => 3.0,
     } + if fogged { 0.0 } else { 10.0 };

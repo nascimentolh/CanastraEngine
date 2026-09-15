@@ -76,6 +76,11 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    The purple haze over the hills and around the tree now matches the H5 screenshot. Not modeled:
    sphere and polar start shapes, revolution, the emitter's DrawScale (scaling sizes by it blew the
    clouds up to screen size), BSP portal visibility and particle depth sorting.
+   **Blending, checked against Fermata:** the scene now writes and blends gamma-space colors through a
+   non-sRGB view of the window, as the original client's framebuffer did; linear blending had crushed
+   the dim tails of mist, stars and the moon glow. Translucent is Unreal's screen blend (One,
+   OneMinusSrcColor), modulate fades and fogs towards mid gray (white doubled what lies behind), and
+   translucent and brighten surfaces are tinted by fog instead of fading to black.
 6. Movers, sway and ambient sound as the comparison shows they matter.
 
 ## Lighting

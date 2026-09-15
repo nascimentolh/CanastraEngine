@@ -30,7 +30,8 @@ impl Gpu {
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: capabilities.alpha_modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto),
-            view_formats: vec![],
+            // The scene blends in gamma space like the original client, through a plain view.
+            view_formats: vec![format.remove_srgb_suffix()],
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };

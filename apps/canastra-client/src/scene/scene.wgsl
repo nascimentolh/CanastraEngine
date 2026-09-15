@@ -1,6 +1,6 @@
 // Static scene geometry: world positions relative to the camera, drawn with a fixed-function style
-// material of one or two texture stages. Textures hold gamma-space colors and are combined as
-// Unreal's fixed-function pipeline did, then converted for the sRGB target.
+// material of one or two texture stages. Textures hold gamma-space colors that are combined, written
+// and blended as they are, as Unreal's fixed-function pipeline did.
 
 struct Globals {
     view_projection: mat4x4<f32>,
@@ -18,8 +18,8 @@ struct Material {
     layer_v: vec4<f32>,
     color: vec4<f32>,
     // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, and
-    // how the batch blends for fog and fading (0 alpha or opaque, 1 additive, 2 modulate, 3 darken;
-    // ten more when fog is off).
+    // how the batch blends for fog and fading (0 alpha or opaque, 1 translucent or brighten, 2 modulate,
+    // 3 darken; ten more when fog is off).
     params: vec4<f32>,
 }
 
@@ -53,12 +53,6 @@ fn vs(vertex: Vertex) -> Varyings {
     return out;
 }
 
-fn to_linear(color: vec3<f32>) -> vec3<f32> {
-    let low = color / 12.92;
-    let high = pow((color + 0.055) / 1.055, vec3<f32>(2.4));
-    return select(high, low, color <= vec3<f32>(0.04045));
-}
-
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let uv = vec3<f32>(in.uv, 1.0);
@@ -78,12 +72,12 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     color = min(color, vec4<f32>(1.0)) * material.color * in.color;
     let unfogged = material.params.w > 9.5;
     let neutral_kind = material.params.w - select(0.0, 10.0, unfogged);
-    // Blends that ignore alpha fade through the vertex color instead: additive, brighten and darken
-    // towards black, modulate towards white. Level geometry has opaque vertex colors, so only
-    // particles change.
+    // Blends that ignore alpha fade through the vertex color instead: translucent, brighten and darken
+    // towards black, modulate towards mid gray, which its doubling leaves unchanged. Level geometry has
+    // opaque vertex colors, so only particles change.
     let modulate = neutral_kind > 1.5 && neutral_kind < 2.5;
     if modulate {
-        color = vec4<f32>(mix(vec3<f32>(1.0), color.rgb, in.color.a), color.a);
+        color = vec4<f32>(mix(vec3<f32>(0.5), color.rgb, in.color.a), color.a);
     } else if neutral_kind > 0.5 {
         color = vec4<f32>(color.rgb * in.color.a, color.a);
     }
@@ -93,11 +87,17 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let range = globals.fog_range;
     let fogged = clamp((range.y - in.depth) / max(range.y - range.x, 1.0), 0.0, 1.0);
     let clear = select(fogged, 1.0, unfogged);
-    let neutral = select(vec3<f32>(0.0), vec3<f32>(1.0), modulate);
-    let target_color = select(globals.fog_color.rgb, neutral, neutral_kind > 0.5);
-    color = vec4<f32>(mix(target_color, color.rgb, clear), color.a);
-    // Modulate and darken use the color as a blend factor on what is already on screen, where Unreal's
-    // gamma-space math makes mid gray neutral; only colors that are added or drawn convert.
-    let factor_blend = neutral_kind > 1.5;
-    return vec4<f32>(select(to_linear(color.rgb), color.rgb, factor_blend), color.a);
+    // Fog as Fermata applies it per blend: opaque and alpha surfaces towards the fog color, modulate
+    // towards its neutral gray, darken towards black, and translucent and brighten tinted by the fog so
+    // black stays transparent and white lands on the fog color.
+    if neutral_kind < 0.5 {
+        color = vec4<f32>(mix(globals.fog_color.rgb, color.rgb, clear), color.a);
+    } else if neutral_kind < 1.5 {
+        color = vec4<f32>(color.rgb * mix(globals.fog_color.rgb, vec3<f32>(1.0), clear), color.a);
+    } else if modulate {
+        color = vec4<f32>(mix(vec3<f32>(0.5), color.rgb, clear), color.a);
+    } else {
+        color = vec4<f32>(color.rgb * clear, color.a);
+    }
+    return color;
 }

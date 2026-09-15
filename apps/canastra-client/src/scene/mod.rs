@@ -67,7 +67,7 @@ impl Scene {
     pub(crate) fn load(gpu: &Gpu, client_root: &Path, map: &str, camera_tag: &str) -> Result<Self, String> {
         let data = load::load(client_root, map, camera_tag)?;
         let (device, queue) = (&gpu.device, &gpu.queue);
-        let mut pipeline = Pipeline::new(device, gpu.config.format);
+        let mut pipeline = Pipeline::new(device, gpu.config.format.remove_srgb_suffix());
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("scene globals"),
             size: GLOBALS_BYTES,
@@ -157,8 +157,8 @@ impl Scene {
         })
     }
 
-    /// Clears the window's `target` and draws the scene into it as it looks now.
-    pub(crate) fn draw(&mut self, gpu: &Gpu, target: &wgpu::TextureView) -> wgpu::CommandBuffer {
+    /// Clears the window's `frame` and draws the scene into it as it looks now.
+    pub(crate) fn draw(&mut self, gpu: &Gpu, frame: &wgpu::Texture) -> wgpu::CommandBuffer {
         let size = gpu.size();
         let aspect = size[0] as f32 / size[1].max(1) as f32;
         let matrix = camera::view_projection(self.rotation, FOV, aspect);
@@ -194,11 +194,16 @@ impl Scene {
             });
             self.depth = Some((texture.create_view(&wgpu::TextureViewDescriptor::default()), size));
         }
+        // Gamma-space colors written and blended as they are, as the original client's framebuffer did.
+        let target = frame.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(gpu.config.format.remove_srgb_suffix()),
+            ..Default::default()
+        });
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
+                view: &target,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
