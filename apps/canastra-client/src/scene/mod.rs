@@ -3,6 +3,7 @@
 
 mod bsp;
 mod camera;
+mod cast;
 mod curves;
 mod daylight;
 mod deco;
@@ -20,7 +21,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
 
-use l2_catalog::{Material, Stage};
+use l2_catalog::{Catalog, Material, Stage};
 use ue2_level::Fog;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
@@ -28,6 +29,7 @@ use crate::gpu::Gpu;
 use load::Vertex;
 use particles::System;
 use pawns::Pawn;
+pub(crate) use pawns::{Figure, PartSource};
 use pipeline::{Draw, Pipeline, depth_texture, material_uniform};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
@@ -64,12 +66,13 @@ pub(crate) struct Scene {
     particle_vertices: wgpu::Buffer,
     particle_indices: wgpu::Buffer,
     pawns: Vec<Pawn>,
-    /// One batch per pawn part, into the pawn buffers the parts fill in order.
+    /// One batch per pawn part section, into the pawn buffers the parts fill in order.
     pawn_batches: Vec<Batch>,
     pawn_vertices: wgpu::Buffer,
     pawn_indices: wgpu::Buffer,
     camera: [f32; 3],
     rotation: [i32; 3],
+    catalog: Catalog,
     fog: Option<Fog>,
     /// Zero of the clock materials and particles run on.
     started: Instant,
@@ -95,13 +98,13 @@ impl Scene {
             .iter()
             .map(|(path, image)| (path.as_str(), Pipeline::texture(device, queue, image)))
             .collect();
+        let view = |path: &str| views.get(path);
         let mut batch = |material: Material, draw: Draw, fogged: bool, soft: f32, indices: Range<u32>| {
-            let base = views.get(material.base.texture.as_str())?;
-            // A material without a second stage samples its base twice; the shader ignores it.
-            let layer = material.layer.as_ref().and_then(|(stage, _, _)| views.get(stage.texture.as_str()));
-            let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
-            pipeline.prepare(device, draw);
-            Some(Batch { material, draw, fogged, soft, uniform, group, indices })
+            material_batch(&mut pipeline, device, &view, material, draw, indices).map(|batch| Batch {
+                fogged,
+                soft,
+                ..batch
+            })
         };
         let batches: Vec<Batch> = data
             .batches
@@ -133,13 +136,7 @@ impl Scene {
             sprite_batches.extend(batch(material, draw, sprite.fogged, soft, start..end));
         }
 
-        let pawn_layout = pawns::layout(&data.pawns);
-        let (pawn_vertices, pawn_indices) = pawn_buffers(device, &pawn_layout);
-        let pawn_batches: Vec<Batch> = pawn_layout
-            .ranges
-            .into_iter()
-            .filter_map(|(material, range)| batch(material.clone(), Draw::surface(material.blend), true, 0.0, range))
-            .collect();
+        let (pawn_vertices, pawn_indices) = cast::pawn_buffers(device, &pawns::layout(&[]));
 
         let vertices = buffer(device, "scene vertices", wgpu::BufferUsages::VERTEX, &vertex_bytes(&data.vertices));
         let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
@@ -173,12 +170,13 @@ impl Scene {
             sprite_batches,
             particle_vertices,
             particle_indices,
-            pawns: data.pawns,
-            pawn_batches,
+            pawns: Vec::new(),
+            pawn_batches: Vec::new(),
             pawn_vertices,
             pawn_indices,
             camera: data.camera.location,
             rotation: data.camera.rotation,
+            catalog: data.catalog,
             fog: data.fog,
             started: Instant::now(),
             depth: None,
@@ -280,16 +278,21 @@ impl Scene {
     }
 }
 
-/// A vertex buffer the pawns rewrite every frame and their fixed index buffer; never empty.
-fn pawn_buffers(device: &wgpu::Device, layout: &pawns::Layout) -> (wgpu::Buffer, wgpu::Buffer) {
-    let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("pawn vertices"),
-        size: (layout.vertices.max(1) * size_of::<Vertex>()) as u64,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let indices = if layout.indices.is_empty() { vec![0; 3] } else { layout.indices.clone() };
-    (vertices, buffer(device, "pawn indices", wgpu::BufferUsages::INDEX, &index_bytes(&indices)))
+/// The batch that draws `indices` with `material`, fogged and hard-edged, when its textures have views.
+fn material_batch<'a>(
+    pipeline: &mut Pipeline,
+    device: &wgpu::Device,
+    view: &dyn Fn(&str) -> Option<&'a wgpu::TextureView>,
+    material: Material,
+    draw: Draw,
+    indices: Range<u32>,
+) -> Option<Batch> {
+    let base = view(&material.base.texture)?;
+    // A material without a second stage samples its base twice; the shader ignores it.
+    let layer = material.layer.as_ref().and_then(|(stage, _, _)| view(&stage.texture));
+    let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
+    pipeline.prepare(device, draw);
+    Some(Batch { material, draw, fogged: true, soft: 0.0, uniform, group, indices })
 }
 
 fn buffer(device: &wgpu::Device, label: &str, usage: wgpu::BufferUsages, contents: &[u8]) -> wgpu::Buffer {

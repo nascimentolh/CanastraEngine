@@ -6,28 +6,41 @@ mod skeleton;
 
 use std::ops::Range;
 
-use l2_catalog::{Catalog, Material};
+use l2_catalog::{Catalog, Material, Skinned};
 use ue2_assets::{MeshAnimation, SkeletalMesh};
 
 use super::camera;
 use super::load::Vertex;
 use skeleton::Transform;
 
-/// A body part to load: its skeletal mesh and the texture it wears, as client paths.
+/// A character to stand in the scene, as client paths.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Figure {
+    pub(crate) parts: Vec<PartSource>,
+    pub(crate) location: [f32; 3],
+    /// Unreal rotation units.
+    pub(crate) yaw: i32,
+    /// The sequence to loop, without the body's suffix, e.g. `Wait_Hand`.
+    pub(crate) sequence: &'static str,
+}
+
+/// A body part: its skeletal mesh and the texture of each section; sections without one keep the mesh's.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PartSource {
     pub(crate) mesh: String,
-    pub(crate) texture: String,
+    pub(crate) textures: Vec<String>,
 }
 
 pub(crate) struct Pawn {
-    pub(crate) parts: Vec<Part>,
+    parts: Vec<Part>,
     location: [f32; 3],
     axes: [[f32; 3]; 3],
 }
 
-pub(crate) struct Part {
-    material: Material,
+struct Part {
     mesh: SkeletalMesh,
+    /// Each section's material and its range of the mesh's indices.
+    sections: Vec<(Material, Range<usize>)>,
     /// Where each bone stands in the bind pose, and each bone's bind pose relative to its parent.
     bind: Vec<Transform>,
     bind_locals: Vec<Transform>,
@@ -42,31 +55,28 @@ struct Animation {
 }
 
 impl Pawn {
-    /// A character at `location` facing `rotation`, playing `sequence`; parts that cannot be loaded are
-    /// left out.
-    pub(crate) fn load(
-        catalog: &mut Catalog,
-        sources: &[PartSource],
-        location: [f32; 3],
-        rotation: [i32; 3],
-        sequence: &str,
-    ) -> Self {
-        // Parts share the body's skeleton, but only some name the animation it plays, hair among those that do
-        // not; every part plays the first one found.
-        let loaded: Vec<(SkeletalMesh, Option<String>, Material)> = sources
+    /// The character `figure` describes; parts and sections that cannot be loaded are left out.
+    pub(crate) fn load(catalog: &mut Catalog, figure: &Figure) -> Self {
+        let loaded: Vec<_> = figure
+            .parts
             .iter()
             .filter_map(|source| {
-                let (mesh, animation) = catalog.skeletal_mesh(&source.mesh)?;
-                Some((mesh, animation, catalog.material(&source.texture)?))
+                let skinned = catalog.skeletal_mesh(&source.mesh)?;
+                let sections = sections(catalog, &skinned, &source.textures);
+                Some((skinned, sections))
             })
             .collect();
-        let animation =
-            loaded.iter().find_map(|(_, path, _)| path.as_deref()).and_then(|path| catalog.mesh_animation(path));
+        // Parts share the body's skeleton, but only some name the animation it plays, hair among those that do
+        // not; every part plays the first one found, whose name ends each sequence's name.
+        let animation_path = loaded.iter().find_map(|(skinned, _)| skinned.animation.clone());
+        let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
+        let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
+        let sequence = format!("{}_{}", figure.sequence, suffix.unwrap_or_default());
         let parts = loaded
             .into_iter()
-            .map(|(mesh, _, material)| Part::new(mesh, material, animation.as_ref(), sequence))
+            .map(|(skinned, sections)| Part::new(skinned.mesh, sections, animation.as_ref(), &sequence))
             .collect();
-        Self { parts, location, axes: camera::axes(rotation) }
+        Self { parts, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
     }
 
     /// Writes every part's vertices at scene time `time`, relative to `camera`, part after part.
@@ -86,11 +96,26 @@ impl Pawn {
     }
 }
 
+/// Each section's material, from `textures` where given and the mesh's own otherwise, with its indices.
+fn sections(catalog: &mut Catalog, skinned: &Skinned, textures: &[String]) -> Vec<(Material, Range<usize>)> {
+    skinned
+        .mesh
+        .sections
+        .iter()
+        .enumerate()
+        .filter_map(|(index, section)| {
+            let path = textures.get(index).or(skinned.materials.get(index)?.as_ref())?;
+            let first = section.first_index as usize;
+            Some((catalog.material(path)?, first..first + section.triangles as usize * 3))
+        })
+        .collect()
+}
+
 /// The pawns' parts laid out one after another, as `Pawn::write` fills their vertices.
 pub(crate) struct Layout {
     /// Triangle indices of all parts.
     pub(crate) indices: Vec<u32>,
-    /// Each part's material and its range of `indices`.
+    /// Each section's material and its range of `indices`.
     pub(crate) ranges: Vec<(Material, Range<u32>)>,
     pub(crate) vertices: usize,
 }
@@ -99,21 +124,29 @@ pub(crate) fn layout(pawns: &[Pawn]) -> Layout {
     let (mut indices, mut ranges, mut vertices) = (Vec::new(), Vec::new(), 0);
     for part in pawns.iter().flat_map(|pawn| &pawn.parts) {
         let base = u32::try_from(vertices).unwrap_or(u32::MAX);
-        let start = u32::try_from(indices.len()).unwrap_or(u32::MAX);
-        indices.extend(part.mesh.indices.iter().map(|&index| base.saturating_add(u32::from(index))));
-        ranges.push((part.material.clone(), start..u32::try_from(indices.len()).unwrap_or(u32::MAX)));
+        for (material, range) in &part.sections {
+            let start = u32::try_from(indices.len()).unwrap_or(u32::MAX);
+            let section = part.mesh.indices.get(range.clone()).unwrap_or_default();
+            indices.extend(section.iter().map(|&index| base.saturating_add(u32::from(index))));
+            ranges.push((material.clone(), start..u32::try_from(indices.len()).unwrap_or(u32::MAX)));
+        }
         vertices += part.mesh.vertices.len();
     }
     Layout { indices, ranges, vertices }
 }
 
 impl Part {
-    fn new(mesh: SkeletalMesh, material: Material, animation: Option<&MeshAnimation>, sequence: &str) -> Self {
+    fn new(
+        mesh: SkeletalMesh,
+        sections: Vec<(Material, Range<usize>)>,
+        animation: Option<&MeshAnimation>,
+        sequence: &str,
+    ) -> Self {
         let bind_locals = skeleton::bind_locals(&mesh.bones);
         let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent));
         let animation = animation.and_then(|animation| Animation::of(&mesh, animation, sequence));
         let mesh_axes = camera::axes(mesh.rotation);
-        Self { material, mesh, bind, bind_locals, animation, mesh_axes }
+        Self { mesh, sections, bind, bind_locals, animation, mesh_axes }
     }
 
     /// Where each bone stands at scene time `time`, looping the sequence.

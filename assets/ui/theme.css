@@ -70,6 +70,10 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 .primary { color: #fff0c8; border: 1px solid #c9a45c; background: linear-gradient(#6e5530, #37291a) }
 .primary:hover { background: linear-gradient(#82653a, #433220) }
 
+/* The lobby's 3D scenes keep their middle for the characters. */
+#characters { position: absolute; right: 24px; top: 24px; width: 360px }
+#create { position: absolute; left: 24px; top: 24px }
+
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 
 input, button, .server { transition: 160ms }

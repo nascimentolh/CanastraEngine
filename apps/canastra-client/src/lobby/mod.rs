@@ -2,6 +2,7 @@
 //! turns screen actions into network requests and network replies into screens and bound data.
 
 mod creation;
+mod figures;
 mod messages;
 
 use canastra_data::GameData;
@@ -10,6 +11,7 @@ use canastra_protocol::game::{CharacterSummary, Sex};
 use canastra_protocol::login::ServerEntry;
 
 use crate::network::{Network, Reply, Request};
+use crate::scene::Figure;
 use crate::screen::Screen;
 use creation::{Choice, Draft};
 
@@ -38,6 +40,8 @@ pub(crate) struct Lobby {
     data: Result<GameData, String>,
     servers: Vec<ServerEntry>,
     characters: Vec<CharacterSummary>,
+    /// Index into the characters of the one standing in front.
+    selected: usize,
     choices: Vec<Choice>,
     draft: Draft,
 }
@@ -45,7 +49,15 @@ pub(crate) struct Lobby {
 impl Lobby {
     pub(crate) fn new(network: Result<Network, String>, data: Result<GameData, String>) -> Self {
         let choices = data.as_ref().map(creation::choices).unwrap_or_default();
-        Self { network, data, servers: Vec::new(), characters: Vec::new(), choices, draft: Draft::default() }
+        Self {
+            network,
+            data,
+            servers: Vec::new(),
+            characters: Vec::new(),
+            selected: 0,
+            choices,
+            draft: Draft::default(),
+        }
     }
 
     /// Runs a screen action; false when the action is not the lobby's.
@@ -71,6 +83,7 @@ impl Lobby {
                     self.request(Request::Join(server.clone()), "Joining...", screen);
                 }
             }
+            ("select", Some(index)) if index < self.characters.len() => self.selected = index,
             ("delete", Some(index)) => {
                 if let Some(character) = self.characters.get(index) {
                     self.request(Request::Delete(character.id), "Deleting...", screen);
@@ -118,10 +131,19 @@ impl Lobby {
             Reply::Characters { list, failure: None } => {
                 self.bind_characters(&list, screen);
                 self.characters = list;
+                self.selected = self.selected.min(self.characters.len().saturating_sub(1));
                 screen.show(CHARACTERS_SCREEN);
                 if self.characters.is_empty() { "Create your first character.".into() } else { String::new() }
             }
         };
+    }
+
+    /// The characters to stand in the scene behind `markup`.
+    pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
+        match (&self.data, markup) {
+            (Ok(data), CHARACTERS_SCREEN) => figures::select(data, &self.characters, self.selected),
+            _ => Vec::new(),
+        }
     }
 
     fn request(&self, request: Request, status: &str, screen: &mut Screen) {

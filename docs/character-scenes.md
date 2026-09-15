@@ -129,5 +129,12 @@ Each step is checked against the real client: a dump of the files, or a screensh
      Kamael. The last select slot, in front of the camera, is the selected character's.
 5. **Select scene.** Move the camera to `Char_Select_Warp` and stand the account's characters on the
    eight slots, wearing what they wear. Clicking a model selects it, and the UI shows name, class and level.
+   *2026-09-15:* the account's characters stand in the hall in their bare bodies, dressed from
+   `GameData.bodies` by their class line's race and archetype, their sex, face and hair style, looping
+   `Wait_Hand`. The selected character takes the last slot and the others the first seven in list order, as
+   in H5: the two side characters of the H5 screenshot fall where the camera puts slots 0 and 1, to the
+   pixel. The selected one does not: H5 stands it about 65 units behind the last slot, on the rune circle's
+   far edge, which both its size and its feet agree on. The list moved to the right so the middle stays
+   clear. Still to do: worn gear, names above heads, and picking by clicking the model.
 6. **Creation scene.** Fly to the race's camera, show the class's model in its display gear, and switch
    the model when the sex, hair style, hair color or face changes, as H5 does.

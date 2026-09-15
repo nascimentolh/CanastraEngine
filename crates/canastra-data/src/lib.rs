@@ -72,6 +72,18 @@ pub enum Problem {
 }
 
 impl GameData {
+    /// The starting class of the line `class` belongs to.
+    pub fn starting_class(&self, mut class: ClassId) -> Option<&class::StartingClass> {
+        // A parent chain longer than the class list is a cycle.
+        for _ in 0..=self.classes.len() {
+            match &self.classes.get(&class)?.origin {
+                Origin::Starting(start) => return Some(start),
+                Origin::Advanced { parent } => class = *parent,
+            }
+        }
+        None
+    }
+
     pub fn validate(&self) -> Vec<Issue> {
         let mut issues = Vec::new();
         let known = |skill: &SkillRef| self.skills.get(&skill.id).is_some_and(|s| s.levels.contains_key(&skill.level));

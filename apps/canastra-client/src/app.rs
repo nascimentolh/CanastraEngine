@@ -14,7 +14,7 @@ use crate::gpu::Gpu;
 use crate::lobby::{self, LOGIN_SCREEN, Lobby};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
-use crate::scene::Scene;
+use crate::scene::{Figure, Scene};
 use crate::screen::Screen;
 
 pub(crate) struct App {
@@ -33,6 +33,8 @@ struct Running {
     scene: Option<Scene>,
     /// The map and camera scene `scene` was loaded for.
     backdrop: (&'static str, &'static str),
+    /// The characters standing in `scene`.
+    figures: Vec<Figure>,
     client_root: PathBuf,
     renderer: Renderer,
     lobby: Lobby,
@@ -56,11 +58,21 @@ impl App {
         let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
-        let lobby = Lobby::new(network, game_data());
+        let lobby = Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")));
         let backdrop = lobby::backdrop(LOGIN_SCREEN);
         let scene = load_scene(&gpu, &self.client_root, backdrop);
         let client_root = self.client_root.clone();
-        Ok(Running { screen, modifiers: ModifiersState::empty(), scene, backdrop, client_root, renderer, lobby, gpu })
+        Ok(Running {
+            screen,
+            modifiers: ModifiersState::empty(),
+            scene,
+            backdrop,
+            figures: Vec::new(),
+            client_root,
+            renderer,
+            lobby,
+            gpu,
+        })
     }
 }
 
@@ -114,13 +126,21 @@ impl Running {
         self.gpu.window.request_redraw();
     }
 
-    /// Loads the scene the shown screen stands in, when it changed.
+    /// Loads the scene the shown screen stands in and stands the lobby's characters in it, when they changed.
     // ponytail: loads block the window for a moment; load in the background if it shows.
     fn follow_screen(&mut self) {
         let backdrop = lobby::backdrop(self.screen.markup());
         if backdrop != self.backdrop {
             self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
             self.backdrop = backdrop;
+            self.figures.clear();
+        }
+        let figures = self.lobby.figures(self.screen.markup());
+        if figures != self.figures
+            && let Some(scene) = &mut self.scene
+        {
+            scene.place(&self.gpu, &figures);
+            self.figures = figures;
         }
     }
 }

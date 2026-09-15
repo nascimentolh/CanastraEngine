@@ -43,6 +43,14 @@ pub struct Heightmap {
     pub samples: Vec<u16>,
 }
 
+/// A skeletal mesh with its default animation and each section's material as client-wide paths.
+#[derive(Debug, Clone)]
+pub struct Skinned {
+    pub mesh: SkeletalMesh,
+    pub animation: Option<String>,
+    pub materials: Vec<Option<String>>,
+}
+
 /// A static mesh with each section's material as a client-wide path.
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -95,14 +103,16 @@ impl Catalog {
         Some(Mesh { mesh, materials })
     }
 
-    /// The skeletal mesh at `path`, with the path of its default animation.
-    pub fn skeletal_mesh(&mut self, path: &str) -> Option<(SkeletalMesh, Option<String>)> {
+    /// The skeletal mesh at `path`, with its default animation and each section's material as client paths.
+    pub fn skeletal_mesh(&mut self, path: &str) -> Option<Skinned> {
         let package_name = package_name(path)?;
         let (loaded, index) = self.object(path, "SkeletalMesh")?;
         let export = loaded.package.exports().get(index)?;
         let mesh = ue2_assets::read_skeletal_mesh(&loaded.package, &loaded.file, export).ok()?;
         let animation = full_path(&package_name, &loaded.package, mesh.animation);
-        Some((mesh, animation))
+        let materials =
+            mesh.materials.iter().map(|&material| full_path(&package_name, &loaded.package, material)).collect();
+        Some(Skinned { mesh, animation, materials })
     }
 
     pub fn mesh_animation(&mut self, path: &str) -> Option<MeshAnimation> {
