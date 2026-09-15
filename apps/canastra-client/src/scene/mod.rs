@@ -190,6 +190,28 @@ impl Scene {
         })
     }
 
+    /// Each pawn's label and where it falls on a window of `size` physical pixels, in those pixels; labels behind
+    /// the camera are left out.
+    pub(crate) fn labels(&self, size: [u32; 2]) -> Vec<(&str, [f32; 2])> {
+        let [width, height] = size.map(|side| side as f32);
+        // Columns of world x, y, z and w; rows clip x, clip y, depth and the distance along the view.
+        let [[xx, xy, _, xw], [yx, yy, _, yw], [zx, zy, _, zw], [wx, wy, _, ww]] =
+            camera::view_projection(self.rotation, FOV, width / height.max(1.0));
+        let time = self.started.elapsed().as_secs_f32();
+        self.pawns
+            .iter()
+            .filter_map(|pawn| {
+                let (label, [x, y, z]) = pawn.label(time, self.camera)?;
+                let distance = xw * x + yw * y + zw * z + ww;
+                let clip_x = xx * x + yx * y + zx * z + wx;
+                let clip_y = xy * x + yy * y + zy * z + wy;
+                (distance > camera::NEAR).then(|| {
+                    (label, [(clip_x / distance).midpoint(1.0) * width, (-clip_y / distance).midpoint(1.0) * height])
+                })
+            })
+            .collect()
+    }
+
     /// Clears the window's `frame` and draws the scene into it as it looks now.
     pub(crate) fn draw(&mut self, gpu: &Gpu, frame: &wgpu::Texture) -> wgpu::CommandBuffer {
         let size = gpu.size();

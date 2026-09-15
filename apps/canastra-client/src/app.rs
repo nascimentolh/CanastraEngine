@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use canastra_ui::{Draw, Rect, Rgba, TextAlign, TextStyle};
 use l2_catalog::Catalog;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent};
@@ -81,6 +82,14 @@ impl Running {
         let scale = self.gpu.scale();
         let [width, height] = self.gpu.size();
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());
+        if let Some(scene) = &self.scene {
+            self.screen.frame.draws.extend(
+                scene
+                    .labels([width, height])
+                    .into_iter()
+                    .map(|(label, [x, y])| name_tag(label, [x / scale, y / scale])),
+            );
+        }
         let Some(frame) = self.gpu.frame() else { return };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let scene = self.scene.as_mut().map(|scene| scene.draw(&self.gpu, &frame.texture));
@@ -203,6 +212,19 @@ impl ApplicationHandler<Reply> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let blink = self.running.as_ref().and_then(|running| running.screen.next_blink());
         event_loop.set_control_flow(blink.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
+    }
+}
+
+/// A name drawn centered above the point `at`, in logical pixels.
+// ponytail: labels draw over the UI's shapes like all text; hide them under windows if that shows.
+fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
+    const WIDTH: f32 = 240.0;
+    const HEIGHT: f32 = 18.0;
+    Draw::Text {
+        rect: Rect { x: x - WIDTH / 2.0, y: y - HEIGHT, width: WIDTH, height: HEIGHT },
+        text: label.to_owned(),
+        color: Rgba([0xf2, 0xe6, 0xc8, 0xff]),
+        style: TextStyle { family: None, size: 13.0, weight: 500, letter_spacing: 0.0, align: TextAlign::Center },
     }
 }
 

@@ -32,7 +32,8 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
             let start = data.starting_class(character.class)?;
             let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
             let appearance = &character.appearance;
-            figure(data, body, [appearance.face, appearance.hair_style].map(usize::from), &[], stand)
+            let figure = figure(data, body, [appearance.face, appearance.hair_style].map(usize::from), &[], stand)?;
+            Some(Figure { label: Some(character.name.clone()), ..figure })
         })
         .collect()
 }
@@ -111,7 +112,7 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
     let head =
         [look.faces.get(face), hair.and_then(|style| style.front.as_ref()), hair.and_then(|style| style.back.as_ref())];
     let parts = head.into_iter().flatten().map(part).chain(slots.into_iter().flat_map(|(_, parts)| parts)).collect();
-    Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip) })
+    Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip), label: None })
 }
 
 /// The idle a character plays holding a weapon of the client's `grip`, or none.

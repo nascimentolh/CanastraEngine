@@ -27,6 +27,8 @@ pub(crate) struct Figure {
     pub(crate) yaw: i32,
     /// The sequence to loop, without the body's suffix, e.g. `Wait_Hand`.
     pub(crate) sequence: &'static str,
+    /// Text shown above the head, such as the character's name.
+    pub(crate) label: Option<String>,
 }
 
 /// A body part: its skeletal mesh and the texture of each section; sections without one keep the mesh's.
@@ -36,9 +38,13 @@ pub(crate) struct PartSource {
     pub(crate) textures: Vec<String>,
 }
 
+/// How far above the top of the head a label stands, in world units.
+const LABEL_LIFT: f32 = 6.0;
+
 pub(crate) struct Pawn {
     parts: Vec<Part>,
     held: Vec<Held>,
+    label: Option<String>,
     location: [f32; 3],
     axes: [[f32; 3]; 3],
 }
@@ -88,7 +94,20 @@ impl Pawn {
             .map(|(skinned, sections)| Part::new(skinned.mesh, sections, animation.as_ref(), &sequence))
             .collect();
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
-        Self { parts, held, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
+        let label = figure.label.clone();
+        Self { parts, held, label, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
+    }
+
+    /// The pawn's label and where it stands at scene time `time`, above the head, relative to `camera`.
+    pub(crate) fn label(&self, time: f32, camera: [f32; 3]) -> Option<(&str, [f32; 3])> {
+        let label = self.label.as_deref()?;
+        let part = self.parts.first()?;
+        let bone = part.mesh.bones.iter().position(|bone| bone.name.eq_ignore_ascii_case("Bip01_HeadNub"))?;
+        let head = part.pose(time).get(bone)?.translation;
+        let turned = camera::place(head, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
+        let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
+        at[2] += LABEL_LIFT;
+        Some((label, [at[0] - camera[0], at[1] - camera[1], at[2] - camera[2]]))
     }
 
     /// Writes the vertices of every part, then of everything held, at scene time `time`, relative to `camera`
