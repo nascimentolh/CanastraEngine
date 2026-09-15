@@ -77,7 +77,7 @@ impl Rect {
         x >= self.x && y >= self.y && x < self.x + self.width && y < self.y + self.height
     }
 
-    pub(crate) fn intersects(&self, other: &Self) -> bool {
+    pub fn intersects(&self, other: &Self) -> bool {
         self.x < other.x + other.width
             && other.x < self.x + self.width
             && self.y < other.y + other.height
@@ -114,7 +114,7 @@ pub enum Draw {
 }
 
 impl Draw {
-    pub(crate) fn rect(&self) -> &Rect {
+    pub fn rect(&self) -> &Rect {
         match self {
             Self::Shadow { rect, .. }
             | Self::Rect { rect, .. }

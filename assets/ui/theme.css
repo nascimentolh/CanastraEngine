@@ -71,7 +71,40 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 .primary:hover { background: linear-gradient(#82653a, #433220) }
 
 /* The lobby's 3D scenes keep their middle for the characters. */
-#characters { position: absolute; right: 24px; top: 24px; width: 360px }
+/* Character select: the selected character's details beside them, a row of cards and Enter World under them. */
+#selected {
+    position: absolute;
+    left: 57%;
+    top: 34%;
+    width: 220px;
+    padding: 12px 16px;
+    gap: 3px;
+    background: linear-gradient(#211c15cc, #110e0bd6);
+    border: 1px solid #8c7443;
+    border-radius: 3px;
+}
+.selected-name { font-family: Cinzel; font-size: 17px; font-weight: 700; color: #f0dcaa }
+.selected-line { font-size: 13px; color: #b8a888 }
+#dock { position: absolute; left: 0px; right: 0px; bottom: 26px; align-items: center; gap: 12px }
+#enter { flex-grow: 0; width: 240px; padding: 11px 0; font-size: 16px }
+.cards { gap: 8px }
+.card {
+    width: 150px;
+    padding: 9px 12px;
+    gap: 3px;
+    background: linear-gradient(#1d1811e0, #110e0ae0);
+    border: 1px solid #4f412a;
+    border-radius: 2px;
+}
+.card:hover { border: 1px solid #9d8250; background: linear-gradient(#2d2517e8, #17130de8) }
+.card:checked { border: 1px solid #e0c07a; background: linear-gradient(#3b301ef0, #1b150ef0); box-shadow: inset 0 0 12px #e0c07a30 }
+.card-name { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #efdcae }
+.card-line { font-size: 11px; color: #a9987a }
+.card-plus { font-size: 18px; color: #d4bd8a }
+#back { position: absolute; left: 24px; bottom: 26px; flex-grow: 0; width: 110px }
+#delete { position: absolute; right: 24px; bottom: 26px; flex-grow: 0; width: 110px }
+#confirm { width: 360px }
+.confirm-text { font-size: 13px; color: #d9d0bb; text-align: center }
 #create { position: absolute; left: 24px; top: 24px; width: 300px }
 /* The creation camera's close-up toggle, under the chosen character. */
 #view { position: absolute; left: 0px; right: 0px; bottom: 36px; justify-content: center }

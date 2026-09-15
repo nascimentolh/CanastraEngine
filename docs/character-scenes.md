@@ -226,3 +226,10 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - Level, particle and pawn vertices stay relative to where the map was loaded; a moving camera only shifts
      the view matrix.
    - Still to do: the camera's pace along each path (even in time here) and rotating the character.
+   *2026-09-16:* the select screen, redesigned as a carousel: a card per character along the bottom with a
+   Create card last, Enter World above them, and the selected character's name, class and level in a panel
+   beside them. Clicking a card or the character in the hall selects it and stands it in the middle. Delete
+   asks first, on a screen of its own over the same hall. Names over heads are left out where a panel covers
+   them, since text draws over every shape. The UI gained `:checked` (an element whose `checked` binding holds
+   `true`, as the selected card) and percent offsets for absolute elements.
+   - Enter World only says it is not ready yet: the game server has no world to enter.

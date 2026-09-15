@@ -16,12 +16,15 @@ struct Rule {
     declarations: Vec<Declaration>,
 }
 
-/// Pseudo-classes an element is in: `:hover`, `:focus` and `:empty` (an input with no value).
+/// Pseudo-classes an element is in: `:hover`, `:focus`, `:empty` (an input with no value) and `:checked` (an
+/// element whose `checked` binding holds `true`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "one flag per pseudo-class an element can be in at once")]
 pub(crate) struct States {
     pub(crate) hover: bool,
     pub(crate) focus: bool,
     pub(crate) empty: bool,
+    pub(crate) checked: bool,
 }
 
 /// `tag`, `.class`, `#id` and pseudo-classes, combined without spaces, e.g. `input.dark:focus`.
@@ -42,12 +45,13 @@ impl Selector {
             && (!self.states.hover || states.hover)
             && (!self.states.focus || states.focus)
             && (!self.states.empty || states.empty)
+            && (!self.states.checked || states.checked)
     }
 
     /// Ids, then classes and states, then tags.
     fn specificity(&self) -> (usize, usize, usize) {
-        let States { hover, focus, empty } = self.states;
-        let states = usize::from(hover) + usize::from(focus) + usize::from(empty);
+        let States { hover, focus, empty, checked } = self.states;
+        let states = [hover, focus, empty, checked].into_iter().filter(|state| *state).count();
         (usize::from(self.id.is_some()), self.classes.len() + states, usize::from(self.tag.is_some()))
     }
 }
@@ -81,10 +85,10 @@ pub(crate) enum Declaration {
     JustifyContent(Align),
     FlexGrow(f32),
     Absolute(bool),
-    Left(f32),
-    Top(f32),
-    Right(f32),
-    Bottom(f32),
+    Left(Length),
+    Top(Length),
+    Right(Length),
+    Bottom(Length),
     Background(Fill),
     Border(Option<(f32, Rgba)>),
     BorderRadius(f32),
@@ -166,6 +170,7 @@ fn selector(text: &str) -> Result<Selector, UiError> {
             (':', "hover") => selector.states.hover = true,
             (':', "focus") => selector.states.focus = true,
             (':', "empty") => selector.states.empty = true,
+            (':', "checked") => selector.states.checked = true,
             _ => return Err(css(&format!("unsupported selector `{text}`"))),
         }
         rest = &body[end..];
@@ -192,10 +197,10 @@ fn declaration(text: &str) -> Result<Declaration, UiError> {
         "justify-content" => Declaration::JustifyContent(align(value)?),
         "flex-grow" => Declaration::FlexGrow(number(value)?),
         "position" => Declaration::Absolute(keyword(value, &[("absolute", true), ("relative", false)])?),
-        "left" => Declaration::Left(px()?),
-        "top" => Declaration::Top(px()?),
-        "right" => Declaration::Right(px()?),
-        "bottom" => Declaration::Bottom(px()?),
+        "left" => Declaration::Left(length(value)?),
+        "top" => Declaration::Top(length(value)?),
+        "right" => Declaration::Right(length(value)?),
+        "bottom" => Declaration::Bottom(length(value)?),
         "background" => Declaration::Background(fill(value)?),
         "border" => Declaration::Border(border(value)?),
         "border-radius" => Declaration::BorderRadius(px()?),

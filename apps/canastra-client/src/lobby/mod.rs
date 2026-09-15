@@ -5,11 +5,11 @@ mod creation;
 mod creation_screen;
 mod figures;
 mod messages;
+mod select_screen;
 mod views;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
-use canastra_data::text::Locale;
 use canastra_protocol::game::CharacterSummary;
 use canastra_protocol::login::ServerEntry;
 
@@ -26,6 +26,7 @@ const SELECT_CAMERA: &str = "Char_Select_Warp";
 const CREATION_MAP: &str = "Lobby02.unr";
 const SERVERS_SCREEN: &str = "servers.ui";
 const CHARACTERS_SCREEN: &str = "characters.ui";
+const DELETE_SCREEN: &str = "delete.ui";
 const CREATE_SCREEN: &str = "create.ui";
 
 pub(crate) struct Lobby {
@@ -81,13 +82,7 @@ impl Lobby {
                     self.request(Request::Join(server.clone()), "Joining...", screen);
                 }
             }
-            ("select", Some(index)) if index < self.characters.len() => self.selected = index,
-            ("delete", Some(index)) => {
-                if let Some(character) = self.characters.get(index) {
-                    self.request(Request::Delete(character.id), "Deleting...", screen);
-                }
-            }
-            _ => return self.act_creation(verb, index, screen),
+            _ => return self.act_select(verb, index, screen) || self.act_creation(verb, index, screen),
         }
         true
     }
@@ -110,9 +105,9 @@ impl Lobby {
                 messages::creation(failure).into()
             }
             Reply::Characters { list, failure: None } => {
-                self.bind_characters(&list, screen);
                 self.characters = list;
                 self.selected = self.selected.min(self.characters.len().saturating_sub(1));
+                self.bind_characters(screen);
                 screen.show(CHARACTERS_SCREEN);
                 if self.characters.is_empty() { "Create your first character.".into() } else { String::new() }
             }
@@ -122,7 +117,7 @@ impl Lobby {
     /// The map and camera scene shown behind `markup`.
     pub(crate) fn backdrop(&self, markup: &str) -> (&'static str, &'static str) {
         match markup {
-            CHARACTERS_SCREEN => (MAP, SELECT_CAMERA),
+            CHARACTERS_SCREEN | DELETE_SCREEN => (MAP, SELECT_CAMERA),
             // Lobby02 has one scene per race, all but Orc's named after it.
             CREATE_SCREEN => (
                 CREATION_MAP,
@@ -158,7 +153,7 @@ impl Lobby {
     /// The characters to stand in the scene behind `markup`.
     pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
         match (&self.data, markup) {
-            (Ok(data), CHARACTERS_SCREEN) => figures::select(data, &self.characters, self.selected),
+            (Ok(data), CHARACTERS_SCREEN | DELETE_SCREEN) => figures::select(data, &self.characters, self.selected),
             (Ok(data), CREATE_SCREEN) => {
                 let chosen = self.draft.choice(&self.choices).map(|choice| choice.archetype).zip(self.draft.sex);
                 figures::creation(data, self.draft.race, chosen, self.draft.appearance)
@@ -174,21 +169,6 @@ impl Lobby {
                 screen.status = status.into();
             }
             Err(error) => screen.status.clone_from(error),
-        }
-    }
-
-    fn bind_characters(&self, list: &[CharacterSummary], screen: &mut Screen) {
-        screen.set("characters.len".into(), list.len().to_string());
-        for (index, character) in list.iter().enumerate() {
-            let class = self
-                .data
-                .as_ref()
-                .ok()
-                .and_then(|data| data.classes.get(&character.class))
-                .and_then(|class| class.name.get(Locale::En))
-                .unwrap_or("?");
-            screen.set(format!("characters.{index}.name"), character.name.clone());
-            screen.set(format!("characters.{index}.detail"), format!("{class}, level {}", character.level));
         }
     }
 }

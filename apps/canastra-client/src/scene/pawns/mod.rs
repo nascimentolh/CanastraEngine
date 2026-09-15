@@ -128,6 +128,11 @@ impl Pawn {
         Self { parts, body, held, label, location: figure.location, axes: camera::axes([0, figure.yaw, 0]) }
     }
 
+    /// Where the pawn stands on the ground, relative to `camera`.
+    pub(crate) fn feet(&self, camera: [f32; 3]) -> [f32; 3] {
+        sub(self.location, camera)
+    }
+
     /// The pawn's label and where it stands at scene time `time`, above the head, relative to `camera`.
     pub(crate) fn label(&self, time: f32, camera: [f32; 3]) -> Option<(&str, [f32; 3])> {
         let label = self.label.as_deref()?;

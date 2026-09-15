@@ -94,12 +94,24 @@ impl Running {
         let [width, height] = self.gpu.size();
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());
         if let Some(scene) = &self.scene {
-            self.screen.frame.draws.extend(
-                scene
-                    .labels([width, height])
-                    .into_iter()
-                    .map(|(label, [x, y])| name_tag(label, [x / scale, y / scale])),
-            );
+            // Text draws over every shape, so names that would show through a panel are left out.
+            let panels: Vec<Rect> = self
+                .screen
+                .frame
+                .draws
+                .iter()
+                .filter_map(|draw| match draw {
+                    Draw::Rect { rect, fill: Some(_), .. } => Some(*rect),
+                    _ => None,
+                })
+                .collect();
+            let tags: Vec<Draw> = scene
+                .labels([width, height])
+                .into_iter()
+                .map(|(label, [x, y], _)| name_tag(label, [x / scale, y / scale]))
+                .filter(|tag| !panels.iter().any(|panel| panel.intersects(tag.rect())))
+                .collect();
+            self.screen.frame.draws.extend(tags);
         }
         let Some(frame) = self.gpu.frame() else { return };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -144,6 +156,18 @@ impl Running {
         }
         self.follow_screen();
         self.gpu.window.request_redraw();
+    }
+
+    /// Selects the character under the pointer, when it points at one in the scene.
+    fn pick(&mut self) {
+        let scale = self.gpu.scale();
+        let (x, y) = self.screen.pointer_at();
+        let Some(name) = self.scene.as_ref().and_then(|scene| scene.label_at(self.gpu.size(), [x * scale, y * scale]))
+        else {
+            return;
+        };
+        self.lobby.pick(name, &mut self.screen);
+        self.follow_screen();
     }
 
     /// Loads the scene the shown screen stands in and stands the lobby's characters in it, when they changed.
@@ -200,8 +224,11 @@ impl ApplicationHandler<Reply> for App {
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                let on_ui = running.screen.hovered();
                 if let Some(action) = running.screen.click() {
                     running.run(event_loop, &action);
+                } else if !on_ui {
+                    running.pick();
                 }
                 running.gpu.window.request_redraw();
             }
@@ -234,13 +261,13 @@ impl ApplicationHandler<Reply> for App {
     }
 }
 
-/// A name drawn centered above the point `at`, in logical pixels.
-// ponytail: labels draw over the UI's shapes like all text; hide them under windows if that shows.
+/// A name drawn centered above the point `at`, in logical pixels, about as wide as its letters.
 fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
-    const WIDTH: f32 = 240.0;
+    const LETTER: f32 = 8.0;
     const HEIGHT: f32 = 18.0;
+    let width = label.chars().count() as f32 * LETTER;
     Draw::Text {
-        rect: Rect { x: x - WIDTH / 2.0, y: y - HEIGHT, width: WIDTH, height: HEIGHT },
+        rect: Rect { x: x - width / 2.0, y: y - HEIGHT, width, height: HEIGHT },
         text: label.to_owned(),
         color: Rgba([0xf2, 0xe6, 0xc8, 0xff]),
         style: TextStyle { family: None, size: 13.0, weight: 500, letter_spacing: 0.0, align: TextAlign::Center },

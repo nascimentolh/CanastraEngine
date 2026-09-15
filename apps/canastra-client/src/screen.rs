@@ -111,6 +111,16 @@ impl Screen {
         }
     }
 
+    /// Where the pointer is, in logical pixels.
+    pub(crate) fn pointer_at(&self) -> (f32, f32) {
+        self.pointer
+    }
+
+    /// Whether the pointer is over an element of the UI.
+    pub(crate) fn hovered(&self) -> bool {
+        self.state.hovered.is_some()
+    }
+
     /// Moves the pointer; true when the hovered element changed.
     pub(crate) fn pointer(&mut self, x: f32, y: f32) -> bool {
         self.pointer = (x, y);

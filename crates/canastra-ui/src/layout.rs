@@ -133,6 +133,7 @@ impl Pass<'_> {
             hover: self.state.hovered == Some(index),
             focus: self.state.focused == Some(index),
             empty: value.as_ref().is_some_and(String::is_empty),
+            checked: element.checked.as_deref().and_then(bindings).is_some_and(|value| value == "true"),
         };
         let mut style = default_style(element.tag);
         // Only text color and style inherit; everything else starts over.
@@ -190,13 +191,14 @@ fn expand(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> Eleme
 
 /// A copy of a repeated `element` for item `index` of `list`.
 fn instantiate(element: &Element, list: &str, index: usize) -> Element {
-    let bind = element.bind.as_ref().map(|key| match key.strip_prefix("item.") {
+    let item = |key: &String| match key.strip_prefix("item.") {
         Some(field) => format!("{list}.{index}.{field}"),
         None => key.clone(),
-    });
+    };
+    let (bind, checked) = (element.bind.as_ref().map(item), element.checked.as_ref().map(item));
     let action = element.action.as_ref().map(|action| action.replace("{index}", &index.to_string()));
     let children = element.children.iter().map(|child| instantiate(child, list, index)).collect();
-    Element { bind, action, children, ..element.clone() }
+    Element { bind, checked, action, children, ..element.clone() }
 }
 
 fn default_style(tag: Tag) -> Style {
@@ -233,10 +235,10 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::Absolute(absolute) => {
             style.position = if *absolute { Position::Absolute } else { Position::Relative };
         }
-        Declaration::Left(value) => style.inset.left = inset(*value),
-        Declaration::Top(value) => style.inset.top = inset(*value),
-        Declaration::Right(value) => style.inset.right = inset(*value),
-        Declaration::Bottom(value) => style.inset.bottom = inset(*value),
+        Declaration::Left(value) => style.inset.left = offset(*value),
+        Declaration::Top(value) => style.inset.top = offset(*value),
+        Declaration::Right(value) => style.inset.right = offset(*value),
+        Declaration::Bottom(value) => style.inset.bottom = offset(*value),
         Declaration::Background(fill) => computed.paint.fill = Some(*fill),
         Declaration::Border(border) => computed.paint.border = *border,
         Declaration::BorderRadius(radius) => computed.radius = *radius,
@@ -249,6 +251,14 @@ fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) 
         Declaration::TextAlign(align) => computed.text.align = *align,
         Declaration::BorderImage(source, inset) => computed.border_image = Some((source.clone(), *inset)),
         Declaration::Transition(seconds) => computed.transition = *seconds,
+    }
+}
+
+fn offset(length: Length) -> LengthPercentageAuto {
+    match length {
+        Length::Auto => LengthPercentageAuto::auto(),
+        Length::Px(value) => LengthPercentageAuto::length(value),
+        Length::Percent(fraction) => LengthPercentageAuto::percent(fraction),
     }
 }
 
@@ -518,14 +528,15 @@ mod tests {
     #[test]
     fn repeated_children_bind_each_item() {
         let ui = parse_markup(
-            r#"<ui><column repeat="servers"><button bind="item.name" action="pick:{index}"/></column></ui>"#,
+            r#"<ui><column repeat="servers"><button bind="item.name" checked="item.picked" action="pick:{index}"/></column></ui>"#,
         )
         .unwrap();
-        let sheet = parse_stylesheet("ui { align-items: start }").unwrap();
+        let sheet = parse_stylesheet("ui { align-items: start } button:checked { color: #ff0000 }").unwrap();
         let bindings = |key: &str| match key {
             "servers.len" => Some("2".to_owned()),
             "servers.0.name" => Some("Aden".to_owned()),
             "servers.1.name" => Some("Giran".to_owned()),
+            "servers.1.picked" => Some("true".to_owned()),
             _ => None,
         };
         let frame = build(
@@ -543,8 +554,11 @@ mod tests {
         let texts: Vec<_> = frame
             .draws
             .iter()
-            .filter_map(|draw| if let Draw::Text { text, .. } = draw { Some(text.as_str()) } else { None })
+            .filter_map(|draw| {
+                if let Draw::Text { text, color, .. } = draw { Some((text.as_str(), color.0[1])) } else { None }
+            })
             .collect();
-        assert_eq!(texts, ["Aden", "Giran"]);
+        assert_eq!(texts.iter().map(|(text, _)| *text).collect::<Vec<_>>(), ["Aden", "Giran"]);
+        assert!(texts[0].1 != 0 && texts[1].1 == 0, "only the picked item is checked: {texts:?}");
     }
 }

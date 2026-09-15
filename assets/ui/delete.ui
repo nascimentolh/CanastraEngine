@@ -1,0 +1,12 @@
+<ui>
+    <window id="confirm">
+        <label class="heading" text="Delete Character"/>
+        <label class="confirm-text" bind="delete.question"/>
+        <label class="status" bind="app.status" text=""/>
+        <row class="actions centered">
+            <button class="primary" text="Delete" action="delete.confirm"/>
+            <button text="Cancel" action="delete.cancel"/>
+        </row>
+    </window>
+    <label id="version" bind="app.version" text="?"/>
+</ui>
