@@ -1,7 +1,7 @@
 //! Between a player's client and a game server: admission with the login server's ticket, then the
 //! account's characters on this server.
 
-use canastra_data::id::ClassId;
+use canastra_data::id::{ClassId, ItemId};
 use canastra_data::npc::Race;
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +93,8 @@ pub struct CharacterSummary {
     pub sex: Sex,
     pub appearance: Appearance,
     pub level: u32,
+    /// What the character wears, so the lobby can dress it.
+    pub gear: Vec<ItemId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -26,8 +26,12 @@ The configuration defaults to canastra-game.toml.";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    // sqlx reports each migration check as a notice; only its warnings matter here.
-    let filter = Targets::new().with_default(Level::INFO).with_target("sqlx", Level::WARN);
+    // sqlx reports each migration check as a notice; only its warnings matter here. RUST_LOG overrides both,
+    // e.g. `RUST_LOG=canastra_game=debug`.
+    let filter = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|targets| targets.parse::<Targets>().ok())
+        .unwrap_or_else(|| Targets::new().with_default(Level::INFO).with_target("sqlx", Level::WARN));
     tracing_subscriber::registry().with(tracing_subscriber::fmt::layer()).with(filter).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();

@@ -1,7 +1,7 @@
 //! The lobby: an admitted player's characters on this server, listed, created and deleted.
 
 use canastra_data::GameData;
-use canastra_data::class::{Origin, StartingClass};
+use canastra_data::class::{InitialItem, Origin, StartingClass};
 use canastra_data::npc::Sex as LineSex;
 use canastra_db::{Creation, Database, NewRecord};
 use canastra_net::Connection;
@@ -48,11 +48,10 @@ impl Lobby {
         if let Err(failure) = self.names.check(&new.name) {
             return Ok(Err(failure));
         }
-        let position = match spawn_point(&self.data, new, random()?) {
-            Ok(position) => position,
+        let (position, items) = match spawn_point(&self.data, new, random()?) {
+            Ok(spawn) => spawn,
             Err(failure) => return Ok(Err(failure)),
         };
-        // ponytail: initial items, including the recruit kit, are granted once inventories exist.
         let record = NewRecord {
             account,
             server: self.server,
@@ -61,6 +60,7 @@ impl Lobby {
             sex: new.sex,
             appearance: new.appearance,
             position,
+            items,
         };
         Ok(match self.database.create_character(&record, self.slots).await? {
             Creation::Created(id) => {
@@ -73,9 +73,14 @@ impl Lobby {
     }
 }
 
-/// Where `new` appears: one of its starting class's creation points, picked by `roll`. Fails for a class
-/// characters do not start as, a sex its line does not allow, or appearance outside the creation screen.
-fn spawn_point(data: &GameData, new: &NewCharacter, roll: u32) -> std::result::Result<[i32; 3], CreationFailure> {
+/// Where `new` appears, one of its starting class's creation points picked by `roll`, and what it starts with.
+/// Fails for a class characters do not start as, a sex its line does not allow, or appearance outside the
+/// creation screen.
+fn spawn_point<'a>(
+    data: &'a GameData,
+    new: &NewCharacter,
+    roll: u32,
+) -> std::result::Result<([i32; 3], &'a [InitialItem]), CreationFailure> {
     let Some(Origin::Starting(start)) = data.classes.get(&new.class).map(|class| &class.origin) else {
         return Err(CreationFailure::InvalidClass);
     };
@@ -87,7 +92,8 @@ fn spawn_point(data: &GameData, new: &NewCharacter, roll: u32) -> std::result::R
     }
     let points = &start.creation_points;
     let index = usize::try_from(roll).unwrap_or(0) % points.len().max(1);
-    points.get(index).copied().ok_or(CreationFailure::InvalidClass)
+    let point = points.get(index).copied().ok_or(CreationFailure::InvalidClass)?;
+    Ok((point, &start.initial_items))
 }
 
 fn allows(start: &StartingClass, sex: Sex) -> bool {
@@ -110,7 +116,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use canastra_data::class::PlayerClass;
-    use canastra_data::id::ClassId;
+    use canastra_data::id::{ClassId, ItemId};
     use canastra_data::text::Localized;
     use canastra_protocol::game::Appearance;
 
@@ -124,6 +130,7 @@ mod tests {
             Origin::Starting(Box::new(StartingClass {
                 sex,
                 creation_points: vec![[1, 2, 3], [4, 5, 6]],
+                initial_items: vec![InitialItem { item: ItemId(57), count: 100, equipped: false, lasts_minutes: None }],
                 ..StartingClass::default()
             }))
         };
@@ -145,12 +152,15 @@ mod tests {
     fn characters_start_at_their_class_points_within_the_rules() {
         let data = data();
         let plain = Appearance::default();
-        assert_eq!(spawn_point(&data, &new(0, Sex::Male, plain), 3), Ok([4, 5, 6]));
-        assert_eq!(spawn_point(&data, &new(1, Sex::Male, plain), 0), Err(CreationFailure::InvalidClass));
-        assert_eq!(spawn_point(&data, &new(124, Sex::Male, plain), 0), Err(CreationFailure::InvalidClass));
-        assert_eq!(spawn_point(&data, &new(124, Sex::Female, plain), 0), Ok([1, 2, 3]));
+        let point = |class, sex, look, roll| spawn_point(&data, &new(class, sex, look), roll).map(|(point, _)| point);
+        assert_eq!(point(0, Sex::Male, plain, 3), Ok([4, 5, 6]));
+        let kit = spawn_point(&data, &new(0, Sex::Male, plain), 0).map(|(_, items)| items.len());
+        assert_eq!(kit, Ok(1), "a new character starts with its class's kit");
+        assert_eq!(point(1, Sex::Male, plain, 0), Err(CreationFailure::InvalidClass));
+        assert_eq!(point(124, Sex::Male, plain, 0), Err(CreationFailure::InvalidClass));
+        assert_eq!(point(124, Sex::Female, plain, 0), Ok([1, 2, 3]));
         let long_hair = Appearance { hair_style: 6, ..plain };
-        assert_eq!(spawn_point(&data, &new(0, Sex::Female, long_hair), 0), Ok([1, 2, 3]));
-        assert_eq!(spawn_point(&data, &new(0, Sex::Male, long_hair), 0), Err(CreationFailure::InvalidAppearance));
+        assert_eq!(point(0, Sex::Female, long_hair, 0), Ok([1, 2, 3]));
+        assert_eq!(point(0, Sex::Male, long_hair, 0), Err(CreationFailure::InvalidAppearance));
     }
 }

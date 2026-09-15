@@ -74,10 +74,11 @@ mod tests {
             sex: game::Sex::Female,
             appearance: game::Appearance { hair_style: 1, hair_color: 2, face: 0 },
             level: 1,
+            gear: vec![canastra_data::id::ItemId(57)],
         };
         assert_eq!(
             encode(&game::GameServer::Characters(vec![summary])),
-            [3, 1, 10, 3, b'A', b'n', b'a', 124, 1, 1, 2, 0, 1]
+            [3, 1, 10, 3, b'A', b'n', b'a', 124, 1, 1, 2, 0, 1, 1, 57]
         );
     }
 

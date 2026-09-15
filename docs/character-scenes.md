@@ -268,3 +268,8 @@ Each step is checked against the real client: a dump of the files, or a screensh
    them comes the class's own text from the client's `ClassInfo-e.dat`, its opening line in the class's voice set
    apart from the path it tells of. The client has no text for the attributes themselves, so those tips are
    written from the game's rules.
+   *2026-09-16:* the select hall dresses characters in what they wear. The game server keeps what a character
+   carries in `character_items`, filled on creation from its class's kit, with the minutes a piece lasts as the
+   row's expiry. The character list now carries the ids of the pieces worn and unexpired, and the lobby dresses
+   each figure with them, by the same rules the creation screen follows. Characters made before this show bare,
+   having no items.

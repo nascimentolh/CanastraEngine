@@ -18,7 +18,6 @@ const BOW_GRIP: u32 = 5;
 const SELECTED_STEP_BACK: f32 = 65.0;
 
 /// The account's characters on the select slots, leaving out those the data cannot dress.
-// ponytail: bare bodies only; worn gear shows once the character list carries equipment.
 pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected: usize) -> Vec<Figure> {
     characters
         .iter()
@@ -34,7 +33,7 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
             let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
             let appearance = &character.appearance;
             let look = [appearance.face, appearance.hair_style, appearance.hair_color];
-            let figure = figure(data, body, look, &[], stand)?;
+            let figure = figure(data, body, look, &character.gear, stand)?;
             Some(Figure { label: Some(character.name.clone()), ..figure })
         })
         .collect()
