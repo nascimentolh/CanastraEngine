@@ -78,6 +78,13 @@ Each step is checked against the real client: a dump of the files, or a screensh
    along `NMovableSunLight0`. The HSV ramps follow Unreal 2's `FGetHSV`, whose saturation runs backwards:
    read as ordinary HSV, the daytime ramp turns everything red. At 22:00, the starting hour, the village
    houses take the warm light of the H5 screenshot, and the login is unchanged. Terrain and the sky are next.
+   *2026-09-15:* terrain in world zones. Each Lobby02 terrain sector stores eight intensity maps, like the
+   eight visibility entries of mesh instances, one per three hours of the day. Three options were captured
+   against the screenshot: Fermata's model on heightmap normals alone (a bright, warm brown ground), the
+   stored map of the hour alone (the grass goes dark green), and both, with the stored map scaling the sun.
+   Both comes closest to the screenshot's dark olive ground, with `TerrainAmbient` and `HSVTerrainLight` at
+   22:00 and the map of the eighth state. The order of the states is assumed; more screenshots at other
+   hours would confirm it.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the

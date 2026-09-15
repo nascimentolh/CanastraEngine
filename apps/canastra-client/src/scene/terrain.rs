@@ -3,6 +3,7 @@
 use l2_catalog::{Blend, Catalog, Combine, Heightmap, Material, Stage, UvModifier};
 use ue2_level::Terrain;
 
+use super::daylight::Daylight;
 use super::load::{Group, Vertex};
 
 /// Heights are stored around this middle value.
@@ -14,12 +15,13 @@ pub(super) fn groups(
     catalog: &mut Catalog,
     camera: [f32; 3],
     zone_state: Option<u8>,
+    daylight: Option<&Daylight>,
 ) -> Vec<(Material, Group)> {
     let mut groups = Vec::new();
     for terrain in terrains {
         let Some(map) = catalog.heightmap(&terrain.heightmap) else { continue };
         let (width, height) = (map.width, map.height);
-        let Group { vertices, indices } = geometry(terrain, &map, camera, zone_state);
+        let Group { vertices, indices } = geometry(terrain, &map, camera, zone_state, daylight);
         for (index, layer) in terrain.layers.iter().enumerate() {
             let Some(mut material) = catalog.material(&layer.material) else { continue };
             material.base.uv.insert(0, UvModifier::Scale { scale: layer.scale, offset: [0.0; 2] });
@@ -38,9 +40,17 @@ pub(super) fn groups(
 
 /// One vertex per heightmap sample relative to `camera`, with texture coordinates in samples, and two
 /// triangles per visible quad.
-fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3], zone_state: Option<u8>) -> Group {
+fn geometry(
+    terrain: &Terrain,
+    map: &Heightmap,
+    camera: [f32; 3],
+    zone_state: Option<u8>,
+    daylight: Option<&Daylight>,
+) -> Group {
     let (width, height) = (map.width, map.height);
-    let light = intensities(terrain, width, height, zone_state);
+    // In world zones the stored maps say how much sun each vertex gets at each time of day.
+    let state = daylight.map_or(zone_state, |daylight| Some(daylight.time_slot()));
+    let light = intensities(terrain, width, height, state);
     let [scale_x, scale_y, scale_z] = terrain.scale;
     let mut vertices: Vec<Vertex> = Vec::with_capacity(width * height);
     for (index, &sample) in map.samples.iter().take(width * height).enumerate() {
@@ -51,15 +61,16 @@ fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3], zone_state: Op
             terrain.location[2] + (f32::from(sample) - ZERO_HEIGHT) / 256.0 * scale_z,
         ];
         let bright = light.get(index).copied().unwrap_or(1.0);
+        let rgb = daylight.map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, map, index), bright));
         vertices.push([
             world[0] - camera[0],
             world[1] - camera[1],
             world[2] - camera[2],
             x,
             y,
-            bright,
-            bright,
-            bright,
+            rgb[0],
+            rgb[1],
+            rgb[2],
             1.0,
         ]);
     }
@@ -75,6 +86,22 @@ fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3], zone_state: Op
         indices.extend([corner(0, 0), corner(0, 1), corner(1, 0), corner(1, 0), corner(0, 1), corner(1, 1)]);
     }
     Group { vertices, indices }
+}
+
+/// The surface normal at heightmap sample `index`, from its neighbors' heights.
+fn normal(terrain: &Terrain, map: &Heightmap, index: usize) -> [f32; 3] {
+    let (width, height) = (map.width, map.height);
+    let height_at = |x: usize, y: usize| {
+        let sample = map.samples.get(y.min(height - 1) * width + x.min(width - 1)).copied().unwrap_or(0);
+        f32::from(sample) / 256.0 * terrain.scale[2]
+    };
+    let (x, y) = (index % width, index / width);
+    let [scale_x, scale_y, _] = terrain.scale;
+    [
+        -(height_at(x + 1, y) - height_at(x.saturating_sub(1), y)) / (2.0 * scale_x),
+        -(height_at(x, y + 1) - height_at(x, y.saturating_sub(1))) / (2.0 * scale_y),
+        1.0,
+    ]
 }
 
 /// Each vertex's precomputed intensity for the zone's state, from the sector covering it; vertices no
@@ -121,7 +148,7 @@ mod tests {
             height: 3,
             samples: vec![32768, 32769, 32768, 32768, 32768, 32768, 32768, 32768, 32768],
         };
-        let Group { vertices, indices } = geometry(&terrain, &map, [100.0, 0.0, 0.0], None);
+        let Group { vertices, indices } = geometry(&terrain, &map, [100.0, 0.0, 0.0], None, None);
 
         // The heightmap's center (1.5 samples in) sits on the terrain's location; one height step is
         // scale_z / 256.

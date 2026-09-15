@@ -54,10 +54,14 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
 
     let environment = l2_env::Environment::read(client_root);
     // Zones with states carry their light in the level; world zones are lit by the hour.
-    let daylight = environment
-        .as_ref()
-        .filter(|_| warp.zone_state.is_none())
-        .and_then(|environment| Daylight::static_mesh(environment, &level.actors));
+    let daylight_for = |sections| {
+        environment
+            .as_ref()
+            .filter(|_| warp.zone_state.is_none())
+            .and_then(|environment| Daylight::new(environment, &level.actors, sections))
+    };
+    let daylight = daylight_for(["StaticMeshAmbient", "HSVStaticMeshLight"]);
+    let terrain_daylight = daylight_for(["TerrainAmbient", "HSVTerrainLight"]);
     let decorations = deco::actors(&level.terrains, &mut catalog, camera.location, warp.zone_state);
     let actors = level
         .actors
@@ -103,7 +107,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
 
     // Terrain layers come first and in order: the stable sort below keeps their blending order.
     let mut groups: Vec<(Material, Group)> =
-        terrain::groups(&level.terrains, &mut catalog, camera.location, warp.zone_state)
+        terrain::groups(&level.terrains, &mut catalog, camera.location, warp.zone_state, terrain_daylight.as_ref())
             .into_iter()
             .chain(groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))))
             .collect();
@@ -165,7 +169,7 @@ fn vertex_light(
     let Some(&[red, green, blue, _]) = actor.lighting.get(index).filter(|_| !actor.unlit) else { return [1.0; 3] };
     let mut light = [red, green, blue].map(|channel| f32::from(channel) / 255.0);
     if let (Some(daylight), Some(&normal)) = (daylight, mesh.normals.get(index)) {
-        let lit = daylight.on(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]));
+        let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0);
         for (light, lit) in light.iter_mut().zip(lit) {
             *light += lit;
         }
