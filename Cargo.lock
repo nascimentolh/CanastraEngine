@@ -614,6 +614,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "canastra-protocol"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "canastra-studio"
 version = "0.1.0"
 dependencies = [

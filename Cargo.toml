@@ -10,6 +10,7 @@ rust-version = "1.98"
 [workspace.dependencies]
 canastra-data = { path = "crates/canastra-data" }
 canastra-migrate = { path = "crates/canastra-migrate" }
+canastra-protocol = { path = "crates/canastra-protocol" }
 canastra-ui = { path = "crates/canastra-ui" }
 l2-catalog = { path = "crates/l2-catalog" }
 l2-crypto = { path = "crates/l2-crypto" }
