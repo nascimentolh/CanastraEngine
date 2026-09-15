@@ -20,6 +20,7 @@ crates/      canastra-migrate    legacy client tables + server XML -> game data,
              ue2-level           placed actors and scene cameras of a map
              canastra-data       game data domain model shared by client, server and Studio
              canastra-protocol   network messages per phase and direction (postcard, no IO)
+             canastra-net        Noise-encrypted framed connections (tokio) and signed admission tickets
              canastra-ui         UI markup + CSS subset laid out into draw commands (no GPU, no fonts)
              l2-catalog          finds client textures, static meshes and material textures by path
              l2-dat-h5           H5 .dat layouts (GPL-derived, migration tooling only)
