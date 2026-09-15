@@ -14,6 +14,9 @@ use canastra_protocol::ServerId;
 use config::{Config, Result};
 use players::{Admission, Lobby, NameRules, Players};
 use tokio::net::TcpListener;
+use tracing::Level;
+use tracing_subscriber::filter::Targets;
+use tracing_subscriber::prelude::*;
 
 const USAGE: &str = "usage:
   canastra-game serve [<config.toml>]   run the game server
@@ -23,7 +26,9 @@ The configuration defaults to canastra-game.toml.";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    tracing_subscriber::fmt().init();
+    // sqlx reports each migration check as a notice; only its warnings matter here.
+    let filter = Targets::new().with_default(Level::INFO).with_target("sqlx", Level::WARN);
+    tracing_subscriber::registry().with(tracing_subscriber::fmt::layer()).with(filter).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let result = match args.as_slice() {
