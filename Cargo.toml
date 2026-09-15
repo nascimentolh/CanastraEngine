@@ -9,6 +9,7 @@ rust-version = "1.98"
 
 [workspace.dependencies]
 canastra-data = { path = "crates/canastra-data" }
+canastra-db = { path = "crates/canastra-db" }
 canastra-migrate = { path = "crates/canastra-migrate" }
 canastra-net = { path = "crates/canastra-net" }
 canastra-protocol = { path = "crates/canastra-protocol" }
@@ -22,6 +23,7 @@ ue2-assets = { path = "crates/ue2-assets" }
 ue2-core = { path = "crates/ue2-core" }
 ue2-level = { path = "crates/ue2-level" }
 ue2-package = { path = "crates/ue2-package" }
+argon2 = "0.6"
 eframe = "0.36"
 ed25519-dalek = "3"
 flate2 = "1"
@@ -34,6 +36,7 @@ postcard = { version = "1", default-features = false, features = ["alloc"] }
 roxmltree = "0.20"
 serde = { version = "1", features = ["derive"] }
 snow = "0.10"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros"] }
 taffy = "0.14"
 tokio = "1"
 wgpu = "30"

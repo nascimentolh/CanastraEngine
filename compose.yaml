@@ -1,0 +1,19 @@
+# Development services. The login and game servers join this file as they gain Docker images.
+#
+#   docker compose up -d postgres
+#   CANASTRA_TEST_DATABASE_URL=postgres://canastra:canastra@localhost:5433/canastra cargo test -p canastra-db -- --include-ignored
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: canastra
+      POSTGRES_PASSWORD: canastra
+      POSTGRES_DB: canastra
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+volumes:
+  postgres:

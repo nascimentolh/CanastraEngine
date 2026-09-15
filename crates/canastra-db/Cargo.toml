@@ -1,0 +1,18 @@
+[package]
+name = "canastra-db"
+description = "PostgreSQL storage for Canastra servers: migrations and account records."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+argon2.workspace = true
+canastra-protocol.workspace = true
+sqlx.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true
