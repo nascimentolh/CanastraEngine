@@ -54,6 +54,9 @@ pub struct Element {
     pub password: bool,
     /// Texture path of an image, e.g. `L2UI_CH3.Button.Btn1_normal`.
     pub src: Option<String>,
+    /// On a container, the data list its children repeat for: once per item, with `item.` keys bound to
+    /// that item and `{index}` in actions replaced by its position. The count comes from `<list>.len`.
+    pub repeat: Option<String>,
     pub children: Vec<Element>,
 }
 
@@ -79,6 +82,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
         placeholder: None,
         password: false,
         src: None,
+        repeat: None,
         children: Vec::new(),
     };
     for attribute in node.attributes() {
@@ -91,6 +95,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "action" => element.action = Some(value),
             "src" => element.src = Some(value),
             "placeholder" => element.placeholder = Some(value),
+            "repeat" if !tag.is_leaf() => element.repeat = Some(value),
             "type" => {
                 element.password = match value.as_str() {
                     "text" => false,

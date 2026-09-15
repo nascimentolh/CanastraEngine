@@ -75,8 +75,9 @@ pub fn build(
 ) -> Result<Frame, UiError> {
     // ponytail: the layout tree is rebuilt every frame; cache it when screens get large.
     let mut tree: TaffyTree<Measured> = TaffyTree::new();
+    let ui = expand(ui, bindings);
     let mut pass = Pass { sheet, state, transitions, bindings, next_index: 0, animating: false };
-    let root = pass.node(&mut tree, ui, &ROOT).map_err(layout_error)?;
+    let root = pass.node(&mut tree, &ui, &ROOT).map_err(layout_error)?;
     let available =
         Size { width: AvailableSpace::Definite(viewport[0]), height: AvailableSpace::Definite(viewport[1]) };
     tree.compute_layout_with_measure(root.id, available, |input, _, context, style| {
@@ -157,6 +158,32 @@ impl Pass<'_> {
         };
         Ok(Node { element, index, id, computed, text, value, children })
     }
+}
+
+/// `element` with each `repeat` container's children copied once per item of its list.
+fn expand(element: &Element, bindings: &dyn Fn(&str) -> Option<String>) -> Element {
+    let children = match &element.repeat {
+        Some(list) => {
+            let count = bindings(&format!("{list}.len")).and_then(|len| len.parse::<usize>().ok()).unwrap_or(0);
+            (0..count)
+                .flat_map(|index| element.children.iter().map(move |child| instantiate(child, list, index)))
+                .map(|child| expand(&child, bindings))
+                .collect()
+        }
+        None => element.children.iter().map(|child| expand(child, bindings)).collect(),
+    };
+    Element { children, ..element.clone() }
+}
+
+/// A copy of a repeated `element` for item `index` of `list`.
+fn instantiate(element: &Element, list: &str, index: usize) -> Element {
+    let bind = element.bind.as_ref().map(|key| match key.strip_prefix("item.") {
+        Some(field) => format!("{list}.{index}.{field}"),
+        None => key.clone(),
+    });
+    let action = element.action.as_ref().map(|action| action.replace("{index}", &index.to_string()));
+    let children = element.children.iter().map(|child| instantiate(child, list, index)).collect();
+    Element { bind, action, children, ..element.clone() }
 }
 
 fn default_style(tag: Tag) -> Style {
@@ -427,5 +454,38 @@ mod tests {
         let fields: Vec<_> =
             frame.fields().map(|hit| (hit.element, hit.field.as_deref(), hit.action.as_deref())).collect();
         assert_eq!(fields, [(1, Some("account"), None), (2, Some("password"), Some("login"))]);
+    }
+
+    #[test]
+    fn repeated_children_bind_each_item() {
+        let ui = parse_markup(
+            r#"<ui><column repeat="servers"><button bind="item.name" action="pick:{index}"/></column></ui>"#,
+        )
+        .unwrap();
+        let sheet = parse_stylesheet("ui { align-items: start }").unwrap();
+        let bindings = |key: &str| match key {
+            "servers.len" => Some("2".to_owned()),
+            "servers.0.name" => Some("Aden".to_owned()),
+            "servers.1.name" => Some("Giran".to_owned()),
+            _ => None,
+        };
+        let frame = build(
+            &ui,
+            &sheet,
+            [800.0, 600.0],
+            UiState::default(),
+            &mut Transitions::default(),
+            &mut Monospace,
+            &bindings,
+        )
+        .unwrap();
+        let actions: Vec<_> = frame.hits.iter().map(|hit| hit.action.as_deref()).collect();
+        assert_eq!(actions, [Some("pick:0"), Some("pick:1")]);
+        let texts: Vec<_> = frame
+            .draws
+            .iter()
+            .filter_map(|draw| if let Draw::Text { text, .. } = draw { Some(text.as_str()) } else { None })
+            .collect();
+        assert_eq!(texts, ["Aden", "Giran"]);
     }
 }
