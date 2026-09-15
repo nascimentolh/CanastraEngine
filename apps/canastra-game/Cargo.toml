@@ -1,0 +1,19 @@
+[package]
+name = "canastra-game"
+description = "Canastra game server: registers with the login server; the world comes next."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+canastra-net.workspace = true
+canastra-protocol.workspace = true
+hex.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "time", "signal"] }
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+# Copy to canastra-game.toml. Fill [keys] from `canastra-game keygen` and add its public key to the
+# login server's [[authorized]] list under the same id.
+
+# This server's id, as the login server authorizes it.
+id = 1
+name = "Canastra"
+# Where players reach this server.
+public_address = "127.0.0.1:7777"
+capacity = 1000
+
+[login]
+# The login server's internal game_servers address.
+address = "127.0.0.1:2107"
+# The login server's noise_public key.
+public_key = ""
+
+[keys]
+noise_private = ""
+noise_public = ""

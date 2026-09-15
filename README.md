@@ -16,6 +16,7 @@ apps/        canastra-client     game client: winit + wgpu window drawing the UI
              canastra-studio     game data editor (egui): validation blocks saving, undo, client icons
              canastra-cli        IO, filesystem, user-facing commands
              canastra-login      login server: accounts, rate-limited auth, game server registry, tickets
+             canastra-game       game server: registers with the login server (world to come)
 crates/      canastra-migrate    legacy client tables + server XML -> game data, with a report
              ue2-assets          tagged properties, textures, palettes and static meshes read in place
              ue2-level           placed actors and scene cameras of a map
@@ -52,6 +53,13 @@ Login server (PostgreSQL from `docker compose up -d postgres`):
 cargo run -p canastra-login -- keygen                      # paste into canastra-login.toml (see the example)
 cargo run -p canastra-login -- create-account <name>       # password from CANASTRA_PASSWORD or stdin
 cargo run -p canastra-login -- serve
+```
+
+Game server (authorize its key in the login server's `[[authorized]]`):
+
+```
+cargo run -p canastra-game -- keygen                       # paste into canastra-game.toml (see the example)
+cargo run -p canastra-game -- serve
 ```
 
 `scan` on a real H5 client: 3020 of 3021 files decrypt, 1244 packages parse, and all 54 `system`

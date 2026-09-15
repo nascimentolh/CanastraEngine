@@ -728,6 +728,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "canastra-game"
+version = "0.1.0"
+dependencies = [
+ "canastra-net",
+ "canastra-protocol",
+ "hex",
+ "serde",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "canastra-login"
 version = "0.1.0"
 dependencies = [
