@@ -5,10 +5,10 @@ What the High Five client shows behind the login window, found by reading the te
 
 ## Where it lives
 
-- **Map:** `MAPS/lobby01.unr`. It holds the login scene and character creation/selection.
-  `MAPS/Lobby02.unr` is an older lobby that this client does not use: `system/logongrp.dat` places the
-  eight character-select pawns around (150900, -246650, -8117), inside lobby01's terrain
-  (TerrainInfo at 147456, -245760) and outside Lobby02's (180224, -245760).
+- **Map:** `MAPS/lobby01.unr`. It holds the login scene and character selection: `system/logongrp.dat`
+  places the eight character-select pawns around (150900, -246650, -8117), inside lobby01's terrain
+  (TerrainInfo at 147456, -245760). Character creation happens in `MAPS/Lobby02.unr`
+  (see [`character-scenes.md`](character-scenes.md)).
 - **Which map the client loads is not in plain text** (not in `L2.ini`, the `.u` scripts,
   `interface.xdat` or the DLLs); `l2.exe` decides natively. `L2.ini` has `Map=Index.unr`,
   `LocalMap=Entry.unr` (a 7 KB empty level) and `SharedSky=True`.

@@ -3,14 +3,32 @@
 The target is the High Five lobby as the client shows it: the characters' 3D models standing in lobby01,
 and a creation scene that flies to each race. Findings come from the test client's files (2026-09-15).
 
+## What the client shows
+
+H5 screenshots (2026-09-15) set the target:
+
+- **Select:** a stone hall with a long carpet, stairs on both sides and a throne with torches. The
+  selected character stands in the middle of the carpet on a rune circle, and the others stand to the
+  left. Each shows its name above the head. The panel at the top left shows name, level, class, HP, MP,
+  SP, karma and experience. Create, Delete and Re-Login are at the right, and Start at the bottom.
+- **Creation:** for Human, a village of Talking Island with a windmill, and four models in display gear:
+  a male and a female fighter, then a male and a female mystic. The panel at the left picks name, race,
+  class, gender, hair style, hair color and face above a description, with Create and Previous at the right.
+
+Our screens keep the project's own UI look; the 3D scenes follow H5.
+
 ## What the client holds
 
-- **Cameras** (SceneManagers in `MAPS/lobby01.unr`):
-  - `Char_Select_Warp` at (150890, -246952, -8053), fog #51777b from 600 to 10000.
-  - `Char_Create_Warp`, the same point as `Logon_Warp`.
-  - One per race (`human`, `Elf`, `Darkelf`, `orc`, `Dwarf`), plus transitions between fighter and
-    mystic (`K`/`W`) and between male and female: `<Race>_Kman_Kwoman`, `<Race>_Wman_Wwoman` and their
-    reverses.
+- **Maps:** select uses `MAPS/lobby01.unr`, the login map, and creation uses `MAPS/Lobby02.unr`. Lobby02
+  holds a small world for creation: 1208 static meshes and a scene per race, Kamael included.
+- **Cameras** (SceneManagers):
+  - lobby01 `Char_Select_Warp` at (150890, -246952, -8053), fog #51777b from 600 to 10000: the hall.
+  - Lobby02 `Char_Create_Warp` and `Human` at (181810, -247791, -6370), fog #aeaa95 from 1500 to 10000:
+    the village.
+  - Lobby02 has one scene per race (`Human`, `Elf`, `DarkElf`, `orc`, `Dwarf`, `Kamael`), plus transitions
+    between fighter and mystic (`K`/`W`) and between male and female: `<Race>_Kman_Kwoman`,
+    `<Race>_Wman_Wwoman` and their reverses. lobby01 holds an older copy of the same scenes without the
+    village around them.
 - **Select pawns:** `system/Logongrp.dat` has eight slots, each with x, y, z and yaw, around
   (150900, -246650, -8117).
 - **Creation pawns:** `system/Charcreategrp.dat` has 20 records, each with a position, yaw and the item
@@ -36,12 +54,16 @@ Each step is checked against the real client: a dump of the files, or a screensh
    other package versions are skipped. Parts store their first level of detail either as Lineage soft
    and rigid streams or in the older wedge layout, and both are read. Animations without bone indices
    give one track per bone, in order. The lobby idle is `Wait_Hand_<Body>`.
-2. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
+2. **Scene fidelity for both maps.** Our renderer already frames both scenes from their cameras, but a
+   capture shows what it still lacks. The hall shows its walls, stairs and torches almost black, with no
+   floor: its floor and walls are BSP, which is not drawn yet, and it needs the level's lighting. In the
+   village, trees, grass, paths and the windmill draw, but the houses are black and there is no sky.
+3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
-3. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
+4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the
    meshes a body uses by race, sex and archetype, and the scene's pawn slots. Equipment models come from
    items, which already carry them.
-4. **Select scene.** Move the camera to `Char_Select_Warp` and stand the account's characters on the
+5. **Select scene.** Move the camera to `Char_Select_Warp` and stand the account's characters on the
    eight slots, wearing what they wear. Clicking a model selects it, and the UI shows name, class and level.
-5. **Creation scene.** Fly to the race's camera, show the class's model in its display gear, and switch
+6. **Creation scene.** Fly to the race's camera, show the class's model in its display gear, and switch
    the model when the sex, hair style, hair color or face changes, as H5 does.
