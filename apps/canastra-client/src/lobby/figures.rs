@@ -73,8 +73,15 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
         (EquipSlot::Legs, look.lower.as_ref().map(part).into_iter().collect()),
         (EquipSlot::Feet, look.boots.as_ref().map(part).into_iter().collect()),
     ];
+    // Full armor takes the legs slot too: once one is worn, a legs item or another full armor after it is not.
+    // The creation table lists robes in the legs slot of fighters in full armor.
+    let mut legs_taken = false;
     for item in gear.iter().filter_map(|id| data.items.get(id)) {
         let (ItemKind::Armor(armor), ItemModel::Worn(worn)) = (&item.kind, &item.visual.model) else { continue };
+        if legs_taken && matches!(armor.slot, EquipSlot::Legs | EquipSlot::FullArmor) {
+            continue;
+        }
+        legs_taken |= armor.slot == EquipSlot::FullArmor;
         let Some(model) = worn.bodies.get(&body) else { continue };
         let worn = model
             .meshes
@@ -114,14 +121,17 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
     Some(Figure { parts, held: in_hands, location: stand.location, yaw: stand.yaw, sequence: idle(grip), label: None })
 }
 
-/// The idle a character plays holding a weapon of the client's `grip`, or none.
+/// The idle a character plays holding a weapon of the client's `grip`, or none. Grips by `Weapongrp`: 1 one-handed,
+/// 2 two-handed, 3 dual swords, 4 poles and staves, 5 bows, 6 and 9 daggers and rapiers, 7 fists and 10 paired
+/// weapons (two meshes each), 8 crossbows.
 fn idle(grip: Option<u32>) -> &'static str {
     match grip {
-        Some(1) => "Wait_1HS",
+        Some(1 | 6 | 9) => "Wait_1HS",
         Some(2) => "Wait_2HS",
+        Some(3 | 7 | 10) => "Wait_Dual",
         Some(4) => "Wait_Pole",
         Some(BOW_GRIP) => "Wait_Bow",
-        Some(7) => "Wait_Dual",
+        Some(8) => "Wait_BowGun",
         _ => "Wait_Hand",
     }
 }
