@@ -17,6 +17,8 @@ pub struct Section {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticMesh {
     pub positions: Vec<[f32; 3]>,
+    /// One normal per position.
+    pub normals: Vec<[f32; 3]>,
     /// First UV channel; empty when the mesh has none.
     pub uvs: Vec<[f32; 2]>,
     /// Triangle list indices into the vertex streams.
@@ -41,12 +43,7 @@ pub fn read_static_mesh(package: &Package, file: &[u8], export: &Export) -> Resu
     })?;
     reader.bytes(25)?; // bounding box again
 
-    // ponytail: normals are skipped until the scene is lit.
-    let positions = array(&mut reader, |reader| {
-        let position = vector(reader)?;
-        reader.bytes(12)?; // normal
-        Ok(position)
-    })?;
+    let (positions, normals) = array(&mut reader, |reader| Ok((vector(reader)?, vector(reader)?)))?.into_iter().unzip();
     reader.u32()?; // revision
     for _ in 0..2 {
         // Color and alpha streams; lighting comes from the level, not from here.
@@ -62,7 +59,7 @@ pub fn read_static_mesh(package: &Package, file: &[u8], export: &Export) -> Resu
     let indices = array(&mut reader, |reader| Ok(reader.u16()?))?;
 
     let uvs = if uv_streams.is_empty() { Vec::new() } else { uv_streams.swap_remove(0) };
-    let mesh = StaticMesh { positions, uvs, indices, sections, materials };
+    let mesh = StaticMesh { positions, normals, uvs, indices, sections, materials };
     validate(&mesh)?;
     Ok(mesh)
 }
@@ -152,6 +149,7 @@ mod tests {
         let package = Package::parse(&file).unwrap();
         let mesh = read_static_mesh(&package, &file, &package.exports()[0]).unwrap();
         assert_eq!(mesh.positions[2], [1.0, 0.0, 1.0]);
+        assert_eq!(mesh.normals[2], [0.0, -1.0, 0.0]);
         assert_eq!(mesh.uvs[1], [1.0, 1.0]);
         assert_eq!(mesh.indices, [0, 1, 2, 2, 3, 0]);
         assert_eq!(mesh.sections, [Section { first_index: 0, triangles: 2 }]);

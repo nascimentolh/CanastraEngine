@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use l2_catalog::{Blend, Catalog, Material, Mesh};
-use ue2_assets::Image;
-use ue2_level::{Emitter, Fog, Level, Placement};
+use ue2_assets::{Image, StaticMesh};
+use ue2_level::{Actor, Emitter, Fog, Level, Placement};
 use ue2_package::Package;
 
+use super::daylight::Daylight;
 use super::{camera, deco, terrain};
 
 /// Position relative to the camera, UV, then an RGBA multiplier (white for level geometry).
@@ -51,6 +52,12 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let mut materials: HashMap<String, Option<Material>> = HashMap::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
 
+    let environment = l2_env::Environment::read(client_root);
+    // Zones with states carry their light in the level; world zones are lit by the hour.
+    let daylight = environment
+        .as_ref()
+        .filter(|_| warp.zone_state.is_none())
+        .and_then(|environment| Daylight::static_mesh(environment, &level.actors));
     let decorations = deco::actors(&level.terrains, &mut catalog, camera.location, warp.zone_state);
     let actors = level
         .actors
@@ -85,13 +92,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
                     let position = mesh.positions.get(usize::from(index)).copied().unwrap_or_default();
                     let at = relative(position);
                     let uv = mesh.uvs.get(usize::from(index)).copied().unwrap_or_default();
-                    // ponytail: actors without stored lighting (movers) draw unlit until dynamic lighting exists.
-                    let light = match actor.lighting.get(usize::from(index)) {
-                        Some(&[red, green, blue, _]) if !actor.unlit => {
-                            [red, green, blue].map(|channel| f32::from(channel) / 255.0)
-                        }
-                        _ => [1.0; 3],
-                    };
+                    let light = vertex_light(actor, mesh, index, &axes, daylight.as_ref());
                     group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], opacity]);
                     u32::try_from(group.vertices.len() - 1).unwrap_or(u32::MAX)
                 });
@@ -124,7 +125,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         emitters: level.emitters.into_iter().filter(|emitter| emitter.zone == warp.zone).collect(),
         // The login keeps the hour the client's clock starts at.
         // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
-        cloud_tint: l2_env::Environment::read(client_root)
+        cloud_tint: environment
             .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
             .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
     };
@@ -149,6 +150,27 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         data.batches.push(Batch { material, indices: start..end });
     }
     Ok(data)
+}
+
+/// The light a mesh vertex draws with: what the level stored for it, plus the hour's light in world zones.
+// ponytail: actors without stored lighting (movers) draw unlit until dynamic lighting exists.
+fn vertex_light(
+    actor: &Actor,
+    mesh: &StaticMesh,
+    index: u16,
+    axes: &[[f32; 3]; 3],
+    daylight: Option<&Daylight>,
+) -> [f32; 3] {
+    let index = usize::from(index);
+    let Some(&[red, green, blue, _]) = actor.lighting.get(index).filter(|_| !actor.unlit) else { return [1.0; 3] };
+    let mut light = [red, green, blue].map(|channel| f32::from(channel) / 255.0);
+    if let (Some(daylight), Some(&normal)) = (daylight, mesh.normals.get(index)) {
+        let lit = daylight.on(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]));
+        for (light, lit) in light.iter_mut().zip(lit) {
+            *light += lit;
+        }
+    }
+    light
 }
 
 /// Decodes the texture at `path` into `textures` unless it is already there or cannot be read.

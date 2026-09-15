@@ -73,6 +73,11 @@ Each step is checked against the real client: a dump of the files, or a screensh
      daylight, so the lobby's hour is still to be found.
    - **Fermata:** it lights these zones with its own improved model, driven by the same time of day:
      hemisphere ambient, sun with sky exposure, and local lights. Try it against the screenshot too.
+   *2026-09-15:* static meshes in world zones now use Fermata's hemisphere ambient and wrapped sun
+   diffuse, fed by `StaticMeshAmbient` and `HSVStaticMeshLight` at the client's starting hour, with the sun
+   along `NMovableSunLight0`. The HSV ramps follow Unreal 2's `FGetHSV`, whose saturation runs backwards:
+   read as ordinary HSV, the daytime ramp turns everything red. At 22:00, the starting hour, the village
+   houses take the warm light of the H5 screenshot, and the login is unchanged. Terrain and the sky are next.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the

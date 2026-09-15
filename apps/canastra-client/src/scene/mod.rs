@@ -3,6 +3,7 @@
 
 mod camera;
 mod curves;
+mod daylight;
 mod deco;
 mod load;
 mod mips;
