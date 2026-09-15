@@ -1,8 +1,7 @@
 //! Time-of-day lighting for world zones, whose meshes carry no precomputed colors: Fermata's model of a
 //! hemisphere ambient and a wrapped sun diffuse, fed by the client's `TimeEnv` ramps for one hour.
 //!
-//! The lobby scenes hold still at the client's starting hour, so the light is worked out once per vertex when
-//! the scene loads.
+//! The lobby scenes hold still at one hour, so the light is worked out once per vertex when the scene loads.
 // ponytail: no sun shadows on static meshes (each instance's visibility bits), rim or specular yet; add them as the
 // comparison with H5 shows they matter.
 
@@ -21,11 +20,15 @@ pub(super) struct Daylight {
 }
 
 impl Daylight {
-    /// The light of one kind of surface at `environment`'s starting hour, from its `ambient` color ramp and
-    /// `light` HSV ramp, with the sun where the level's `NMovableSunLight` points.
-    pub(super) fn new(environment: &Environment, actors: &[Actor], [ambient, light]: [&str; 2]) -> Option<Self> {
+    /// The light of one kind of surface at `hour`, from its `ambient` color ramp and `light` HSV ramp, with the
+    /// sun where the level's `NMovableSunLight` points.
+    pub(super) fn new(
+        environment: &Environment,
+        hour: f32,
+        actors: &[Actor],
+        [ambient, light]: [&str; 2],
+    ) -> Option<Self> {
         let sun = actors.iter().find(|actor| actor.class.eq_ignore_ascii_case("NMovableSunLight"))?;
-        let hour = environment.start_hour();
         let unit = |color: [u8; 3]| color.map(|channel| f32::from(channel) / 255.0);
         let [forward, _, _] = camera::axes(sun.placement.rotation);
         Some(Self {
@@ -67,7 +70,7 @@ mod tests {
 
     #[test]
     fn surfaces_facing_the_sun_get_it_and_facing_away_keep_the_ambient() {
-        let daylight = Daylight { hour: 22.0, ambient: [0.5; 3], sun: [0.4; 3], toward_sun: [0.0, 0.0, 1.0] };
+        let daylight = Daylight { hour: 21.0, ambient: [0.5; 3], sun: [0.4; 3], toward_sun: [0.0, 0.0, 1.0] };
         let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5);
         assert!(close(daylight.on_shaded([0.0, 0.0, 2.0], 1.0), [0.9; 3]));
         assert!(close(daylight.on_shaded([0.0, 0.0, -1.0], 1.0), [0.27, 0.235, 0.2]));

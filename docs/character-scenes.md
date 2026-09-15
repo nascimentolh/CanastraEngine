@@ -77,14 +77,23 @@ Each step is checked against the real client: a dump of the files, or a screensh
    diffuse, fed by `StaticMeshAmbient` and `HSVStaticMeshLight` at the client's starting hour, with the sun
    along `NMovableSunLight0`. The HSV ramps follow Unreal 2's `FGetHSV`, whose saturation runs backwards:
    read as ordinary HSV, the daytime ramp turns everything red. At 22:00, the starting hour, the village
-   houses take the warm light of the H5 screenshot, and the login is unchanged. Terrain and the sky are next.
+   houses take the warm light of the H5 screenshot, and the login is unchanged.
    *2026-09-15:* terrain in world zones. Each Lobby02 terrain sector stores eight intensity maps, like the
    eight visibility entries of mesh instances, one per three hours of the day. Three options were captured
    against the screenshot: Fermata's model on heightmap normals alone (a bright, warm brown ground), the
    stored map of the hour alone (the grass goes dark green), and both, with the stored map scaling the sun.
-   Both comes closest to the screenshot's dark olive ground, with `TerrainAmbient` and `HSVTerrainLight` at
-   22:00 and the map of the eighth state. The order of the states is assumed; more screenshots at other
+   Both comes closest to the screenshot's dark olive ground, with `TerrainAmbient` and `HSVTerrainLight` and
+   the map of the hour's state. The order of the states is assumed; more screenshots at other
    hours would confirm it.
+   *2026-09-15:* the sky, drawn from the client's own data. `Env.int` names the sky's materials in
+   `L2_Skies.utx` (`SkybackgroundColor`, `HazeRing_Final`, cloud and star layers), which `TimeEnv` colors by
+   the hour; the engine supplies their geometry. A dome now shades from `HazeringColor` at the horizon to
+   `SkyBoxColor` above, under the wispy `Cloud_Final01_sh` layer in `CloudColor4`. Fermata's HDR panoramas
+   were captured too, and its day panorama looked closest, but it is Fermata's image, not the client's, so
+   the client's sky was kept.
+   The hour: H5's lobby clock starts at 22:00 and runs at six times real time, so a screenshot can show any
+   hour. At 22:00 the sky turns pink; at 18:00 to 20:00 the houses lose their warm light. 21:00 gives both
+   the blue sky and the warm light of the screenshot, and world zones are now shown at that hour.
 3. **Skinned rendering in the client.** Draw one part in its bind pose, then a whole body playing its
    lobby idle sequence, with GPU skinning.
 4. **Bodies as game data.** Migrate `Chargrp`, `Logongrp` and `Charcreategrp` into the game data: the

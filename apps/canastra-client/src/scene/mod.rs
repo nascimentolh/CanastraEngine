@@ -10,6 +10,7 @@ mod mips;
 mod particles;
 mod pipeline;
 mod random;
+mod sky;
 mod terrain;
 
 use std::collections::HashMap;
@@ -97,7 +98,7 @@ impl Scene {
             .batches
             .into_iter()
             .filter_map(|level| {
-                batch(level.material.clone(), Draw::surface(level.material.blend), true, 0.0, level.indices)
+                batch(level.material.clone(), Draw::surface(level.material.blend), level.fogged, 0.0, level.indices)
             })
             .collect();
 
