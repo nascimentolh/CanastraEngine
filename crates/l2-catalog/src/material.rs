@@ -22,6 +22,8 @@ pub enum Blend {
 pub enum Combine {
     Multiply,
     Add,
+    /// The second stage's red channel becomes the alpha, as terrain alpha maps weigh their layers.
+    Mask,
 }
 
 /// A texture and how its coordinates move, outermost modifier first.

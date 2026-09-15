@@ -9,7 +9,7 @@ use ue2_assets::Image;
 use ue2_level::{Level, Placement};
 use ue2_package::Package;
 
-use super::camera;
+use super::{camera, terrain};
 
 /// Position relative to the camera, then UV.
 pub(crate) type Vertex = [f32; 5];
@@ -31,9 +31,9 @@ pub(crate) struct SceneData {
 
 /// Geometry that draws with one material.
 #[derive(Default)]
-struct Group {
-    vertices: Vec<Vertex>,
-    indices: Vec<u32>,
+pub(super) struct Group {
+    pub(super) vertices: Vec<Vertex>,
+    pub(super) indices: Vec<u32>,
 }
 
 /// Loads `MAPS/<map>` from the client and frames it from the scene tagged `camera_tag`.
@@ -81,8 +81,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         }
     }
 
-    let mut groups: Vec<(Material, Group)> =
-        groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))).collect();
+    // Terrain layers come first and in order: the stable sort below keeps their blending order.
+    let mut groups: Vec<(Material, Group)> = terrain::groups(&level.terrains, &mut catalog, camera.location)
+        .into_iter()
+        .chain(groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))))
+        .collect();
     // ponytail: blended batches draw by kind, not sorted by distance; sort them when overlaps show.
     groups.sort_by_key(|(material, _)| match material.blend {
         Blend::Opaque | Blend::Masked => 0,

@@ -2,7 +2,9 @@
 
 mod camera;
 mod load;
+mod mips;
 mod pipeline;
+mod terrain;
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -165,6 +167,7 @@ fn material_bytes(material: &Material, time: f32) -> Vec<u8> {
     let (layer, combine, factor) = match &material.layer {
         Some((stage, Combine::Multiply, factor)) => (stage.matrix(time), 1.0, *factor),
         Some((stage, Combine::Add, factor)) => (stage.matrix(time), 2.0, *factor),
+        Some((stage, Combine::Mask, factor)) => (stage.matrix(time), 3.0, *factor),
         None => (IDENTITY, 0.0, 1.0),
     };
     let cutoff = match material.blend {

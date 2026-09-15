@@ -110,6 +110,7 @@ impl Pipeline {
                 address_mode_v: wgpu::AddressMode::Repeat,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                 ..Default::default()
             }),
         }
@@ -125,16 +126,16 @@ impl Pipeline {
         }
     }
 
-    /// Uploads `image` as gamma-space texels; the shader converts after combining.
-    // ponytail: no mips, so distant detail aliases; build them if the comparison with H5 shows it.
+    /// Uploads `image` and its mips as gamma-space texels; the shader converts after combining.
     pub(super) fn texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Image) -> wgpu::TextureView {
+        let (levels, texels) = super::mips::chain(image.width, image.height, &image.rgba);
         device
             .create_texture_with_data(
                 queue,
                 &wgpu::TextureDescriptor {
                     label: Some("scene texture"),
                     size: wgpu::Extent3d { width: image.width, height: image.height, depth_or_array_layers: 1 },
-                    mip_level_count: 1,
+                    mip_level_count: levels,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: wgpu::TextureFormat::Rgba8Unorm,
@@ -142,7 +143,7 @@ impl Pipeline {
                     view_formats: &[],
                 },
                 TextureDataOrder::LayerMajor,
-                &image.rgba,
+                &texels,
             )
             .create_view(&wgpu::TextureViewDescriptor::default())
     }

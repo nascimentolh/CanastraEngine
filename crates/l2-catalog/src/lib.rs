@@ -34,6 +34,14 @@ struct Loaded {
     objects: HashMap<String, usize>,
 }
 
+/// 16-bit terrain heights, row by row.
+#[derive(Debug, Clone)]
+pub struct Heightmap {
+    pub width: usize,
+    pub height: usize,
+    pub samples: Vec<u16>,
+}
+
 /// A static mesh with each section's material as a client-wide path.
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -63,6 +71,17 @@ impl Catalog {
     pub fn texture(&mut self, path: &str) -> Option<Image> {
         let (loaded, index) = self.object(path, "Texture")?;
         ue2_assets::decode_texture(&loaded.package, &loaded.file, index).ok()
+    }
+
+    /// The raw samples of the G16 texture at `path`.
+    pub fn heightmap(&mut self, path: &str) -> Option<Heightmap> {
+        let (loaded, index) = self.object(path, "Texture")?;
+        let texture =
+            ue2_assets::read_texture(&loaded.package, &loaded.file, loaded.package.exports().get(index)?).ok()?;
+        let mip = texture.mips.first().filter(|_| texture.format == ue2_assets::TextureFormat::G16)?;
+        let (width, height) = (mip.width as usize, mip.height as usize);
+        let samples: Vec<u16> = mip.data.as_chunks::<2>().0.iter().map(|&bytes| u16::from_le_bytes(bytes)).collect();
+        (samples.len() >= width * height).then_some(Heightmap { width, height, samples })
     }
 
     pub fn static_mesh(&mut self, path: &str) -> Option<Mesh> {

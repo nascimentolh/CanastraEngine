@@ -13,7 +13,7 @@ struct Material {
     layer_u: vec4<f32>,
     layer_v: vec4<f32>,
     color: vec4<f32>,
-    // Combine (0 none, 1 multiply, 2 add), combine factor, alpha cutoff, unused.
+    // Combine (0 none, 1 multiply, 2 add, 3 second red as alpha), combine factor, alpha cutoff, unused.
     params: vec4<f32>,
 }
 
@@ -56,7 +56,9 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     var color = textureSample(base, tiling, base_uv);
     let second = textureSample(layer, tiling, layer_uv);
     let factor = material.params.y;
-    if material.params.x > 1.5 {
+    if material.params.x > 2.5 {
+        color = vec4<f32>(color.rgb, color.a * second.r);
+    } else if material.params.x > 1.5 {
         color = vec4<f32>((color.rgb + second.rgb) * factor, color.a);
     } else if material.params.x > 0.5 {
         color = vec4<f32>(color.rgb * second.rgb * factor, color.a * second.a);

@@ -74,6 +74,11 @@ impl<'a> Property<'a> {
         Some([reader.i32().ok()?, reader.i32().ok()?, reader.i32().ok()?])
     }
 
+    /// The fields of a struct stored as a property list of its own (not an atomic `Vector` or `Color`).
+    pub fn fields(&self, package: &'a Package) -> Option<Vec<Property<'a>>> {
+        (self.kind == STRUCT).then(|| read_properties(&mut Reader::at(self.value, 0), package).ok()).flatten()
+    }
+
     /// A dynamic array of structs, each a property list of its own.
     pub fn structs(&self, package: &'a Package) -> Option<Vec<Vec<Property<'a>>>> {
         if self.kind != ARRAY {
@@ -83,6 +88,17 @@ impl<'a> Property<'a> {
         let count = usize::try_from(reader.compact().ok()?).ok()?;
         let structs = (0..count).map(|_| read_properties(&mut reader, package).ok()).collect::<Option<Vec<_>>>()?;
         reader.remaining().is_empty().then_some(structs)
+    }
+
+    /// A dynamic array of 32-bit integers; `None` when the bytes are not exactly that.
+    pub fn ints(&self) -> Option<Vec<i32>> {
+        if self.kind != ARRAY {
+            return None;
+        }
+        let mut reader = Reader::at(self.value, 0);
+        let count = usize::try_from(reader.compact().ok()?).ok()?;
+        let ints = (0..count).map(|_| reader.i32().ok()).collect::<Option<Vec<_>>>()?;
+        reader.remaining().is_empty().then_some(ints)
     }
 
     /// A dynamic array of object references; `None` when the bytes are not exactly that.

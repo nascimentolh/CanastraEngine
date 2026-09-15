@@ -51,6 +51,12 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    and the sky moves. Still different from H5: colors are more saturated and orange low in the sky
    (zone fog is not applied), the hills are missing (terrain), and Shader self-illumination, masks,
    oscillators and distance sorting of blended batches are not modeled.
-4. Terrain.
+4. Terrain. **Done:** `ue2-level` reads each TerrainInfo's heightmap, scale, painted layers and quad
+   visibility bitmap; the client builds one vertex per G16 sample (world = location + scale × (sample
+   offset from the center, height − 32768 over 256)), leaves holes out and draws the bottom layer
+   opaque with the others blended by their alpha maps' red channel. The tree's base lands within 50
+   units of the ground this computes. Textures now upload with box-filtered mips, which removed the
+   ground's shimmer. The hills and the tree on its hill match the H5 screenshot; zone fog is still
+   missing, and edge turns and terrain lighting are not modeled.
 5. Emitters: sprite particles.
 6. Movers, sway and ambient sound as the comparison shows they matter.
