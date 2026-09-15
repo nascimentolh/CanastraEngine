@@ -100,13 +100,13 @@ impl Draft {
     pub(super) fn pick_sex(&mut self, choices: &[Choice], sex: Sex) {
         let sex = self.choice(choices).and_then(|choice| choice.sex).unwrap_or(sex);
         self.sex = Some(sex);
-        let offered = Appearance::choices(sex);
+        let offered = Appearance::choices(self.race, sex);
         self.appearance.hair_style = self.appearance.hair_style.min(offered.hair_style.saturating_sub(1));
     }
 
     /// Moves `look` to its next choice, or its previous one, wrapping around what the sex offers.
     pub(super) fn step(&mut self, look: Look, forwards: bool) {
-        let offered = Appearance::choices(self.sex.unwrap_or(Sex::Male));
+        let offered = Appearance::choices(self.race, self.sex.unwrap_or(Sex::Male));
         let (value, count) = match look {
             Look::HairStyle => (&mut self.appearance.hair_style, offered.hair_style),
             Look::HairColor => (&mut self.appearance.hair_color, offered.hair_color),
@@ -149,6 +149,9 @@ mod tests {
         draft.pick_race(Race::Kamael);
         draft.pick_class(&choices, 2);
         assert_eq!(draft.sex, Some(Sex::Female), "a class tied to one sex picks it");
+        draft.appearance.hair_color = 0;
+        draft.step(Look::HairColor, false);
+        assert_eq!(draft.appearance.hair_color, 2, "Kamael hair comes in three colors");
         draft.pick_sex(&choices, Sex::Male);
         let new = draft.character(&choices, "Ana").unwrap();
         assert_eq!((new.class, new.sex), (ClassId(124), Sex::Female));

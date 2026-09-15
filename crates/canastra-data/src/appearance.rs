@@ -22,6 +22,26 @@ pub struct HairStyle {
     pub back: Option<Look>,
 }
 
+impl HairStyle {
+    /// The style in hair color `color`, from 0. The client keeps each color as the style's textures numbered
+    /// after the first, `_t00_` becoming `_t01_` to `_t03_` (`Hair_color.MFighter_m000_t01_m00_ah`).
+    #[must_use]
+    pub fn colored(&self, color: u8) -> Self {
+        let number = format!("_t{color:02}_");
+        let look = |look: &Look| Look {
+            mesh: look.mesh.clone(),
+            textures: look
+                .textures
+                .iter()
+                .map(|texture| {
+                    TextureRef::parse(&texture.path().replacen("_t00_", &number, 1)).unwrap_or_else(|_| texture.clone())
+                })
+                .collect(),
+        };
+        Self { front: self.front.as_ref().map(look), back: self.back.as_ref().map(look) }
+    }
+}
+
 /// A body before any gear: the faces and hair styles a character picks from, and the parts it wears where
 /// no armor covers it.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -93,5 +113,17 @@ mod tests {
         assert_eq!(body_of(Race::Elf, Archetype::Mystic, true), body_of(Race::Elf, Archetype::Fighter, true));
         assert_eq!(body_of(Race::Human, Archetype::Mystic, false), Some(Body::HumanMysticMale));
         assert_eq!(body_of(Race::Beast, Archetype::Fighter, false), None);
+    }
+
+    #[test]
+    fn a_hair_color_numbers_the_style_textures() {
+        let look = |texture: &str| Look {
+            mesh: MeshRef::parse("Fighter.MFighter_m000_m00_ah").unwrap(),
+            textures: vec![TextureRef::parse(texture).unwrap()],
+        };
+        let style = HairStyle { front: Some(look("MFighter.MFighter_m000_t00_m00_ah")), back: None };
+        let red = style.colored(2);
+        assert_eq!(red.front.unwrap().textures[0].path(), "MFighter.MFighter_m000_t02_m00_ah");
+        assert_eq!(style.colored(0), style);
     }
 }

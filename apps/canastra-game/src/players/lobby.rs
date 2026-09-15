@@ -82,7 +82,7 @@ fn spawn_point(data: &GameData, new: &NewCharacter, roll: u32) -> std::result::R
     if !allows(start, new.sex) {
         return Err(CreationFailure::InvalidClass);
     }
-    if !new.appearance.offered(new.sex) {
+    if !new.appearance.offered(start.race, new.sex) {
         return Err(CreationFailure::InvalidAppearance);
     }
     let points = &start.creation_points;

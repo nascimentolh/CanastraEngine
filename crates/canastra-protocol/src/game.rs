@@ -2,6 +2,7 @@
 //! account's characters on this server.
 
 use canastra_data::id::ClassId;
+use canastra_data::npc::Race;
 use serde::{Deserialize, Serialize};
 
 use crate::ticket::SignedTicket;
@@ -60,15 +61,17 @@ pub struct Appearance {
 }
 
 impl Appearance {
-    /// How many of each choice the H5 creation screen offers a character of `sex`: five male and seven female
-    /// hair styles, four hair colors and three faces.
-    pub fn choices(sex: Sex) -> Self {
-        Self { hair_style: if sex == Sex::Female { 7 } else { 5 }, hair_color: 4, face: 3 }
+    /// How many of each choice the H5 creation screen offers a character of `race` and `sex`: five male and seven
+    /// female hair styles, four hair colors, three for Kamael, whose client textures stop at the third, and three
+    /// faces.
+    pub fn choices(race: Race, sex: Sex) -> Self {
+        let hair_color = if race == Race::Kamael { 3 } else { 4 };
+        Self { hair_style: if sex == Sex::Female { 7 } else { 5 }, hair_color, face: 3 }
     }
 
     /// Whether every choice is one `choices` offers.
-    pub fn offered(self, sex: Sex) -> bool {
-        let offered = Self::choices(sex);
+    pub fn offered(self, race: Race, sex: Sex) -> bool {
+        let offered = Self::choices(race, sex);
         self.hair_style < offered.hair_style && self.hair_color < offered.hair_color && self.face < offered.face
     }
 }

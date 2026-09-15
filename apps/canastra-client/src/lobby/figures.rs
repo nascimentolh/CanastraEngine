@@ -33,7 +33,8 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
             let start = data.starting_class(character.class)?;
             let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
             let appearance = &character.appearance;
-            let figure = figure(data, body, [appearance.face, appearance.hair_style].map(usize::from), &[], stand)?;
+            let look = [appearance.face, appearance.hair_style, appearance.hair_color];
+            let figure = figure(data, body, look, &[], stand)?;
             Some(Figure { label: Some(character.name.clone()), ..figure })
         })
         .collect()
@@ -51,8 +52,8 @@ pub(super) fn creation(data: &GameData, race: Race, chosen: Option<(Archetype, S
                 .into_iter()
                 .find(|&sex| body_of(race, shown.archetype, sex == Sex::Female) == Some(shown.body))?;
             let picked = chosen == Some((shown.archetype, sex));
-            let [face, hair] = if picked { [look.face, look.hair_style].map(usize::from) } else { [0, 0] };
-            let figure = figure(data, shown.body, [face, hair], &shown.gear, shown.stand)?;
+            let chosen = if picked { [look.face, look.hair_style, look.hair_color] } else { [0; 3] };
+            let figure = figure(data, shown.body, chosen, &shown.gear, shown.stand)?;
             Some(Figure { turns: picked, ..figure })
         })
         .collect()
@@ -65,9 +66,9 @@ fn slot(slots: &[Stand], index: usize, selected: usize) -> Option<&Stand> {
 }
 
 /// `body` with its face and hair style, wearing `gear` where it has a model for the body and bare parts elsewhere.
-fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId], stand: Stand) -> Option<Figure> {
+fn figure(data: &GameData, body: Body, [face, hair, color]: [u8; 3], gear: &[ItemId], stand: Stand) -> Option<Figure> {
     let look = data.bodies.get(&body)?;
-    let hair = look.hair_styles.get(hair);
+    let hair = look.hair_styles.get(usize::from(hair)).map(|style| style.colored(color));
     let mut slots = [
         (EquipSlot::Gloves, look.gloves.as_ref().map(part).into_iter().collect()),
         (EquipSlot::Chest, look.upper.as_ref().map(part).into_iter().collect()),
@@ -119,10 +120,12 @@ fn figure(data: &GameData, body: Body, [face, hair]: [usize; 2], gear: &[ItemId]
         ItemModel::Held(model) if model.grip != 0 => Some(model.grip),
         _ => None,
     });
-    let head = [look.faces.get(face), hair.and_then(|style| style.front.as_ref())];
+    let head = [look.faces.get(usize::from(face)), hair.as_ref().and_then(|style| style.front.as_ref())];
     // Back hair is a chain of its own the client swings from the head (`Hair.int`); it hangs from the head bone.
-    let back_hair =
-        hair.and_then(|style| style.back.as_ref()).map(|look| PartSource { follow: Some("Bip01_head"), ..part(look) });
+    let back_hair = hair
+        .as_ref()
+        .and_then(|style| style.back.as_ref())
+        .map(|look| PartSource { follow: Some("Bip01_head"), ..part(look) });
     let parts = head
         .into_iter()
         .flatten()
@@ -236,7 +239,7 @@ mod tests {
         data.items.insert(ItemId(1), robe);
 
         let stand = Stand { location: [0.0; 3], yaw: 0 };
-        let figure = figure(&data, Body::ElfMale, [0, 0], &[ItemId(1)], stand).unwrap();
+        let figure = figure(&data, Body::ElfMale, [0; 3], &[ItemId(1)], stand).unwrap();
 
         let parts: Vec<(&str, Vec<&str>)> = figure
             .parts

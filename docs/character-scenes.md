@@ -256,3 +256,10 @@ Each step is checked against the real client: a dump of the files, or a screensh
    emitters of every zone a warp reaches load once and each draws only while the camera is in its zone. Scenes in
    zones lit another way, such as the login and the select hall of lobby01, still load the map again. Captures of
    every race match those taken with a fresh load.
+   *2026-09-16:* hair color. Chargrp's hair table only names each style's first textures (`_t00_`); the client
+   keeps the other colors beside them in a `Hair_color` group, numbered `_t01_` to `_t03_`
+   (`Hair_color.MFighter_m000_t01_m00_ah`). A color picks that number for the style's front and back hair.
+   Every body has all four colors but the Kamael, whose textures stop at `_t02_`, so creation and the game
+   server now offer Kamael three colors.
+   - Found on the way: the front hair of some Dark Elf and Dwarf male styles names textures the client lacks
+     even in color `_t00_`; those styles show no front hair, as before.
