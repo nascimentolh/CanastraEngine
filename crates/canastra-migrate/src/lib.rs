@@ -5,6 +5,7 @@
 //! presentation. Every legacy client field is either mapped or ignored with a stated
 //! reason, so a new or renamed field fails loudly instead of being dropped.
 
+mod classes;
 mod fields;
 mod items;
 mod npcs;
@@ -19,6 +20,7 @@ use l2_dat::Value;
 use roxmltree::Node;
 
 /// Decoded legacy inputs: client table records and `(file name, XML text)` server documents.
+#[derive(Default)]
 pub struct Sources<'a> {
     pub weapons: &'a [Value],
     pub armors: &'a [Value],
@@ -32,6 +34,12 @@ pub struct Sources<'a> {
     pub server_items: &'a [(String, String)],
     pub server_skills: &'a [(String, String)],
     pub server_npcs: &'a [(String, String)],
+    /// `chars/classList.xml`.
+    pub server_class_list: &'a str,
+    /// `chars/baseStats/*.xml`.
+    pub server_class_templates: &'a [(String, String)],
+    /// `initialEquipment.xml`.
+    pub server_initial_equipment: &'a str,
 }
 
 pub fn migrate(sources: &Sources<'_>) -> (GameData, Report) {
@@ -40,6 +48,7 @@ pub fn migrate(sources: &Sources<'_>) -> (GameData, Report) {
         items: items::migrate(sources, &mut report),
         skills: skills::migrate(sources, &mut report),
         npcs: npcs::migrate(sources, &mut report),
+        classes: classes::migrate(sources, &mut report),
     };
     (data, report)
 }

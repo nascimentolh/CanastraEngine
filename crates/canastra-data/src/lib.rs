@@ -16,6 +16,7 @@ macro_rules! choices {
 }
 
 pub mod asset;
+pub mod class;
 pub mod format;
 pub mod id;
 pub mod item;
@@ -27,7 +28,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use id::{ItemId, NpcId, SkillId, SkillRef};
+use class::{Origin, PlayerClass};
+use id::{ClassId, ItemId, NpcId, SkillId, SkillRef};
 use item::{Item, ItemKind};
 use npc::Npc;
 use skill::Skill;
@@ -38,6 +40,7 @@ pub struct GameData {
     pub items: BTreeMap<ItemId, Item>,
     pub skills: BTreeMap<SkillId, Skill>,
     pub npcs: BTreeMap<NpcId, Npc>,
+    pub classes: BTreeMap<ClassId, PlayerClass>,
 }
 
 /// A rule the data breaks. Studio refuses to save while any exist.
@@ -51,6 +54,7 @@ pub struct Issue {
 pub enum Subject {
     Item(ItemId),
     Npc(NpcId),
+    Class(ClassId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +63,8 @@ pub enum Problem {
     WeaponOutsideHands,
     StackableEquipment,
     UnknownSkill(SkillRef),
+    UnknownItem(ItemId),
+    UnknownClass(ClassId),
 }
 
 impl GameData {
@@ -83,6 +89,21 @@ impl GameData {
         for (&id, npc) in &self.npcs {
             for &skill in npc.skills.iter().filter(|skill| !known(skill)) {
                 issues.push(Issue { subject: Subject::Npc(id), problem: Problem::UnknownSkill(skill) });
+            }
+        }
+        for (&id, class) in &self.classes {
+            let mut report = |problem| issues.push(Issue { subject: Subject::Class(id), problem });
+            match &class.origin {
+                Origin::Advanced { parent } if !self.classes.contains_key(parent) => {
+                    report(Problem::UnknownClass(*parent));
+                }
+                Origin::Advanced { .. } => {}
+                Origin::Starting(start) => {
+                    for initial in start.initial_items.iter().filter(|initial| !self.items.contains_key(&initial.item))
+                    {
+                        report(Problem::UnknownItem(initial.item));
+                    }
+                }
             }
         }
         issues
@@ -113,6 +134,7 @@ mod tests {
             items: BTreeMap::from([(ItemId(1), sword)]),
             skills: BTreeMap::from([(SkillId(3), skill)]),
             npcs: BTreeMap::new(),
+            classes: BTreeMap::new(),
         }
     }
 

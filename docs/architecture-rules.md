@@ -42,8 +42,8 @@ Stop at the first rung that holds:
   - in a server, `src/players/`, `src/registry/`, `src/world/`, `src/characters/`.
 - A context folder has a `mod.rs` that states in its doc comment what the context owns and exposes a
   small API. Its files hold one focused responsibility each.
-- Create a folder as soon as a context has **two or more files**, or when `src/` holds modules of more than
-  one context. A crate whose `src/` has one context may stay flat while it has at most about five files.
+- A context that fits in one file is that file (`class.rs`). It becomes a folder as soon as it needs a
+  **second file**; never spread one context over several flat files in `src/`.
 - Shared helpers go in the context that owns them. A `utils` or `common` grab bag is not a context.
 - Tests sit next to the code: `#[cfg(test)] mod tests` in the file, or `tests.rs` inside the context
   folder for end-to-end tests of that context.

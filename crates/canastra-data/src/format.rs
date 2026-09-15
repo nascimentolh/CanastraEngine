@@ -6,7 +6,7 @@ use crate::GameData;
 
 const MAGIC: [u8; 8] = *b"CANASTRA";
 /// Bump on any change to a serialized type; the `layout_is_frozen` test fails until you do.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -57,7 +57,12 @@ mod tests {
 
     use super::*;
     use crate::asset::AssetRef;
-    use crate::id::{ItemId, NpcId, SkillId, SkillRef};
+    use crate::class::{
+        Archetype, Attributes, BodySize, ClassTemplate, CombatBase, DamageRange, InitialItem, LevelGain, MDefSlots,
+        MoveSpeed, Origin, PDefSlots, PlayerClass, StartingClass,
+    };
+    use crate::id::{ClassId, ItemId, NpcId, SkillId, SkillRef};
+    use crate::item::WeaponType;
     use crate::item::{
         Armor, Attachment, Body, BodyModel, HeldModel, Item, ItemKind, ItemModel, ModelPart, Stat, StatModifier,
         StatOp, WornModel,
@@ -66,7 +71,7 @@ mod tests {
     use crate::skill::{Skill, SkillLevel, SkillOperate, SkillSounds, SoundCue};
     use crate::text::Localized;
 
-    const FROZEN: &[u8] = include_bytes!("../tests/format_v1.cana");
+    const FROZEN: &[u8] = include_bytes!("../tests/format_v2.cana");
 
     fn asset<K>(path: &str) -> AssetRef<K> {
         AssetRef::parse(path).unwrap()
@@ -142,10 +147,74 @@ mod tests {
             },
         };
 
+        let class = starting_class();
+
         GameData {
             items: BTreeMap::from([(ItemId(1), sword), (ItemId(2), plate)]),
             skills: BTreeMap::from([(SkillId(3), skill)]),
             npcs: BTreeMap::from([(NpcId(20006), npc)]),
+            classes: BTreeMap::from([
+                (ClassId(124), class),
+                (
+                    ClassId(125),
+                    PlayerClass {
+                        id: ClassId(125),
+                        name: Localized::en("Trooper"),
+                        levels: Vec::new(),
+                        origin: Origin::Advanced { parent: ClassId(124) },
+                    },
+                ),
+            ]),
+        }
+    }
+
+    fn starting_class() -> PlayerClass {
+        let template = ClassTemplate {
+            attributes: Attributes { str: 39, dex: 35, con: 30, int: 28, wit: 11, men: 27 },
+            combat: CombatBase {
+                p_atk: 4.0,
+                m_atk: 6.0,
+                critical_rate: 4.0,
+                attack_type: WeaponType::Fist,
+                p_atk_speed: 300.0,
+                p_def: PDefSlots {
+                    chest: 31.0,
+                    legs: 18.0,
+                    head: 12.0,
+                    feet: 7.0,
+                    gloves: 8.0,
+                    underwear: 3.0,
+                    cloak: 1.0,
+                },
+                m_def: MDefSlots { right_ear: 9.0, left_ear: 9.0, right_finger: 5.0, left_finger: 5.0, neck: 13.0 },
+                penetrates: false,
+                attack_range: 20,
+                damage_range: DamageRange { vertical: 0, horizontal: 0, distance: 26, width: 120 },
+                random_damage: 10,
+            },
+            move_speed: MoveSpeed { walk: 87.0, run: 122.0, slow_swim: 50.0, fast_swim: 50.0 },
+            breath: 100,
+            safe_fall: 500,
+            body_male: BodySize { radius: 7.0, height: 22.6 },
+            body_female: BodySize { radius: 7.0, height: 22.6 },
+        };
+        PlayerClass {
+            id: ClassId(124),
+            name: Localized::en("Female Soldier"),
+            levels: vec![LevelGain { hp: 95.0, mp: 40.0, cp: 50.0, hp_regen: 2.0, mp_regen: 0.9, cp_regen: 2.0 }],
+            origin: Origin::Starting(Box::new(StartingClass {
+                race: Race::Kamael,
+                archetype: Archetype::Fighter,
+                sex: Some(Sex::Female),
+                template,
+                creation_points: vec![[-125_607, 38_452, 1152]],
+                initial_items: vec![InitialItem {
+                    item: ItemId(1),
+                    count: 1,
+                    equipped: true,
+                    lasts_minutes: Some(2880),
+                }],
+            })),
         }
     }
 
@@ -160,7 +229,7 @@ mod tests {
     fn layout_is_frozen() {
         let bytes = encode(&sample());
         if std::env::var_os("CANASTRA_BLESS").is_some() {
-            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v1.cana"), &bytes).unwrap();
+            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/format_v2.cana"), &bytes).unwrap();
         }
         assert!(bytes == FROZEN, "serialized layout changed: bump format::VERSION and rebless the fixture");
     }
@@ -170,8 +239,8 @@ mod tests {
         let bytes = encode(&sample());
         assert!(matches!(decode(b"OggS"), Err(FormatError::NotGameData)));
         let mut newer = bytes.clone();
-        newer[8] = 2;
-        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(2))));
+        newer[8] = 3;
+        assert!(matches!(decode(&newer), Err(FormatError::UnsupportedVersion(3))));
         assert!(matches!(decode(&bytes[..bytes.len() - 3]), Err(FormatError::Corrupt(_))));
         assert!(matches!(decode(&[bytes.as_slice(), &[0]].concat()), Err(FormatError::TrailingBytes(1))));
     }

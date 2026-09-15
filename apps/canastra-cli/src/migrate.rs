@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use canastra_data::class::Origin;
 use canastra_data::format;
 use canastra_data::item::{ItemKind, ItemModel};
 use canastra_migrate::{Report, Severity, Sources};
@@ -14,7 +15,8 @@ use crate::{Result, read_decrypted, records_of};
 /// How many examples to print per kind of diagnostic.
 const EXAMPLES: usize = 3;
 
-/// `server_stats` holds the reference server's `items`, `skills` and `npcs` XML folders.
+/// `server_stats` holds the reference server's `items`, `skills` and `npcs` XML folders, `chars/classList.xml`,
+/// `chars/baseStats` and `initialEquipment.xml`.
 pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>) -> Result {
     let table = |file: &str| -> Result<Vec<Value>> {
         let (_, plain) = read_decrypted(&client_root.join("system").join(file))?;
@@ -31,6 +33,10 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
         xml_documents(&server_stats.join("skills"))?,
         xml_documents(&server_stats.join("npcs"))?,
     );
+    let read = |path: &Path| fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()));
+    let class_list = read(&server_stats.join("chars").join("classList.xml"))?;
+    let class_templates = xml_documents(&server_stats.join("chars").join("baseStats"))?;
+    let initial_equipment = read(&server_stats.join("initialEquipment.xml"))?;
 
     let (data, report) = canastra_migrate::migrate(&Sources {
         weapons: &weapons,
@@ -45,7 +51,12 @@ pub(crate) fn run(client_root: &Path, server_stats: &Path, output: Option<&Path>
         server_items: &server_items,
         server_skills: &server_skills,
         server_npcs: &server_npcs,
+        server_class_list: &class_list,
+        server_class_templates: &class_templates,
+        server_initial_equipment: &initial_equipment,
     });
+    let starting = data.classes.values().filter(|class| matches!(class.origin, Origin::Starting(_))).count();
+    println!("{} classes, {starting} to start as", data.classes.len());
 
     let items = &data.items;
     let count = |kind: fn(&ItemKind) -> bool| items.values().filter(|item| kind(&item.kind)).count();

@@ -196,4 +196,9 @@ Login, then server and character selection, then walking in the world, with a ba
      *2026-09-15:* done. With the login and game servers running, the client shows "wrong account or
      password", then lists the registered server with its population, then receives a ticket for it.
    - Then character selection and creation, entering the world, and click to move.
+   - *2026-09-15:* milestone 2 step 1 done: game servers admit players by ticket, once each.
+   - *2026-09-15:* player classes join the game data (format 2). The reference files repeat a starting
+     class's static data in all 103 class files; no copy differs, and only level gains vary by class. The
+     model keeps shared data once, on the 11 starting classes. The private server's 48-hour recruit kit is
+     copied: data now, runtime with inventories ([`recruit-kit.md`](recruit-kit.md)).
 8. MVP windows and NPC dialog templates.
