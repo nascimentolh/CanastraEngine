@@ -75,8 +75,13 @@ pub(crate) fn read(
     for object in find(properties, "Emitters").and_then(|emitters| emitters.objects(package)).unwrap_or_default() {
         let ObjectRef::Export(index) = object else { continue };
         let Some(export) = package.exports().get(index) else { continue };
-        if package.class_name(export).eq_ignore_ascii_case("SpriteEmitter") {
-            sprites.push(sprite(package, &object_properties(package, file, export)?));
+        if !package.class_name(export).eq_ignore_ascii_case("SpriteEmitter") {
+            continue;
+        }
+        let properties = object_properties(package, file, export)?;
+        // Disabled emitters spawn nothing.
+        if !find(&properties, "Disabled").and_then(Property::bool).unwrap_or(false) {
+            sprites.push(sprite(package, &properties));
         }
     }
     let location = find(properties, "Location").and_then(Property::vector).unwrap_or_default();
@@ -147,7 +152,7 @@ fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
         fogged: !flag("DisableFogging", false),
         // PTDU_Normal and the modes built on it lay sprites in ProjectionNormal's plane.
         projection_normal: matches!(get("UseDirectionAs").and_then(Property::byte), Some(4..=6))
-            .then(|| vector("ProjectionNormal")),
+            .then(|| get("ProjectionNormal").and_then(Property::vector).unwrap_or([0.0, 0.0, 1.0])),
     }
 }
 
