@@ -6,7 +6,7 @@ use l2_catalog::{Catalog, Material};
 use ue2_assets::SkeletalMesh;
 
 use super::skeleton::Transform;
-use super::{Part, sections};
+use super::{Part, head, sections};
 
 /// A held mesh as client paths, and the bone of the body's skeleton it hangs from, e.g. `Weapon_R_Bone`.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,7 +28,7 @@ impl Held {
     /// `source` on the first of `parts` with its bone; `None` when the mesh or the bone is missing.
     pub(super) fn load(catalog: &mut Catalog, source: &HeldSource, parts: &[Part]) -> Option<Self> {
         let (part, bone) = parts.iter().enumerate().find_map(|(index, part)| {
-            let bone = part.mesh.bones.iter().position(|bone| bone.name.eq_ignore_ascii_case(source.bone))?;
+            let bone = head::find(&part.mesh.bones, source.bone)?;
             Some((index, bone))
         })?;
         let skinned = catalog.skeletal_mesh(&source.mesh)?;

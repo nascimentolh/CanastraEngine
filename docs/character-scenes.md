@@ -206,3 +206,12 @@ Each step is checked against the real client: a dump of the files, or a screensh
      `Wait_1HS_MElf` 154), and the pelvis keys make up for it: with the root's keys the head faces the same way
      in every idle, and with its bind rotation it did not. Stances and weapons now match the screenshot.
    - Still to do: H5 turns each head toward the camera (`Pawn.bFaceRotation`, `LastNeckRot` in `Engine.u`).
+   *2026-09-16:* heads and hair, all races. Faces and hair (`_f`, `_ah`, most `_bh`) are rigid meshes bound
+   whole to the root bone, with no influences, yet modeled around the head of the bind pose: the client carries
+   them with the head bone (`Pawn.HeadBone`), so they now hang from `Bip01_Head`. Before, they stood with the
+   root while the head moved with the idle, which bent necks and left hair behind. Bone names match whether
+   they separate words with spaces or underscores (`Bip01 Head`), as Orc and Dwarf skeletons do.
+   - Not done: turning heads toward the camera. H5 does not; its dark elf mystic keeps his back to the camera.
+   - Lobby02 holds a scene per chosen class and gender (`Elf_Knight_Kman`, `Elf_Kman_Kwoman`) and a chest
+     close-up (`Elf_Kman_Chest`), each ActionMoveCamera moves along interpolation points; Fermata offers the
+     same with a rotate and zoom strip after gender selection. Still to build.

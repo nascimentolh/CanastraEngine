@@ -2,6 +2,7 @@
 //! reposed on the CPU every frame.
 // ponytail: CPU skinning suits the few characters of the lobby; move it to the GPU when crowds need it.
 
+mod head;
 mod held;
 mod skeleton;
 
@@ -117,18 +118,10 @@ impl Pawn {
             .collect();
         // Bones a part shares with the body follow the body's, or their local keys would turn about the wrong parents.
         let body = body.unwrap_or(0);
-        let names: Vec<String> = parts
-            .get(body)
-            .map(|part| part.mesh.bones.iter().map(|bone| bone.name.clone()).collect())
-            .unwrap_or_default();
+        let body_bones = parts.get(body).map(|part| part.mesh.bones.clone()).unwrap_or_default();
         for ((_, part), follow) in parts.iter_mut().enumerate().zip(follows).filter(|((index, _), _)| *index != body) {
-            part.follow = follow.and_then(|name| names.iter().position(|bone| bone.eq_ignore_ascii_case(name)));
-            part.in_body = part
-                .mesh
-                .bones
-                .iter()
-                .map(|bone| names.iter().position(|name| name.eq_ignore_ascii_case(&bone.name)))
-                .collect();
+            part.follow = follow.and_then(|name| head::find(&body_bones, name));
+            part.in_body = part.mesh.bones.iter().map(|bone| head::find(&body_bones, &bone.name)).collect();
         }
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();
@@ -139,7 +132,7 @@ impl Pawn {
     pub(crate) fn label(&self, time: f32, camera: [f32; 3]) -> Option<(&str, [f32; 3])> {
         let label = self.label.as_deref()?;
         let part = self.parts.get(self.body)?;
-        let bone = part.mesh.bones.iter().position(|bone| bone.name.eq_ignore_ascii_case("Bip01_HeadNub"))?;
+        let bone = head::find(&part.mesh.bones, "Bip01_HeadNub")?;
         let head = part.pose(time, &[], &[]).get(bone)?.translation;
         let turned = camera::place(head, part.mesh.scale, &part.mesh_axes, [0.0; 3]);
         let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
@@ -236,11 +229,12 @@ pub(crate) fn layout(pawns: &[Pawn]) -> Layout {
 
 impl Part {
     fn new(
-        mesh: SkeletalMesh,
+        mut mesh: SkeletalMesh,
         sections: Vec<(Material, Range<usize>)>,
         animation: Option<&MeshAnimation>,
         sequence: &str,
     ) -> Self {
+        head::carry(&mesh.bones, &mut mesh.vertices);
         let bind_locals = skeleton::bind_locals(&mesh.bones);
         let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent), |_| None);
         let animation = animation.and_then(|animation| Animation::of(&mesh, animation, sequence));
@@ -279,7 +273,7 @@ impl Animation {
             .bones
             .iter()
             .map(|bone| {
-                let index = animation.bones.iter().position(|named| named.name.eq_ignore_ascii_case(&bone.name))?;
+                let index = animation.bones.iter().position(|named| head::same(&named.name, &bone.name))?;
                 sequence.tracks.iter().position(|track| track.bone == index)
             })
             .collect();
