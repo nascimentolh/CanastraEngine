@@ -27,8 +27,10 @@ pub(super) struct Shapes {
     catalog: Catalog,
     /// Lower-case texture path to its GPU image, `None` when the client does not have it.
     images: HashMap<String, Option<Image>>,
-    /// Instance ranges of the last prepared frame with the texture they sample.
+    /// Instance ranges of the last prepared frame with the texture they sample, and how many of them draw under
+    /// the overlays.
     batches: Vec<(Option<String>, Range<u32>)>,
+    base_batches: usize,
 }
 
 impl Shapes {
@@ -126,10 +128,12 @@ impl Shapes {
             catalog,
             images: HashMap::new(),
             batches: Vec::new(),
+            base_batches: 0,
         }
     }
 
-    /// Uploads the rectangles and images of `draws` (logical pixels) for a target of `size` physical pixels.
+    /// Uploads the rectangles and images of `draws` (logical pixels) for a target of `size` physical pixels; draws
+    /// from `overlay_from` on make the overlay layer.
     pub(super) fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -137,10 +141,15 @@ impl Shapes {
         size: [u32; 2],
         scale: f32,
         draws: &[Draw],
+        overlay_from: usize,
     ) {
         let mut bytes = Vec::new();
         self.batches.clear();
-        for draw in draws {
+        self.base_batches = 0;
+        for (index, draw) in draws.iter().enumerate() {
+            if index == overlay_from {
+                self.base_batches = self.batches.len();
+            }
             let (key, quads) = match draw {
                 Draw::Shadow { rect, radius, shadow: layer } => (None, vec![shadow(*rect, *radius, *layer, scale)]),
                 Draw::Rect { rect, fill, border, radius } => (None, vec![shape(*rect, *fill, *border, *radius, scale)]),
@@ -156,10 +165,15 @@ impl Shapes {
                 quad.write(&mut bytes);
             }
             let end = start + quads.len() as u32;
+            // A run of the same texture never crosses into the overlays.
+            let same_layer = self.batches.len() > self.base_batches;
             match self.batches.last_mut() {
-                Some((last, range)) if *last == key => range.end = end,
+                Some((last, range)) if *last == key && same_layer => range.end = end,
                 _ => self.batches.push((key, start..end)),
             }
+        }
+        if overlay_from >= draws.len() {
+            self.base_batches = self.batches.len();
         }
         if self.quads.size() < bytes.len() as u64 {
             self.quads = quad_buffer(device, bytes.len() / QUAD_BYTES as usize * 2);
@@ -174,10 +188,12 @@ impl Shapes {
         );
     }
 
-    pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+    /// Draws the prepared shapes under the overlays, or with `overlay` those of the overlays.
+    pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, overlay: bool) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.globals_group, &[]);
-        for (key, range) in &self.batches {
+        let (base, overlays) = self.batches.split_at(self.base_batches.min(self.batches.len()));
+        for (key, range) in if overlay { overlays } else { base } {
             let image = key.as_ref().and_then(|key| self.images.get(key)).and_then(Option::as_ref);
             pass.set_bind_group(1, image.map_or(&self.blank, |image| &image.group), &[]);
             pass.draw(0..4, range.clone());

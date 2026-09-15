@@ -114,7 +114,10 @@ impl Running {
                 .map(|(label, [x, y], _)| name_tag(label, [x / scale, y / scale]))
                 .filter(|tag| !panels.iter().any(|panel| panel.intersects(tag.rect())))
                 .collect();
-            self.screen.frame.draws.extend(tags);
+            // Names stand in the scene, under the UI's overlays.
+            let from = self.screen.frame.overlay_from;
+            self.screen.frame.overlay_from += tags.len();
+            self.screen.frame.draws.splice(from..from, tags);
         }
         let Some(frame) = self.gpu.frame() else { return };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());

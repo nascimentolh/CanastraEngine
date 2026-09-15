@@ -51,6 +51,8 @@ pub struct Element {
     pub bind: Option<String>,
     /// Data key the element is left out without, unless it holds `true`, e.g. controls that only apply sometimes.
     pub show: Option<String>,
+    /// Data key of the text a tooltip shows while the pointer is over the element, e.g. what a stat does.
+    pub tip: Option<String>,
     /// Data key that puts the element in `:checked` while it holds `true`, e.g. the selected item of a list.
     pub checked: Option<String>,
     /// Action name reported when the element is clicked, or when Enter is pressed in an input.
@@ -81,6 +83,7 @@ impl Element {
             bind: None,
             checked: None,
             show: None,
+            tip: None,
             action: None,
             placeholder: None,
             password: false,
@@ -116,6 +119,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "action" => element.action = Some(value),
             "checked" => element.checked = Some(value),
             "show" => element.show = Some(value),
+            "tip" => element.tip = Some(value),
             "src" => element.src = Some(value),
             "placeholder" => element.placeholder = Some(value),
             "repeat" if !tag.is_leaf() => element.repeat = Some(value),

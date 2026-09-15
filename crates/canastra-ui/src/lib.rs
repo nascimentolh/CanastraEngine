@@ -7,6 +7,7 @@ mod css;
 mod layout;
 mod markup;
 mod select;
+mod tooltip;
 mod transition;
 
 use std::fmt;
@@ -151,9 +152,14 @@ pub struct UiState {
 pub struct Frame {
     /// Back to front.
     pub draws: Vec<Draw>,
+    /// Where in `draws` overlays such as open selects and tooltips begin. They draw over everything before them,
+    /// text included, while within each part text draws over every shape.
+    pub overlay_from: usize,
     hits: Vec<Hit>,
     /// A transition is still running, so the next frame will differ.
     pub animating: bool,
+    /// The hovered element's tip and where the element stands, while the frame is laid out.
+    tip: Option<(Rect, String)>,
 }
 
 impl Frame {

@@ -7,6 +7,7 @@ use taffy::prelude::{
 
 use crate::css::{Align, Declaration, Length, States, StyleSheet};
 use crate::markup::{Element, Tag};
+use crate::tooltip;
 use crate::transition::{Paint, Transitions};
 use crate::{Draw, Fill, Frame, Hit, Rect, Rgba, TextAlign, TextMeasure, TextStyle, UiError, UiState};
 
@@ -16,17 +17,17 @@ const CARET_WIDTH: f32 = 1.5;
 
 /// What an element looks like after the cascade.
 #[derive(Debug, Clone)]
-struct Computed {
-    paint: Paint,
-    radius: f32,
-    text: TextStyle,
+pub(crate) struct Computed {
+    pub(crate) paint: Paint,
+    pub(crate) radius: f32,
+    pub(crate) text: TextStyle,
     border_image: Option<(String, f32)>,
-    padding: [f32; 4],
+    pub(crate) padding: [f32; 4],
     /// Seconds paint changes take; 0 applies them at once.
     transition: f32,
 }
 
-const ROOT: Computed = Computed {
+pub(crate) const ROOT: Computed = Computed {
     paint: Paint { fill: None, border: None, shadows: Vec::new(), color: Rgba([255; 4]) },
     radius: 0.0,
     text: TextStyle { family: None, size: DEFAULT_FONT_SIZE, weight: 400, letter_spacing: 0.0, align: TextAlign::Left },
@@ -49,6 +50,8 @@ struct Node<'a> {
     text: Option<String>,
     /// An input's value as drawn (masked for passwords), which the caret follows.
     value: Option<String>,
+    /// What the element's tip explains, shown while the pointer is over it.
+    tip: Option<String>,
     children: Vec<Node<'a>>,
 }
 
@@ -104,11 +107,11 @@ pub fn build(
     let mut frame = Frame { animating: pass.animating, ..Frame::default() };
     let mut overlays = Vec::new();
     emit(&tree, &root, [0.0, 0.0], state, text, &mut frame, &mut overlays).map_err(layout_error)?;
+    if let Some((anchor, tip)) = frame.tip.take() {
+        overlays.push(Frame { draws: tooltip::draws(sheet, viewport, anchor, &tip, text), ..Frame::default() });
+    }
+    frame.overlay_from = frame.draws.len();
     for overlay in overlays {
-        // The renderer draws all text over all shapes, so text an overlay covers would show through it.
-        // ponytail: covered text is dropped whole; draw layers apart if a label half under an overlay matters.
-        let covered = |rect: &Rect| overlay.draws.iter().any(|draw| draw.rect().intersects(rect));
-        frame.draws.retain(|draw| !matches!(draw, Draw::Text { rect, .. } if covered(rect)));
         frame.draws.extend(overlay.draws);
         frame.hits.extend(overlay.hits);
     }
@@ -166,7 +169,8 @@ impl Pass<'_> {
             let ids: Vec<NodeId> = children.iter().map(|child| child.id).collect();
             (tree.new_with_children(style, &ids)?, children)
         };
-        Ok(Node { element, index, id, computed, text, value, children })
+        let tip = element.tip.as_deref().and_then(bindings);
+        Ok(Node { element, index, id, computed, text, value, tip, children })
     }
 }
 
@@ -206,14 +210,18 @@ fn instantiate(element: &Element, list: &str, index: usize) -> Element {
         Some(field) => format!("{list}.{index}.{field}"),
         None => key.clone(),
     };
-    let (bind, show, checked) =
-        (element.bind.as_ref().map(item), element.show.as_ref().map(item), element.checked.as_ref().map(item));
+    let (bind, show, tip, checked) = (
+        element.bind.as_ref().map(item),
+        element.show.as_ref().map(item),
+        element.tip.as_ref().map(item),
+        element.checked.as_ref().map(item),
+    );
     let action = element.action.as_ref().map(|action| action.replace("{index}", &index.to_string()));
     let children = element.children.iter().map(|child| instantiate(child, list, index)).collect();
-    Element { bind, show, checked, action, children, ..element.clone() }
+    Element { bind, show, tip, checked, action, children, ..element.clone() }
 }
 
-fn default_style(tag: Tag) -> Style {
+pub(crate) fn default_style(tag: Tag) -> Style {
     let mut style = Style { display: Display::Flex, ..Style::default() };
     match tag {
         Tag::Ui => style.size = Size { width: Dimension::percent(1.0), height: Dimension::percent(1.0) },
@@ -224,7 +232,7 @@ fn default_style(tag: Tag) -> Style {
     style
 }
 
-fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) {
+pub(crate) fn apply(declaration: &Declaration, style: &mut Style, computed: &mut Computed) {
     let px = LengthPercentage::length;
     let inset = |value: f32| LengthPercentageAuto::length(value);
     match declaration {
@@ -363,7 +371,10 @@ fn emit(
         }
     }
     let element = node.element;
-    if matches!(element.tag, Tag::Button | Tag::Input) || element.action.is_some() {
+    if let Some(tip) = node.tip.as_ref().filter(|_| state.hovered == Some(node.index)) {
+        frame.tip = Some((rect, tip.clone()));
+    }
+    if matches!(element.tag, Tag::Button | Tag::Input) || element.action.is_some() || node.tip.is_some() {
         let field = element.bind.clone().filter(|_| element.tag == Tag::Input);
         frame.hits.push(Hit { rect, element: node.index, action: element.action.clone(), field });
     }
@@ -529,12 +540,34 @@ mod tests {
         let option = open.hits.iter().find(|hit| hit.action.as_deref() == Some("race:0")).unwrap().rect;
         assert!(option.contains(next.x + 1.0, next.y + 1.0), "the options cover the button after the select");
         assert_eq!(open.hit(next.x + 1.0, next.y + 1.0).unwrap().action.as_deref(), Some("race:0"));
-        let texts: Vec<_> = open
-            .draws
-            .iter()
-            .filter_map(|draw| if let Draw::Text { text, .. } = draw { Some(text.as_str()) } else { None })
-            .collect();
-        assert!(!texts.contains(&"Next"), "text under the options is hidden: {texts:?}");
+        let layer = |wanted: &str| {
+            open.draws.iter().position(|draw| matches!(draw, Draw::Text { text, .. } if text == wanted)).unwrap()
+        };
+        assert!(
+            layer("Next") < open.overlay_from && layer("Human") >= open.overlay_from,
+            "the options draw over the button"
+        );
+    }
+
+    #[test]
+    fn a_hovered_element_shows_its_tip_over_the_text_it_covers() {
+        let ui = parse_markup(r#"<ui><label text="STR" tip="tips.str"/><label text="DEX"/></ui>"#).unwrap();
+        let sheet = parse_stylesheet("ui { align-items: start } .tooltip { width: 200px; padding: 4px }").unwrap();
+        let bindings = |key: &str| (key == "tips.str").then(|| "Strength raises P. Atk.".to_owned());
+        let frame = |hovered| {
+            let state = UiState { hovered, ..UiState::default() };
+            build(&ui, &sheet, [800.0, 600.0], state, &mut Transitions::default(), &mut Monospace, &bindings).unwrap()
+        };
+        let texts = |frame: &Frame| {
+            frame
+                .draws
+                .iter()
+                .filter_map(|draw| if let Draw::Text { text, .. } = draw { Some(text.clone()) } else { None })
+                .collect::<Vec<_>>()
+        };
+        let str_index = frame(None).hits[0].element;
+        assert_eq!(texts(&frame(None)), ["STR", "DEX"]);
+        assert!(texts(&frame(Some(str_index))).contains(&"Strength raises P. Atk.".to_owned()));
     }
 
     #[test]

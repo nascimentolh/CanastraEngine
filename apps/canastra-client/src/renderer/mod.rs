@@ -44,20 +44,12 @@ impl Renderer {
         clear: bool,
     ) -> Result<wgpu::CommandBuffer, String> {
         let (device, queue, size, scale) = (&gpu.device, &gpu.queue, gpu.size(), gpu.scale());
-        // ponytail: text always draws over every shape, and the layout hides text under overlays; interleave passes
-        // when windows overlap.
-        self.shapes.prepare(device, queue, size, scale, &frame.draws);
-        let labels: Vec<text::Label<'_>> = frame
-            .draws
-            .iter()
-            .filter_map(|draw| match draw {
-                Draw::Text { rect, text, color, style } => {
-                    Some(text::Label { rect: *rect, text, color: *color, style })
-                }
-                _ => None,
-            })
-            .collect();
-        self.text.prepare(device, queue, size, scale, &labels).map_err(|error| error.to_string())?;
+        // Two layers, each its shapes then its text: the frame, then its overlays over it.
+        // ponytail: within a layer text draws over every shape; split more layers when windows overlap.
+        self.shapes.prepare(device, queue, size, scale, &frame.draws, frame.overlay_from);
+        let (base, overlays) = frame.draws.split_at(frame.overlay_from.min(frame.draws.len()));
+        let (base, overlays) = (labels(base), labels(overlays));
+        self.text.prepare(device, queue, size, scale, [&base, &overlays]).map_err(|error| error.to_string())?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ui") });
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -76,9 +68,22 @@ impl Renderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.shapes.draw(&mut pass);
-        self.text.draw(&mut pass).map_err(|error| error.to_string())?;
+        for overlay in [false, true] {
+            self.shapes.draw(&mut pass, overlay);
+            self.text.draw(&mut pass, overlay).map_err(|error| error.to_string())?;
+        }
         drop(pass);
         Ok(encoder.finish())
     }
+}
+
+/// The text draws of `draws`.
+fn labels(draws: &[Draw]) -> Vec<text::Label<'_>> {
+    draws
+        .iter()
+        .filter_map(|draw| match draw {
+            Draw::Text { rect, text, color, style } => Some(text::Label { rect: *rect, text, color: *color, style }),
+            _ => None,
+        })
+        .collect()
 }
