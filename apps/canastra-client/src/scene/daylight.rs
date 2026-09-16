@@ -10,11 +10,16 @@ use ue2_level::Actor;
 
 use super::camera;
 
+/// How much of the sky light the ground gives back to a surface facing it.
+const BOUNCE: f32 = 0.54;
+
 /// Sky light at one hour and where the sun shines from.
 pub(super) struct Daylight {
     hour: f32,
     ambient: [f32; 3],
     sun: [f32; 3],
+    /// What a surface facing the ground gets back from it: a share of the sky light, in the ground's own colour.
+    bounce: [f32; 3],
     /// Unit vector pointing toward the sun.
     toward_sun: [f32; 3],
 }
@@ -31,10 +36,14 @@ impl Daylight {
         let sun = actors.iter().find(|actor| actor.class.eq_ignore_ascii_case("NMovableSunLight"))?;
         let unit = |color: [u8; 3]| color.map(|channel| f32::from(channel) / 255.0);
         let [forward, _, _] = camera::axes(sun.placement.rotation);
+        // The ground gives back about half the sky, in the colour the client paints the ground with at this hour.
+        let ground = unit(environment.color("TerrainAmbient", hour).unwrap_or([255; 3]));
+        let brightest = ground.iter().copied().fold(f32::EPSILON, f32::max);
         Some(Self {
             hour,
             ambient: unit(environment.color(ambient, hour)?),
             sun: unit(environment.light(light, hour)?),
+            bounce: ground.map(|channel| channel / brightest * BOUNCE),
             toward_sun: forward.map(|axis| -axis),
         })
     }
@@ -51,14 +60,13 @@ impl Daylight {
     pub(super) fn on_shaded(&self, normal: [f32; 3], sunlit: f32, skylit: f32) -> [f32; 3] {
         let length = normal.iter().map(|axis| axis * axis).sum::<f32>().sqrt().max(f32::EPSILON);
         let normal = normal.map(|axis| axis / length);
-        // Surfaces facing down see the ground, which returns a dimmer, warmer share of the sky.
+        // Surfaces facing down see the ground, which returns a dimmer share of the sky in the ground's colour.
         let sky_weight = (normal[2] * 0.5 + 0.5).clamp(0.0, 1.0);
-        let ground = [0.54, 0.47, 0.40];
         let incidence: f32 = normal.iter().zip(self.toward_sun).map(|(normal, sun)| normal * sun).sum();
         let wrapped = ((incidence + 0.08) / 1.08).clamp(0.0, 1.0);
         let diffuse = incidence.max(0.0) + (wrapped - incidence.max(0.0)) * 0.35;
         let mut light = [0.0; 3];
-        for (((light, ambient), sun), ground) in light.iter_mut().zip(self.ambient).zip(self.sun).zip(ground) {
+        for (((light, ambient), sun), ground) in light.iter_mut().zip(self.ambient).zip(self.sun).zip(self.bounce) {
             *light = ambient * (ground + (1.0 - ground) * sky_weight) * skylit + sun * diffuse * sunlit;
         }
         light
@@ -71,7 +79,13 @@ mod tests {
 
     #[test]
     fn surfaces_facing_the_sun_get_it_and_facing_away_keep_the_ambient() {
-        let daylight = Daylight { hour: 21.0, ambient: [0.5; 3], sun: [0.4; 3], toward_sun: [0.0, 0.0, 1.0] };
+        let daylight = Daylight {
+            hour: 21.0,
+            ambient: [0.5; 3],
+            sun: [0.4; 3],
+            bounce: [0.54, 0.47, 0.40],
+            toward_sun: [0.0, 0.0, 1.0],
+        };
         let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5);
         assert!(close(daylight.on_shaded([0.0, 0.0, 2.0], 1.0, 1.0), [0.9; 3]));
         assert!(close(daylight.on_shaded([0.0, 0.0, -1.0], 1.0, 1.0), [0.27, 0.235, 0.2]));

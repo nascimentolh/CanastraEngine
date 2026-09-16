@@ -286,3 +286,11 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - After it: the plate reads (98, 69, 56) and the cloth (63, 46, 30). The mystic's robe, which already
      matched, did not move.
    - Still to do: the scene's own shadows on characters, and faces, which read darker than H5's.
+   *2026-09-16:* what a surface facing down gets back is now the ground's own colour at the hour, from the
+   client's `TerrainAmbient` ramp, instead of a constant tint. At hour 21 the two are within a percent, so
+   nothing moved; the number now comes from the client either way.
+   - Measured against the H5 elf screenshot after the occlusion: chest plate (97, 68, 55) against (103, 79,
+     53), cloth under the tabard (63, 46, 30) against (59, 51, 28), mystic robe (82, 84, 58) against (83, 87,
+     54), cheek (136, 98, 66) against (132, 89, 52).
+   - Still apart: hair reads darker than H5's and skin a little bluer, and the scene's grass stays brighter
+     than the screenshot while its rock matches. Characters carry no shadow from the scene itself.
