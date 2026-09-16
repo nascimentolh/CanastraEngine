@@ -294,3 +294,16 @@ Each step is checked against the real client: a dump of the files, or a screensh
      54), cheek (136, 98, 66) against (132, 89, 52).
    - Still apart: hair reads darker than H5's and skin a little bluer, and the scene's grass stays brighter
      than the screenshot while its rock matches. Characters carry no shadow from the scene itself.
+   *2026-09-16, faces:* the earlier reading of hair and skin came from single pixels on two screenshots whose
+   heads do not line up, and it was wrong. Averaging hair and skin over the whole head instead, the elf hall
+   matches: hair (188, 146, 76) against H5's (187, 145, 75), skin (140, 100, 65) against (143, 104, 63), and
+   the knight's plate (153, 130, 111) against (151, 129, 110).
+   - Two changes were tried against those numbers and both are out. Leaving the sun out of the occlusion,
+     which sounds right since a shape hides the sky and not a light, brightens the plate to (166, 141, 121),
+     ten percent past H5. Leaving cut-out parts out of the occlusion, meant for hair, takes whole armour
+     parts with it: a part counts as cut-out when any of its sections does, and the plate is one of those.
+   - The face types are three textures over one mesh (`face_mesh` repeats, `face_texture` runs `_t00_f` to
+     `_t02_f`), and the client's own three differ by about 2 of 255 on average. Ours differ by as much, so
+     the types looking alike is the client's own doing, not ours.
+   - What is left on characters: they stand smaller in our creation hall than in the H5 screenshot, so the
+     camera sits farther back or sees wider; and the scene still casts no shadow on them.
