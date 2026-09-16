@@ -60,7 +60,7 @@ pub(super) fn actors(
                 let opacity = 1.0 - ((distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0);
                 let bright = light.get(quad).copied().unwrap_or(1.0);
                 let [red, green, blue] = daylight
-                    .map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, &map, quad), bright))
+                    .map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, &map, quad), bright, 1.0))
                     .map(|channel| (channel * 255.0).clamp(0.0, 255.0) as u8);
                 let actor = Actor {
                     class: "TerrainDecoration".to_owned(),

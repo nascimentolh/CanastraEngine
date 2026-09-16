@@ -61,7 +61,7 @@ fn geometry(
             terrain.location[2] + (f32::from(sample) - ZERO_HEIGHT) / 256.0 * scale_z,
         ];
         let bright = light.get(index).copied().unwrap_or(1.0);
-        let rgb = daylight.map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, map, index), bright));
+        let rgb = daylight.map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, map, index), bright, 1.0));
         vertices.push([
             world[0] - camera[0],
             world[1] - camera[1],

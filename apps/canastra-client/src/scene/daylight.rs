@@ -46,8 +46,9 @@ impl Daylight {
         (self.hour / 3.0).clamp(0.0, 7.0) as u8
     }
 
-    /// The light on a surface facing `normal`, in world space, that receives `sunlit` of the sun, from 0 to 1.
-    pub(super) fn on_shaded(&self, normal: [f32; 3], sunlit: f32) -> [f32; 3] {
+    /// The light on a surface facing `normal`, in world space, that receives `sunlit` of the sun and `skylit` of
+    /// the sky, each from 0 to 1.
+    pub(super) fn on_shaded(&self, normal: [f32; 3], sunlit: f32, skylit: f32) -> [f32; 3] {
         let length = normal.iter().map(|axis| axis * axis).sum::<f32>().sqrt().max(f32::EPSILON);
         let normal = normal.map(|axis| axis / length);
         // Surfaces facing down see the ground, which returns a dimmer, warmer share of the sky.
@@ -58,7 +59,7 @@ impl Daylight {
         let diffuse = incidence.max(0.0) + (wrapped - incidence.max(0.0)) * 0.35;
         let mut light = [0.0; 3];
         for (((light, ambient), sun), ground) in light.iter_mut().zip(self.ambient).zip(self.sun).zip(ground) {
-            *light = ambient * (ground + (1.0 - ground) * sky_weight) + sun * diffuse * sunlit;
+            *light = ambient * (ground + (1.0 - ground) * sky_weight) * skylit + sun * diffuse * sunlit;
         }
         light
     }
@@ -72,9 +73,10 @@ mod tests {
     fn surfaces_facing_the_sun_get_it_and_facing_away_keep_the_ambient() {
         let daylight = Daylight { hour: 21.0, ambient: [0.5; 3], sun: [0.4; 3], toward_sun: [0.0, 0.0, 1.0] };
         let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5);
-        assert!(close(daylight.on_shaded([0.0, 0.0, 2.0], 1.0), [0.9; 3]));
-        assert!(close(daylight.on_shaded([0.0, 0.0, -1.0], 1.0), [0.27, 0.235, 0.2]));
-        assert!(close(daylight.on_shaded([0.0, 0.0, 1.0], 0.5), [0.7; 3]));
+        assert!(close(daylight.on_shaded([0.0, 0.0, 2.0], 1.0, 1.0), [0.9; 3]));
+        assert!(close(daylight.on_shaded([0.0, 0.0, -1.0], 1.0, 1.0), [0.27, 0.235, 0.2]));
+        assert!(close(daylight.on_shaded([0.0, 0.0, 1.0], 0.5, 1.0), [0.7; 3]));
+        assert!(close(daylight.on_shaded([0.0, 0.0, 1.0], 1.0, 0.5), [0.65; 3]), "half the sky, all of the sun");
         assert_eq!(daylight.time_slot(), 7);
     }
 }

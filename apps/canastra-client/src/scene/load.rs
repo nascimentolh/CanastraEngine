@@ -231,7 +231,7 @@ fn vertex_light(
         return stored.unwrap_or([1.0; 3]);
     };
     // In world zones the hour lights every mesh, over whatever the level stored; trees store nothing.
-    let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0);
+    let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0, 1.0);
     let mut light = stored.unwrap_or_default();
     for (light, lit) in light.iter_mut().zip(lit) {
         *light += lit;

@@ -4,6 +4,7 @@
 
 mod head;
 mod held;
+mod occlusion;
 mod skeleton;
 
 use std::ops::Range;
@@ -76,6 +77,8 @@ struct Part {
     /// The sequence the part stands in, and the one it walks in.
     animations: [Option<Animation>; 2],
     mesh_axes: [[f32; 3]; 3],
+    /// How much sky each vertex sees, from the character's own shape.
+    sky: Vec<f32>,
     /// For each bone, the same bone in the body's skeleton; empty for the body itself.
     in_body: Vec<Option<usize>>,
     /// The body bone this part's root hangs from, by index in the body's skeleton.
@@ -136,6 +139,15 @@ impl Pawn {
         for ((_, part), follow) in parts.iter_mut().enumerate().zip(follows).filter(|((index, _), _)| *index != body) {
             part.follow = follow.and_then(|name| head::find(&body_bones, name));
             part.in_body = part.mesh.bones.iter().map(|bone| head::find(&body_bones, &bone.name)).collect();
+        }
+        // What each vertex of the character hides from the sky, which the bind pose settles.
+        let shapes: Vec<occlusion::Shape<'_>> = parts
+            .iter()
+            .map(|part| occlusion::Shape { vertices: &part.mesh.vertices, triangles: &part.mesh.indices })
+            .collect();
+        let baked = occlusion::sky(&shapes);
+        for (part, sky) in parts.iter_mut().zip(baked) {
+            part.sky = sky;
         }
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();
@@ -201,7 +213,7 @@ impl Pawn {
         let Some(body_part) = body_part else { return };
         let (scale, mesh_axes) = (body_part.mesh.scale, body_part.mesh_axes);
         // Places a vertex given in the space of the skeleton.
-        let mut push = |position: [f32; 3], normal: [f32; 3], uv: [f32; 2]| {
+        let mut push = |skylit: f32, position: [f32; 3], normal: [f32; 3], uv: [f32; 2]| {
             let turned = camera::place(position, scale, &mesh_axes, [0.0; 3]);
             let mut at = camera::place(turned, [1.0; 3], &self.axes, self.location);
             for (at, camera) in at.iter_mut().zip(camera) {
@@ -209,22 +221,23 @@ impl Pawn {
             }
             let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
                 let turned = camera::place(normal, scale, &mesh_axes, [0.0; 3]);
-                daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), 1.0)
+                daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), skylit, skylit)
             });
             out.push([at[0], at[1], at[2], uv[0], uv[1], r, g, b, 1.0]);
         };
         for (part, pose) in self.parts.iter().zip(&poses) {
-            for vertex in &part.mesh.vertices {
+            for (index, vertex) in part.mesh.vertices.iter().enumerate() {
+                let skylit = part.sky.get(index).copied().unwrap_or(1.0);
                 let skinned = skeleton::skin(vertex, &part.bind, pose);
                 // The normal skins as the offset between the vertex and a point one unit along it.
                 let tip = SkinVertex { position: skeleton::add(vertex.position, vertex.normal), ..*vertex };
-                push(skinned, sub(skeleton::skin(&tip, &part.bind, pose), skinned), vertex.uv);
+                push(skylit, skinned, sub(skeleton::skin(&tip, &part.bind, pose), skinned), vertex.uv);
             }
         }
         for held in &self.held {
             let Some(&bone) = poses.get(held.part).and_then(|pose| pose.get(held.bone)) else { continue };
             for (position, normal, uv) in held.vertices(bone) {
-                push(position, normal, uv);
+                push(1.0, position, normal, uv);
             }
         }
     }
@@ -286,7 +299,17 @@ impl Part {
         let animations =
             sequences.map(|sequence| animation.and_then(|animation| Animation::of(&mesh, animation, sequence)));
         let mesh_axes = camera::axes(mesh.rotation);
-        Self { mesh, sections, bind, bind_locals, animations, mesh_axes, in_body: Vec::new(), follow: None }
+        Self {
+            mesh,
+            sections,
+            bind,
+            bind_locals,
+            animations,
+            mesh_axes,
+            sky: Vec::new(),
+            in_body: Vec::new(),
+            follow: None,
+        }
     }
 
     /// Where each bone stands at scene time `time`, looping the sequence, or the walk while `walking` when the part

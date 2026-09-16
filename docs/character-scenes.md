@@ -273,3 +273,16 @@ Each step is checked against the real client: a dump of the files, or a screensh
    row's expiry. The character list now carries the ids of the pieces worn and unexpired, and the lobby dresses
    each figure with them, by the same rules the creation screen follows. Characters made before this show bare,
    having no items.
+   *2026-09-16:* how much sky a character's own shape lets through. Measured against the H5 elf screenshot, the
+   scene's rock matched but our characters came out too bright: the chest plate read (140, 105, 86) against
+   H5's (103, 79, 53), and the cloth under the tabard (69, 48, 31) against (59, 51, 28). Nothing in the
+   client's data darkens that cloth: it is the tabard above it. The client's own textures rule out the other
+   suspects, since the piece, the mesh and the texture are the same in both, the mesh has one section, and the
+   `Shader`'s sheen (`Specular` through a `TexEnvMap`) has a zero mask right there.
+   - The hour was checked at 17, 19, 21 and 23: only 21 keeps the tone of the screenshot, so `WORLD_HOUR` stays.
+   - Each character's vertices now carry how much sky they see, cast as 16 rays over the hemisphere of the
+     normal against the character's own triangles, through a grid of the boxes they fill. The sky light is
+     dimmed by it, down to 35% where a vertex is closed in. Baking costs about 10 ms a character, once.
+   - After it: the plate reads (98, 69, 56) and the cloth (63, 46, 30). The mystic's robe, which already
+     matched, did not move.
+   - Still to do: the scene's own shadows on characters, and faces, which read darker than H5's.

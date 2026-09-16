@@ -28,7 +28,7 @@ pub(super) fn groups(
         }
         let Some((_, size, group)) = groups.get_mut(path) else { continue };
         let normal = normal(&polygon.corners);
-        let light = daylight.map_or([1.0; 3], |daylight| daylight.on_shaded(normal, 1.0));
+        let light = daylight.map_or([1.0; 3], |daylight| daylight.on_shaded(normal, 1.0, 1.0));
         let first = u32::try_from(group.vertices.len()).unwrap_or(u32::MAX);
         for &corner in &polygon.corners {
             let offset: Vec<f32> =
