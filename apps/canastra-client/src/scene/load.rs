@@ -136,6 +136,10 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         for stage in stages {
             decode(&mut data.textures, &mut catalog, &stage.texture);
         }
+        // An animated base plays its other frames in turn, so they are decoded with it.
+        for frame in &material.frames {
+            decode(&mut data.textures, &mut catalog, frame);
+        }
         if !data.textures.contains_key(&material.base.texture) {
             continue;
         }

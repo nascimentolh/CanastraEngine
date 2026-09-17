@@ -32,7 +32,7 @@ use load::Vertex;
 use particles::System;
 use pawns::Pawn;
 pub(crate) use pawns::{Figure, HeldSource, PartSource};
-use pipeline::{Draw, Pipeline, depth_texture, material_uniform, target};
+use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform, target};
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
 /// screenshot at a 1.9 aspect ratio.
@@ -50,7 +50,10 @@ struct Batch {
     /// Units over which a soft sprite fades in front of the geometry behind it; zero when hard.
     soft: f32,
     uniform: wgpu::Buffer,
-    group: wgpu::BindGroup,
+    /// One bind group a frame of the base texture, the still first one and then its `AnimNext` chain.
+    groups: Vec<wgpu::BindGroup>,
+    /// Frames of that chain a second; zero where the base does not animate.
+    fps: f32,
     indices: Range<u32>,
     /// For a particle system's sprites, the zone they draw in.
     zone: Option<String>,
@@ -142,6 +145,8 @@ impl Scene {
             let sprite = &system.sprite;
             let material = Material {
                 base: Stage { texture: sprite.texture.clone().unwrap_or_default(), uv: Vec::new() },
+                frames: Vec::new(),
+                fps: 0.0,
                 layer: None,
                 blend: particles::blend(sprite.draw_style),
                 color: [255; 4],
@@ -353,13 +358,27 @@ impl Scene {
                 for batch in batches.iter().filter(|batch| batch.zone.is_none() || batch.zone == self.warp.zone) {
                     let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
                     pass.set_pipeline(pipeline);
-                    pass.set_bind_group(1, &batch.group, &[]);
+                    let Some(group) = batch.group(time) else { continue };
+                    pass.set_bind_group(1, group, &[]);
                     pass.draw_indexed(batch.indices.clone(), 0, 0..1);
                 }
             }
         }
         encoder.finish()
     }
+}
+
+impl Batch {
+    /// The bind group of the frame showing at `time`, which stands still where the base does not animate.
+    fn group(&self, time: f32) -> Option<&wgpu::BindGroup> {
+        self.groups.get(frame_at(time, self.fps, self.groups.len())).or_else(|| self.groups.first())
+    }
+}
+
+/// Which of `count` frames a chain playing `fps` frames a second shows at `time` seconds.
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "a frame number, wrapped to the count")]
+fn frame_at(time: f32, fps: f32, count: usize) -> usize {
+    (time.max(0.0) * fps) as usize % count.max(1)
 }
 
 /// Whether `material`'s uniform changes with time: its stages pan or rotate.
@@ -382,9 +401,15 @@ fn material_batch<'a>(
     let base = view(&material.base.texture)?;
     // A material without a second stage samples its base twice; the shader ignores it.
     let layer = material.layer.as_ref().and_then(|(stage, _, _)| view(&stage.texture));
-    let (uniform, group) = pipeline.material(device, base, layer.unwrap_or(base));
+    let uniform = material_buffer(device);
+    // Every frame of an animated base gets a group of its own, over the one uniform they share.
+    let frames = material.frames.iter().filter_map(|frame| view(frame));
+    let groups = std::iter::once(base)
+        .chain(frames)
+        .map(|frame| pipeline.material(device, &uniform, frame, layer.unwrap_or(frame)))
+        .collect();
     pipeline.prepare(device, draw);
-    Some(Batch { material, draw, fogged: true, soft: 0.0, uniform, group, indices, zone: None })
+    Some(Batch { fps: material.fps, material, draw, fogged: true, soft: 0.0, uniform, groups, indices, zone: None })
 }
 
 /// A vertex buffer the particles rewrite every frame, four corners a quad, and the index buffer of `quads` quads.
@@ -411,4 +436,17 @@ fn vertex_bytes(vertices: &[Vertex]) -> Vec<u8> {
 
 fn index_bytes(indices: &[u32]) -> Vec<u8> {
     indices.iter().flat_map(|index| index.to_le_bytes()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frame_at;
+
+    #[test]
+    fn an_animated_material_walks_its_frames_and_starts_over() {
+        assert_eq!(frame_at(0.0, 25.0, 16), 0);
+        assert_eq!(frame_at(0.04, 25.0, 16), 1, "a frame every 1/25 of a second");
+        assert_eq!(frame_at(0.64, 25.0, 16), 0, "sixteen frames later it is back at the first");
+        assert_eq!(frame_at(9.0, 0.0, 1), 0, "a material that does not animate keeps its one frame");
+    }
 }

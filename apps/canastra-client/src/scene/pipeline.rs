@@ -212,16 +212,11 @@ impl Pipeline {
     pub(super) fn material(
         &self,
         device: &wgpu::Device,
+        uniform: &wgpu::Buffer,
         base: &wgpu::TextureView,
         layer: &wgpu::TextureView,
-    ) -> (wgpu::Buffer, wgpu::BindGroup) {
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("scene material"),
-            size: MATERIAL_BYTES,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene material"),
             layout: &self.materials,
             entries: &[
@@ -230,9 +225,18 @@ impl Pipeline {
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(layer) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&self.sampler) },
             ],
-        });
-        (uniform, group)
+        })
     }
+}
+
+/// A buffer for one material's uniform, which every frame of an animated material shares.
+pub(super) fn material_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("scene material"),
+        size: MATERIAL_BYTES,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
 }
 
 /// The shader's `Material` uniform for `material` at `time` seconds; `fogged` false keeps fog off it, and

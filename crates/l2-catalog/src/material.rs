@@ -3,7 +3,7 @@
 
 use ue2_assets::{Property, find, object_properties};
 
-use crate::{Catalog, MAX_MATERIAL_DEPTH, full_path, package_name};
+use crate::{Catalog, MAX_MATERIAL_DEPTH, MAX_TEXTURE_FRAMES, full_path, package_name};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Blend {
@@ -54,6 +54,10 @@ pub enum UvModifier {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Material {
     pub base: Stage,
+    /// The base texture's other frames, in order after it, when the client animates it; empty otherwise.
+    pub frames: Vec<String>,
+    /// How many of those frames play a second.
+    pub fps: f32,
     /// A second stage combined with the base, with its factor (1, 2 or 4).
     pub layer: Option<(Stage, Combine, f32)>,
     pub blend: Blend,
@@ -115,6 +119,8 @@ impl Catalog {
         Some(match node.class.as_str() {
             "texture" => Material {
                 base: Stage { texture: path.to_owned(), uv: Vec::new() },
+                frames: self.frames(path, &node),
+                fps: node.frame_rate,
                 layer: None,
                 blend: if node.alpha_texture {
                     Blend::Alpha
@@ -208,6 +214,21 @@ impl Catalog {
         })
     }
 
+    /// The frames after `first` in its `AnimNext` chain, which the client loops. The chain ends where it
+    /// points back at the first frame, and a broken one stops at `MAX_TEXTURE_FRAMES`.
+    fn frames(&mut self, first: &str, node: &Node) -> Vec<String> {
+        let mut frames = Vec::new();
+        let mut next = node.anim_next.clone();
+        while let Some(path) = next.take() {
+            if path.eq_ignore_ascii_case(first) || frames.len() >= MAX_TEXTURE_FRAMES {
+                break;
+            }
+            next = self.node(&path).and_then(|node| node.anim_next);
+            frames.push(path);
+        }
+        frames
+    }
+
     /// What resolving reads from the object at `path`, copied out so the catalog can load more.
     fn node(&mut self, path: &str) -> Option<Node> {
         let package_name = package_name(path)?;
@@ -245,6 +266,8 @@ impl Catalog {
             frame_buffer_blending: byte("FrameBufferBlending"),
             combine_operation: byte("CombineOperation"),
             color: get("Color").and_then(Property::color),
+            anim_next: reference("AnimNext"),
+            frame_rate: float("MinFrameRate", float("MaxFrameRate", 0.0)),
             modifier: Modifier {
                 pan_direction: get("PanDirection").and_then(Property::rotator).unwrap_or_default(),
                 pan_rate: float("PanRate", 0.0),
@@ -278,6 +301,10 @@ struct Node {
     material1: Option<String>,
     material2: Option<String>,
     alpha_texture: bool,
+    /// The texture's next frame, when the client animates it.
+    anim_next: Option<String>,
+    /// Frames a second of that animation.
+    frame_rate: f32,
     masked: bool,
     /// The alpha reference when the material cuts out by alpha.
     alpha_test: Option<u8>,

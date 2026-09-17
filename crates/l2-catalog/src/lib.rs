@@ -19,6 +19,8 @@ const FOLDERS: [(&str, &str); 4] =
 
 /// Deeper material chains than this are treated as cycles.
 const MAX_MATERIAL_DEPTH: usize = 8;
+/// Frames of one animated texture to follow before giving up on a chain that never closes.
+const MAX_TEXTURE_FRAMES: usize = 64;
 
 #[derive(Default)]
 pub struct Catalog {
