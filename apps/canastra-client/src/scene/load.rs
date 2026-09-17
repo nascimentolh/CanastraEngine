@@ -6,11 +6,11 @@ use std::path::Path;
 use std::rc::Rc;
 
 use l2_catalog::{Catalog, Material, Mesh};
-use ue2_assets::{Image, StaticMesh};
+use ue2_assets::Image;
 use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
-use super::daylight::Daylight;
+use super::daylight::{self, Daylight, Ramp};
 use super::movers::Mover;
 use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
@@ -22,7 +22,14 @@ use super::{bsp, camera, deco, sky, terrain};
 const WORLD_HOUR: f32 = 21.0;
 
 /// Position relative to the camera, UV, then an RGBA multiplier (white for level geometry).
-pub(crate) type Vertex = [f32; 9];
+/// Position (3), UV (2), RGBA color (4), and, for vertices the hour lights, the world normal (3), the ramp
+/// (`daylight::Ramp`, zero for none), and how much sun and sky reach it; see `Vertex` in `scene.wgsl`.
+pub(crate) type Vertex = [f32; 15];
+
+/// A vertex drawn with `color` as it is, which the hour does not light.
+pub(crate) fn vertex(at: [f32; 3], uv: [f32; 2], [red, green, blue, alpha]: [f32; 4]) -> Vertex {
+    [at[0], at[1], at[2], uv[0], uv[1], red, green, blue, alpha, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}
 
 pub(crate) struct Batch {
     pub(crate) material: Material,
@@ -53,8 +60,8 @@ pub(crate) struct SceneData {
     pub(crate) cloud_tint: [f32; 3],
     /// The client's assets, kept to stand characters in the scene later.
     pub(crate) catalog: Catalog,
-    /// The light on characters, in world zones.
-    pub(crate) actor_daylight: Option<Daylight>,
+    /// The hour's light in world zones; `None` in zones with states, which carry their light in the level.
+    pub(crate) daylight: Option<Daylight>,
     /// Every scene's camera shots, by the scene's tag in lowercase.
     pub(crate) shots: BTreeMap<String, Vec<Shot>>,
 }
@@ -74,18 +81,15 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let mut catalog = Catalog::open(client_root);
     let environment = l2_env::Environment::read(client_root);
     // Zones with states carry their light in the level; world zones are lit by the hour.
-    let daylight_for = |sections| {
-        environment
-            .as_ref()
-            .filter(|_| warp.zone_state.is_none())
-            .and_then(|environment| Daylight::new(environment, WORLD_HOUR, &level.actors, sections))
-    };
-    let daylight = daylight_for(["StaticMeshAmbient", "HSVStaticMeshLight"]);
-    let terrain_daylight = daylight_for(["TerrainAmbient", "HSVTerrainLight"]);
-    let meshes = mesh_groups(&level, &mut catalog, camera.location, warp.zone_state, [&daylight, &terrain_daylight]);
-    let bsp_daylight = daylight_for(["BSPAmbient", "HSVBSPLight"]);
-    let actor_daylight = daylight_for(["ActorAmbient", "HSVActorLight"]);
-    let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, bsp_daylight.as_ref());
+    let daylight = environment
+        .as_ref()
+        .filter(|_| warp.zone_state.is_none())
+        .and_then(|environment| Daylight::new(environment, WORLD_HOUR, &level.actors));
+    let lit = daylight.is_some();
+    // In world zones the stored terrain maps say how much sun each vertex gets at each time of day.
+    let state = daylight.as_ref().map_or(warp.zone_state, |daylight| Some(daylight.time_slot()));
+    let meshes = mesh_groups(&level, &mut catalog, camera.location, state, lit);
+    let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, lit);
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
     let sky = match &environment {
@@ -96,7 +100,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         .into_iter()
         .map(|(material, group)| (material, group, false))
         .chain(
-            terrain::groups(&level.terrains, &mut catalog, camera.location, warp.zone_state, terrain_daylight.as_ref())
+            terrain::groups(&level.terrains, &mut catalog, camera.location, state, lit)
                 .into_iter()
                 .chain(meshes)
                 .chain(brushes)
@@ -125,7 +129,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
             .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
             .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
         catalog: Catalog::default(),
-        actor_daylight,
+        daylight,
         shots: level.shots.iter().map(|(tag, shots)| (tag.to_ascii_lowercase(), shots.clone())).collect(),
         warp,
     };
@@ -159,7 +163,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         data.batches.push(Batch { material, indices: start..end, fogged });
     }
     for actor in &level.actors {
-        if let Some(mover) = Mover::load(actor, &mut catalog, daylight.as_ref()) {
+        if let Some(mover) = Mover::load(actor, &mut catalog, lit) {
             for material in mover.materials() {
                 decode_material(&mut data.textures, &mut catalog, material);
             }
@@ -189,27 +193,27 @@ fn scene_emitter(mut emitter: Emitter, warps: &BTreeMap<String, Warp>, warp: &Wa
 }
 
 /// The static meshes of the level and its terrain decorations, placed relative to `camera` and merged into
-/// one group per material.
+/// one group per material; `lit` in world zones, where the hour lights them.
 fn mesh_groups(
     level: &Level,
     catalog: &mut Catalog,
     camera: [f32; 3],
-    zone_state: Option<u8>,
-    [daylight, terrain_daylight]: [&Option<Daylight>; 2],
+    state: Option<u8>,
+    lit: bool,
 ) -> Vec<(Material, Group)> {
     let mut meshes: HashMap<String, Option<Mesh>> = HashMap::new();
     let mut materials: HashMap<String, Option<Material>> = HashMap::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
 
-    let decorations = deco::actors(&level.terrains, catalog, camera, zone_state, terrain_daylight.as_ref());
-    // Decorations carry their full light already.
+    let decorations = deco::actors(&level.terrains, catalog, camera, state);
+    // Decorations take the light of the ground under them.
     let actors = level
         .actors
         .iter()
         .filter(|actor| actor.movement.is_none())
-        .map(|actor| (actor, 1.0, daylight.as_ref()))
-        .chain(decorations.iter().map(|(actor, opacity)| (actor, *opacity, None)));
-    for (actor, opacity, daylight) in actors {
+        .map(|actor| (actor, 1.0, None))
+        .chain(decorations.iter().map(|(actor, opacity, ground)| (actor, *opacity, Some(*ground))));
+    for (actor, opacity, ground) in actors {
         let Some(path) = &actor.static_mesh else { continue };
         let mesh = meshes.entry(path.clone()).or_insert_with(|| catalog.static_mesh(path));
         let Some(Mesh { mesh, materials: slots }) = mesh.as_ref() else { continue };
@@ -237,8 +241,17 @@ fn mesh_groups(
                     let position = mesh.positions.get(usize::from(index)).copied().unwrap_or_default();
                     let at = relative(position);
                     let uv = mesh.uvs.get(usize::from(index)).copied().unwrap_or_default();
-                    let light = vertex_light(actor, mesh, index, &axes, daylight);
-                    group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], opacity]);
+                    group.vertices.push(match ground {
+                        Some(deco::Ground { normal, bright }) if lit => {
+                            daylight::lit(at, uv, [0.0; 3], opacity, normal, Ramp::Terrain, bright, 1.0)
+                        }
+                        Some(deco::Ground { bright, .. }) => vertex(at, uv, [bright, bright, bright, opacity]),
+                        None => {
+                            let normal = mesh.normals.get(usize::from(index)).copied().unwrap_or_default();
+                            let normal = camera::place(normal, actor.scale.map(f32::signum), &axes, [0.0; 3]);
+                            mesh_vertex(actor, index, at, uv, opacity, lit.then_some(normal))
+                        }
+                    });
                     u32::try_from(group.vertices.len() - 1).unwrap_or(u32::MAX)
                 });
                 group.indices.push(placed);
@@ -249,33 +262,28 @@ fn mesh_groups(
     groups.into_iter().filter_map(|(path, group)| Some((materials.remove(&path)??, group))).collect()
 }
 
-/// The light a mesh vertex draws with: what the level stored for it, plus the hour's light in world zones.
-// ponytail: actors without stored lighting (movers) draw unlit until dynamic lighting exists.
-pub(super) fn vertex_light(
+/// A static mesh vertex: the light the level stored for it and, in world zones where `normal` is given in world
+/// space, the hour's light on top; trees store nothing.
+pub(super) fn mesh_vertex(
     actor: &Actor,
-    mesh: &StaticMesh,
     index: u16,
-    axes: &[[f32; 3]; 3],
-    daylight: Option<&Daylight>,
-) -> [f32; 3] {
-    let index = usize::from(index);
+    at: [f32; 3],
+    uv: [f32; 2],
+    opacity: f32,
+    normal: Option<[f32; 3]>,
+) -> Vertex {
     if actor.unlit {
-        return [1.0; 3];
+        return vertex(at, uv, [1.0, 1.0, 1.0, opacity]);
     }
     let stored = actor
         .lighting
-        .get(index)
+        .get(usize::from(index))
         .map(|&[red, green, blue, _]| [red, green, blue].map(|channel| f32::from(channel) / 255.0));
-    let (Some(daylight), Some(&normal)) = (daylight, mesh.normals.get(index)) else {
-        return stored.unwrap_or([1.0; 3]);
-    };
-    // In world zones the hour lights every mesh, over whatever the level stored; trees store nothing.
-    let lit = daylight.on_shaded(camera::place(normal, actor.scale.map(f32::signum), axes, [0.0; 3]), 1.0, 1.0);
-    let mut light = stored.unwrap_or_default();
-    for (light, lit) in light.iter_mut().zip(lit) {
-        *light += lit;
+    if let Some(normal) = normal {
+        return daylight::lit(at, uv, stored.unwrap_or_default(), opacity, normal, Ramp::StaticMesh, 1.0, 1.0);
     }
-    light
+    let [red, green, blue] = stored.unwrap_or([1.0; 3]);
+    vertex(at, uv, [red, green, blue, opacity])
 }
 
 /// Decodes every texture `material` draws with: its stages and, when its base animates, the other frames.

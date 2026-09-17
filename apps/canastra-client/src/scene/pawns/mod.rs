@@ -13,8 +13,8 @@ use l2_catalog::{Catalog, Material, Skinned};
 use ue2_assets::{MeshAnimation, SkeletalMesh, SkinVertex};
 
 use super::camera;
-use super::daylight::Daylight;
-use super::load::Vertex;
+use super::daylight::{self, Ramp};
+use super::load::{Vertex, vertex};
 use held::Held;
 pub(crate) use held::HeldSource;
 use skeleton::Transform;
@@ -200,9 +200,9 @@ impl Pawn {
         Some((label, [at[0] - camera[0], at[1] - camera[1], at[2] - camera[2]]))
     }
 
-    /// Writes the vertices of every part, then of everything held, at scene time `time`, relative to `camera`
-    /// and lit by `daylight` if given.
-    pub(crate) fn write(&self, time: f32, camera: [f32; 3], daylight: Option<&Daylight>, out: &mut Vec<Vertex>) {
+    /// Writes the vertices of every part, then of everything held, at scene time `time`, relative to `camera`,
+    /// for the hour to light when `lit`.
+    pub(crate) fn write(&self, time: f32, camera: [f32; 3], lit: bool, out: &mut Vec<Vertex>) {
         let body_part = self.parts.get(self.body);
         let body = body_part.map(|part| part.pose(time, self.walking, &[], &[])).unwrap_or_default();
         let body_bind = body_part.map_or(&[][..], |part| &part.bind);
@@ -225,11 +225,13 @@ impl Pawn {
             for (at, camera) in at.iter_mut().zip(camera) {
                 *at -= camera;
             }
-            let [r, g, b] = daylight.map_or([1.0; 3], |daylight| {
+            out.push(if lit {
                 let turned = camera::place(normal, scale, &mesh_axes, [0.0; 3]);
-                daylight.on_shaded(camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]), skylit, skylit)
+                let normal = camera::place(turned, [1.0; 3], &self.axes, [0.0; 3]);
+                daylight::lit(at, uv, [0.0; 3], 1.0, normal, Ramp::Actor, skylit, skylit)
+            } else {
+                vertex(at, uv, [1.0; 4])
             });
-            out.push([at[0], at[1], at[2], uv[0], uv[1], r, g, b, 1.0]);
         };
         for (part, pose) in self.parts.iter().zip(&poses) {
             for (index, vertex) in part.mesh.vertices.iter().enumerate() {

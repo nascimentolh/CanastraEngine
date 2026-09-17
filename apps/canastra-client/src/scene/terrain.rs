@@ -3,8 +3,8 @@
 use l2_catalog::{Blend, Catalog, Combine, Heightmap, Material, Stage, UvModifier};
 use ue2_level::Terrain;
 
-use super::daylight::Daylight;
-use super::load::{Group, Vertex};
+use super::daylight::{self, Ramp};
+use super::load::{Group, Vertex, vertex};
 
 /// Heights are stored around this middle value.
 pub(super) const ZERO_HEIGHT: f32 = 32768.0;
@@ -14,14 +14,14 @@ pub(super) fn groups(
     terrains: &[Terrain],
     catalog: &mut Catalog,
     camera: [f32; 3],
-    zone_state: Option<u8>,
-    daylight: Option<&Daylight>,
+    time_state: Option<u8>,
+    lit: bool,
 ) -> Vec<(Material, Group)> {
     let mut groups = Vec::new();
     for terrain in terrains {
         let Some(map) = catalog.heightmap(&terrain.heightmap) else { continue };
         let (width, height) = (map.width, map.height);
-        let Group { vertices, indices } = geometry(terrain, &map, camera, zone_state, daylight);
+        let Group { vertices, indices } = geometry(terrain, &map, camera, time_state, lit);
         for (index, layer) in terrain.layers.iter().enumerate() {
             let Some(mut material) = catalog.material(&layer.material) else { continue };
             material.base.uv.insert(0, UvModifier::Scale { scale: layer.scale, offset: [0.0; 2] });
@@ -39,17 +39,10 @@ pub(super) fn groups(
 }
 
 /// One vertex per heightmap sample relative to `camera`, with texture coordinates in samples, and two
-/// triangles per visible quad.
-fn geometry(
-    terrain: &Terrain,
-    map: &Heightmap,
-    camera: [f32; 3],
-    zone_state: Option<u8>,
-    daylight: Option<&Daylight>,
-) -> Group {
+/// triangles per visible quad; the stored intensity maps of `state` say how much sun each vertex gets, under the
+/// hour's light when `lit`.
+fn geometry(terrain: &Terrain, map: &Heightmap, camera: [f32; 3], state: Option<u8>, lit: bool) -> Group {
     let (width, height) = (map.width, map.height);
-    // In world zones the stored maps say how much sun each vertex gets at each time of day.
-    let state = daylight.map_or(zone_state, |daylight| Some(daylight.time_slot()));
     let light = intensities(terrain, width, height, state);
     let [scale_x, scale_y, scale_z] = terrain.scale;
     let mut vertices: Vec<Vertex> = Vec::with_capacity(width * height);
@@ -61,18 +54,12 @@ fn geometry(
             terrain.location[2] + (f32::from(sample) - ZERO_HEIGHT) / 256.0 * scale_z,
         ];
         let bright = light.get(index).copied().unwrap_or(1.0);
-        let rgb = daylight.map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, map, index), bright, 1.0));
-        vertices.push([
-            world[0] - camera[0],
-            world[1] - camera[1],
-            world[2] - camera[2],
-            x,
-            y,
-            rgb[0],
-            rgb[1],
-            rgb[2],
-            1.0,
-        ]);
+        let at = [world[0] - camera[0], world[1] - camera[1], world[2] - camera[2]];
+        vertices.push(if lit {
+            daylight::lit(at, [x, y], [0.0; 3], 1.0, normal(terrain, map, index), Ramp::Terrain, bright, 1.0)
+        } else {
+            vertex(at, [x, y], [bright, bright, bright, 1.0])
+        });
     }
     // ponytail: every quad splits along the same diagonal; read EdgeTurnBitmap if seams show.
     let mut indices = Vec::new();
@@ -148,12 +135,12 @@ mod tests {
             height: 3,
             samples: vec![32768, 32769, 32768, 32768, 32768, 32768, 32768, 32768, 32768],
         };
-        let Group { vertices, indices } = geometry(&terrain, &map, [100.0, 0.0, 0.0], None, None);
+        let Group { vertices, indices } = geometry(&terrain, &map, [100.0, 0.0, 0.0], None, false);
 
         // The heightmap's center (1.5 samples in) sits on the terrain's location; one height step is
         // scale_z / 256.
-        assert_eq!(vertices[4], [-32.0, -32.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
-        assert_eq!(vertices[1], [-32.0, -96.0, 11.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(vertices[4], vertex([-32.0, -32.0, 10.0], [1.0, 1.0], [1.0; 4]));
+        assert_eq!(vertices[1], vertex([-32.0, -96.0, 11.0], [1.0, 0.0], [1.0; 4]));
         assert_eq!(indices.len(), 3 * 6);
         assert_eq!(indices[12..18], [3, 6, 4, 4, 6, 7]);
     }

@@ -5,7 +5,7 @@ use l2_catalog::{Catalog, Material, Mesh};
 use ue2_level::MeshShape;
 
 use super::camera;
-use super::load::Vertex;
+use super::load::{Vertex, vertex};
 
 /// Emitters naming the same mesh with the same overrides share one loaded mesh.
 pub(crate) type MeshKey = (String, Vec<Option<String>>);
@@ -18,9 +18,8 @@ pub(crate) fn key(shape: &MeshShape) -> MeshKey {
 pub(crate) struct ParticleMesh {
     positions: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    normals: Vec<[f32; 3]>,
     pub(crate) sections: Vec<(Material, Vec<u32>)>,
-    /// Light on each vertex, multiplying the color it is drawn with; empty where the mesh is unlit.
-    light: Vec<[f32; 3]>,
 }
 
 impl ParticleMesh {
@@ -40,12 +39,15 @@ impl ParticleMesh {
                 Some((material, indices.iter().copied().map(u32::from).collect()))
             })
             .collect();
-        Some(Self { positions: mesh.positions, uvs: mesh.uvs, sections, light: Vec::new() })
+        Some(Self { positions: mesh.positions, uvs: mesh.uvs, normals: mesh.normals, sections })
     }
 
-    /// The same mesh with `light` on each vertex.
-    pub(super) fn lit(self, light: Vec<[f32; 3]>) -> Self {
-        Self { light, ..self }
+    /// Each vertex in the mesh's own space: its index, position, texture coordinates and normal.
+    pub(super) fn corners(&self) -> impl Iterator<Item = (usize, [f32; 3], [f32; 2], [f32; 3])> + '_ {
+        self.positions.iter().enumerate().map(|(index, &position)| {
+            let uv = self.uvs.get(index).copied().unwrap_or_default();
+            (index, position, uv, self.normals.get(index).copied().unwrap_or_default())
+        })
     }
 
     /// Vertices one particle writes.
@@ -64,21 +66,8 @@ impl ParticleMesh {
         color: [f32; 4],
         vertices: &mut Vec<Vertex>,
     ) {
-        for (index, &position) in self.positions.iter().enumerate() {
-            let uv = self.uvs.get(index).copied().unwrap_or_default();
-            let at = camera::place(position, scale, axes, center);
-            let [red, green, blue] = self.light.get(index).copied().unwrap_or([1.0; 3]);
-            vertices.push([
-                at[0],
-                at[1],
-                at[2],
-                uv[0],
-                uv[1],
-                color[0] * red,
-                color[1] * green,
-                color[2] * blue,
-                color[3],
-            ]);
+        for (_, position, uv, _) in self.corners() {
+            vertices.push(vertex(camera::place(position, scale, axes, center), uv, color));
         }
     }
 }

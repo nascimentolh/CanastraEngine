@@ -4,33 +4,37 @@
 use l2_catalog::Catalog;
 use ue2_level::{Actor, DecoLayer, Placement, Terrain};
 
-use super::daylight::Daylight;
 use super::random::Random;
 use super::terrain::{ZERO_HEIGHT, intensities, normal};
 
+/// The ground under a decoration: which way it faces, and how much sun its stored map lets through.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Ground {
+    pub(super) normal: [f32; 3],
+    pub(super) bright: f32,
+}
+
 /// Every decoration within fade-out range of `camera` as a placed static mesh actor with its opacity,
 /// which falls from 1 to 0 across the layer's fade-out radii as Fermata fades them.
-/// In world zones `daylight` is the terrain's, so grass takes the ground's color of light rather than a mesh's.
-#[expect(clippy::cast_sign_loss, clippy::cast_possible_truncation, reason = "light clamped to 0..=255")]
+/// Each takes the light of the ground under it from the terrain's intensity maps of `state`, so grass takes the
+/// ground's color of light rather than a mesh's.
+#[expect(clippy::cast_possible_truncation, reason = "a random yaw in rotation units")]
 pub(super) fn actors(
     terrains: &[Terrain],
     catalog: &mut Catalog,
     camera: [f32; 3],
-    zone_state: Option<u8>,
-    daylight: Option<&Daylight>,
-) -> Vec<(Actor, f32)> {
+    state: Option<u8>,
+) -> Vec<(Actor, f32, Ground)> {
     let mut actors = Vec::new();
-    let state = daylight.map_or(zone_state, |daylight| Some(daylight.time_slot()));
     for terrain in terrains {
         let Some(map) = catalog.heightmap(&terrain.heightmap) else { continue };
         let light = intensities(terrain, map.width, map.height, state);
         for layer in &terrain.deco_layers {
-            let (Some(density), Some(mesh)) =
+            let (Some(density), Some(_)) =
                 (catalog.texture(&layer.density_map), catalog.static_mesh(&layer.static_mesh))
             else {
                 continue;
             };
-            let vertices = mesh.mesh.positions.len();
             let mut random = Random(u64::from(layer.seed.cast_unsigned()) + 0x9E37_79B9);
             for (x, y, fraction) in placements(layer, &density, map.width, map.height, &mut random) {
                 let quad = y * map.width + x;
@@ -58,10 +62,8 @@ pub(super) fn actors(
                     continue;
                 }
                 let opacity = 1.0 - ((distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0);
-                let bright = light.get(quad).copied().unwrap_or(1.0);
-                let [red, green, blue] = daylight
-                    .map_or([bright; 3], |daylight| daylight.on_shaded(normal(terrain, &map, quad), bright, 1.0))
-                    .map(|channel| (channel * 255.0).clamp(0.0, 255.0) as u8);
+                let ground =
+                    Ground { normal: normal(terrain, &map, quad), bright: light.get(quad).copied().unwrap_or(1.0) };
                 let actor = Actor {
                     class: "TerrainDecoration".to_owned(),
                     name: String::new(),
@@ -72,10 +74,10 @@ pub(super) fn actors(
                     static_mesh: Some(layer.static_mesh.clone()),
                     skins: Vec::new(),
                     unlit: false,
-                    lighting: vec![[red, green, blue, 255]; vertices],
+                    lighting: Vec::new(),
                     movement: None,
                 };
-                actors.push((actor, opacity));
+                actors.push((actor, opacity, ground));
             }
         }
     }

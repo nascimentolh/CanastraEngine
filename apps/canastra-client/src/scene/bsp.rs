@@ -6,8 +6,9 @@ use std::collections::HashMap;
 use l2_catalog::{Catalog, Material};
 use ue2_level::BspPolygon;
 
-use super::daylight::Daylight;
+use super::daylight::{self, Ramp};
 use super::load::Group;
+use super::load::vertex;
 
 /// The polygons' groups by material, relative to `camera`. World zones take `daylight`; elsewhere polygons
 /// draw at full brightness.
@@ -16,7 +17,7 @@ pub(super) fn groups(
     polygons: &[BspPolygon],
     catalog: &mut Catalog,
     camera: [f32; 3],
-    daylight: Option<&Daylight>,
+    lit: bool,
 ) -> Vec<(Material, Group)> {
     let mut groups: HashMap<String, (Material, [f32; 2], Group)> = HashMap::new();
     for polygon in polygons {
@@ -28,7 +29,6 @@ pub(super) fn groups(
         }
         let Some((_, size, group)) = groups.get_mut(path) else { continue };
         let normal = normal(&polygon.corners);
-        let light = daylight.map_or([1.0; 3], |daylight| daylight.on_shaded(normal, 1.0, 1.0));
         let first = u32::try_from(group.vertices.len()).unwrap_or(u32::MAX);
         for &corner in &polygon.corners {
             let offset: Vec<f32> =
@@ -36,7 +36,11 @@ pub(super) fn groups(
             let along = |axis: [f32; 3]| offset.iter().zip(axis).map(|(offset, axis)| offset * axis).sum::<f32>();
             let uv = [along(polygon.texture_axes[0]) / size[0], along(polygon.texture_axes[1]) / size[1]];
             let at = [corner[0] - camera[0], corner[1] - camera[1], corner[2] - camera[2]];
-            group.vertices.push([at[0], at[1], at[2], uv[0], uv[1], light[0], light[1], light[2], 1.0]);
+            group.vertices.push(if lit {
+                daylight::lit(at, uv, [0.0; 3], 1.0, normal, Ramp::Bsp, 1.0, 1.0)
+            } else {
+                vertex(at, uv, [1.0; 4])
+            });
         }
         let count = u32::try_from(polygon.corners.len()).unwrap_or(0);
         for corner in 1..count.saturating_sub(1) {

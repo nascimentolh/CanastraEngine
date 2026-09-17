@@ -10,7 +10,7 @@ use ue2_level::{DrawStyle, Emitter, SpriteEmitter};
 
 use super::camera;
 use super::curves::{color_at, fade, size_at};
-use super::load::Vertex;
+use super::load::{Vertex, vertex};
 use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::random::Random;
 
@@ -150,7 +150,7 @@ impl System {
                             + spun_up.get(axis).copied().unwrap_or_default() * vertical)
                             * size
                 });
-                vertices.push([corner[0], corner[1], corner[2], u, v, color[0], color[1], color[2], color[3]]);
+                vertices.push(vertex(corner, [u, v], color));
             }
         }
     }

@@ -5,7 +5,7 @@
 use l2_catalog::{Catalog, Material};
 use l2_env::Environment;
 
-use super::load::{Group, Vertex};
+use super::load::{Group, vertex};
 
 /// Far enough to stand behind everything a lobby scene draws.
 const DOME_RADIUS: f32 = 200_000.0;
@@ -69,8 +69,11 @@ fn dome(radius: f32, shade: impl Fn(f32, [f32; 2]) -> ([f32; 4], [f32; 2])) -> G
             let across = [elevation.cos() * azimuth.cos(), elevation.cos() * azimuth.sin()];
             let up = elevation.sin();
             let ([red, green, blue, alpha], [u, v]) = shade(up, across);
-            let vertex: Vertex = [across[0] * radius, across[1] * radius, up * radius, u, v, red, green, blue, alpha];
-            group.vertices.push(vertex);
+            group.vertices.push(vertex(
+                [across[0] * radius, across[1] * radius, up * radius],
+                [u, v],
+                [red, green, blue, alpha],
+            ));
         }
     }
     let columns = SEGMENTS + 1;

@@ -8,6 +8,10 @@ struct Globals {
     fog_color: vec4<f32>,
     // Start and end distance, fog linear in between, then the near plane's distance.
     fog_range: vec4<f32>,
+    // The hour's light in world zones: toward the sun, then for each ramp (static mesh, terrain, BSP, actor) its
+    // ambient, sun and ground bounce colors.
+    toward_sun: vec4<f32>,
+    ramps: array<vec4<f32>, 12>,
 }
 
 struct Material {
@@ -39,7 +43,25 @@ struct Material {
 struct Vertex {
     @location(0) position: vec3<f32>,
     @location(1) uv: vec2<f32>,
+    // Light the level stored, or the color itself where the hour lights nothing.
     @location(2) color: vec4<f32>,
+    @location(3) normal: vec3<f32>,
+    // The ramp that lights the vertex (zero for none), and how much of the sun and of the sky reach it.
+    @location(4) light: vec3<f32>,
+}
+
+// A hemisphere ambient, dimmer and ground-tinted facing down, and a slightly wrapped sun.
+fn daylight(normal: vec3<f32>, ramp: i32, sunlit: f32, skylit: f32) -> vec3<f32> {
+    let n = normalize(normal);
+    let row = (ramp - 1) * 3;
+    let ambient = globals.ramps[row].rgb;
+    let sun = globals.ramps[row + 1].rgb;
+    let ground = globals.ramps[row + 2].rgb;
+    let sky_weight = clamp(n.z * 0.5 + 0.5, 0.0, 1.0);
+    let incidence = dot(n, globals.toward_sun.xyz);
+    let wrapped = clamp((incidence + 0.08) / 1.08, 0.0, 1.0);
+    let diffuse = max(incidence, 0.0) + (wrapped - max(incidence, 0.0)) * 0.35;
+    return ambient * (ground + (vec3<f32>(1.0) - ground) * sky_weight) * skylit + sun * diffuse * sunlit;
 }
 
 struct Varyings {
@@ -56,7 +78,12 @@ fn vs(vertex: Vertex) -> Varyings {
     out.position = globals.view_projection * vec4<f32>(vertex.position, 1.0);
     out.uv = vertex.uv;
     out.depth = out.position.w;
-    out.color = vertex.color;
+    let ramp = i32(round(vertex.light.x));
+    if ramp > 0 {
+        out.color = vec4<f32>(vertex.color.rgb + daylight(vertex.normal, ramp, vertex.light.y, vertex.light.z), vertex.color.a);
+    } else {
+        out.color = vertex.color;
+    }
     return out;
 }
 

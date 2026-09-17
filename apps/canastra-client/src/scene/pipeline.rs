@@ -12,8 +12,8 @@ pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth3
 /// Samples per pixel. Masked foliage turns its alpha into coverage over them, as Fermata does, so leaf and
 /// grass edges come out smooth.
 const SAMPLES: u32 = 4;
-/// Position (3 floats), UV (2 floats) and RGBA color (4 floats).
-const VERTEX_BYTES: u64 = 36;
+/// Fifteen floats; see `load::Vertex`.
+const VERTEX_BYTES: u64 = 60;
 /// Eight `vec4<f32>`, see `Material` in `scene.wgsl`.
 pub(super) const MATERIAL_BYTES: u64 = 128;
 
@@ -143,7 +143,9 @@ impl Pipeline {
                 buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: VERTEX_BYTES,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x3, 1 => Float32x2, 2 => Float32x4, 3 => Float32x3, 4 => Float32x3
+                    ],
                 })],
             },
             // ponytail: no culling; two-sided materials and mirrored actors look right without it.

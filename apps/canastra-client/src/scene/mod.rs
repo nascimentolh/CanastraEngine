@@ -41,9 +41,9 @@ use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform,
 /// screenshot at a 1.9 aspect ratio.
 // ponytail: fixed horizontal FOV; if other aspect ratios frame differently from H5, fix the vertical one instead.
 const FOV: f32 = 50.0;
-/// View-projection matrix, fog color, and fog start and end with the near plane; see `Globals` in
-/// `scene.wgsl`.
-const GLOBALS_BYTES: u64 = 96;
+/// View-projection matrix, fog color, fog start and end with the near plane, and the hour's light; see `Globals`
+/// in `scene.wgsl`.
+const GLOBALS_BYTES: u64 = 96 + 13 * 16;
 
 /// Geometry drawn with one material: a range of level indices or of particle quad indices.
 struct Batch {
@@ -95,8 +95,8 @@ pub(crate) struct Scene {
     /// turned at.
     turning: (f32, f32),
     catalog: Catalog,
-    /// The light on pawns in world zones; pawns in zones with states draw at full brightness.
-    actor_daylight: Option<daylight::Daylight>,
+    /// The hour's light in world zones; in zones with states, everything draws with the light the level stored.
+    daylight: Option<daylight::Daylight>,
     /// The scene the camera was last placed by, whose zone gives the fog and the particles drawn, and every scene's
     /// warp by its tag in lowercase.
     warp: Warp,
@@ -195,7 +195,7 @@ impl Scene {
             flight: None,
             turning: (0.0, 0.0),
             catalog: data.catalog,
-            actor_daylight: data.actor_daylight,
+            daylight: data.daylight,
             warp: data.warp,
             warps: data.warps,
             started: Instant::now(),
@@ -262,14 +262,7 @@ impl Scene {
         let size = gpu.size();
         let aspect = size[0] as f32 / size[1].max(1) as f32;
         self.fly();
-        let matrix = self.view(aspect);
-        // Without fog, the range starts beyond any distance drawn.
-        let (fog_color, fog_range) = self.warp.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
-            (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, camera::NEAR, 0.0])
-        });
-        let bytes: Vec<u8> =
-            matrix.iter().chain([&fog_color, &fog_range]).flatten().flat_map(|value| value.to_le_bytes()).collect();
-        gpu.queue.write_buffer(&self.globals, 0, &bytes);
+        gpu.queue.write_buffer(&self.globals, 0, &self.globals_uniform(aspect));
         let time = self.started.elapsed().as_secs_f32();
         // Most materials never change; rewriting all their uniforms each frame cost Lobby02 over 50 ms.
         let batches =
@@ -300,7 +293,7 @@ impl Scene {
             }
             let mut skinned = Vec::new();
             for pawn in &self.pawns {
-                pawn.write(time, self.camera, self.actor_daylight.as_ref(), &mut skinned);
+                pawn.write(time, self.camera, self.daylight.is_some(), &mut skinned);
             }
             gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
         }
@@ -367,6 +360,25 @@ impl Scene {
             }
         }
         encoder.finish()
+    }
+}
+
+impl Scene {
+    /// The globals the shader reads this frame: the view, the fog of the camera's zone and the hour's light.
+    fn globals_uniform(&self, aspect: f32) -> Vec<u8> {
+        let matrix = self.view(aspect);
+        // Without fog, the range starts beyond any distance drawn.
+        let (fog_color, fog_range) = self.warp.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
+            (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, camera::NEAR, 0.0])
+        });
+        let light = self.daylight.as_ref().map_or([[0.0; 4]; 13], daylight::Daylight::uniform);
+        matrix
+            .iter()
+            .chain([&fog_color, &fog_range])
+            .chain(&light)
+            .flatten()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
     }
 }
 
