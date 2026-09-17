@@ -68,6 +68,7 @@ mod tests {
         assert_eq!(repeat(0.75, 2.0), 0.5);
 
         let mut sprite = SpriteEmitter {
+            mesh: None,
             max_particles: 1,
             lifetime: [10.0; 2],
             start_offset: [0.0; 3],

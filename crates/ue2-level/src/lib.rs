@@ -15,7 +15,7 @@ use ue2_assets::{Error, Property, find, object_properties};
 use ue2_package::{ObjectRef, Package};
 
 pub use bsp::BspPolygon;
-pub use emitters::{DrawStyle, Emitter, Range, SpriteEmitter};
+pub use emitters::{DrawStyle, Emitter, MeshShape, Range, SpriteEmitter};
 pub use lighting::TerrainSector;
 pub use shots::Shot;
 pub use terrain::{DecoLayer, Terrain, TerrainLayer};

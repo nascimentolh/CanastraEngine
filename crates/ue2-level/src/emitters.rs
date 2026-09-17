@@ -1,5 +1,5 @@
-//! `Emitter` actors and their `SpriteEmitter`s: what a particle simulation needs to spawn, move, size,
-//! color and draw sprites. Unset values take the Unreal Engine 2 defaults.
+//! `Emitter` actors and their `SpriteEmitter`s and `MeshEmitter`s: what a particle simulation needs to spawn,
+//! move, size, color and draw sprites or meshes. Unset values take the Unreal Engine 2 defaults.
 
 use ue2_assets::{Property, find, object_properties};
 use ue2_package::{ObjectRef, Package};
@@ -62,11 +62,28 @@ pub struct SpriteEmitter {
     pub soft: bool,
     /// The plane sprites lie in instead of facing the camera.
     pub projection_normal: Option<[f32; 3]>,
+    /// For a `MeshEmitter`, the mesh each particle draws in place of a sprite.
+    pub mesh: Option<MeshShape>,
+}
+
+/// What a `MeshEmitter` draws for each particle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshShape {
+    /// Object path of the static mesh.
+    pub mesh: String,
+    /// Material overrides by section (`CustomMaterials`), `None` where the mesh's own applies.
+    pub materials: Vec<Option<String>>,
+    /// Whether the mesh's materials say how it blends (`UseMeshBlendMode`) rather than the draw style.
+    pub own_blend: bool,
+    /// Scale on each axis at spawn, one where unset; a uniformly sized emitter scales all three by X's.
+    pub scale: [Range; 3],
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Emitter {
     pub location: [f32; 3],
+    /// The actor's rotation in Unreal units, which turns the meshes its mesh emitters draw.
+    pub rotation: [i32; 3],
     /// Name of the zone the emitter stands in.
     pub zone: Option<String>,
     pub sprites: Vec<SpriteEmitter>,
@@ -82,17 +99,24 @@ pub(crate) fn read(
     for object in find(properties, "Emitters").and_then(|emitters| emitters.objects(package)).unwrap_or_default() {
         let ObjectRef::Export(index) = object else { continue };
         let Some(export) = package.exports().get(index) else { continue };
-        if !package.class_name(export).eq_ignore_ascii_case("SpriteEmitter") {
+        let class = package.class_name(export);
+        let meshes = class.eq_ignore_ascii_case("MeshEmitter");
+        if !meshes && !class.eq_ignore_ascii_case("SpriteEmitter") {
             continue;
         }
         let properties = object_properties(package, file, export)?;
         // Disabled emitters spawn nothing.
         if !find(&properties, "Disabled").and_then(Property::bool).unwrap_or(false) {
-            sprites.push(sprite(package, &properties));
+            let mut sprite = sprite(package, &properties);
+            if meshes {
+                sprite.mesh = mesh_shape(package, &properties);
+            }
+            sprites.push(sprite);
         }
     }
     let location = find(properties, "Location").and_then(Property::vector).unwrap_or_default();
-    Ok(Emitter { location, zone, sprites })
+    let rotation = find(properties, "Rotation").and_then(Property::rotator).unwrap_or_default();
+    Ok(Emitter { location, rotation, zone, sprites })
 }
 
 fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
@@ -164,7 +188,31 @@ fn sprite(package: &Package, properties: &[Property<'_>]) -> SpriteEmitter {
         // PTDU_Normal and the modes built on it lay sprites in ProjectionNormal's plane.
         projection_normal: matches!(get("UseDirectionAs").and_then(Property::byte), Some(4..=6))
             .then(|| get("ProjectionNormal").and_then(Property::vector).unwrap_or([0.0, 0.0, 1.0])),
+        mesh: None,
     }
+}
+
+/// A `MeshEmitter`'s mesh and material overrides, or `None` without a mesh.
+fn mesh_shape(package: &Package, properties: &[Property<'_>]) -> Option<MeshShape> {
+    let path = |object| match object {
+        ObjectRef::Null => None,
+        object => Some(package.object_path(object)),
+    };
+    let mesh = find(properties, "StaticMesh").and_then(|mesh| mesh.object(package)).and_then(path)?;
+    let materials = find(properties, "CustomMaterials")
+        .and_then(|materials| materials.objects(package))
+        .unwrap_or_default()
+        .into_iter()
+        .map(path)
+        .collect();
+    let own_blend = find(properties, "UseMeshBlendMode").and_then(Property::bool).unwrap_or(true);
+    // A mesh particle's size is a scale, which starts at one rather than a sprite's hundred units.
+    let mut scale = find(properties, "StartSizeRange").map_or([[1.0; 2]; 3], |ranges| range_vector(package, ranges));
+    if find(properties, "UniformSize").and_then(Property::bool).unwrap_or(false) {
+        let [x, ..] = scale;
+        scale = [x; 3];
+    }
+    Some(MeshShape { mesh, materials, own_blend, scale })
 }
 
 /// The points of a time curve: each point's `RelativeTime` and its `value` field.

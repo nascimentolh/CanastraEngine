@@ -1,12 +1,17 @@
 //! Sprite particles simulated on the CPU the way Unreal Engine 2's sprite emitters behave: spawned in a
 //! box around the emitter, moving with velocity and acceleration, revolving about the emitter, sized
-//! and colored by curves over their life, fading in and out, spinning, and respawning when they die.
+//! and colored by curves over their life, fading in and out, spinning, and respawning when they die. Mesh
+//! emitters' particles move the same way and draw a mesh instead of a sprite.
+
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use ue2_level::{DrawStyle, Emitter, SpriteEmitter};
 
 use super::camera;
 use super::curves::{color_at, fade, size_at};
 use super::load::Vertex;
+use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::random::Random;
 
 pub(crate) struct System {
@@ -19,6 +24,10 @@ pub(crate) struct System {
     tint: [f32; 3],
     /// The zone the owning emitter stands in.
     pub(crate) zone: Option<String>,
+    /// For a mesh emitter, the mesh each particle draws.
+    pub(crate) mesh: Option<Rc<ParticleMesh>>,
+    /// How the owning emitter is turned, which turns its meshes.
+    axes: [[f32; 3]; 3],
 }
 
 struct Particle {
@@ -28,6 +37,8 @@ struct Particle {
     start: [f32; 3],
     velocity: [f32; 3],
     size: f32,
+    /// A mesh particle's scale on each axis.
+    scale: [f32; 3],
     /// Starting turn and turns per second.
     spin: [f32; 2],
     color: [f32; 3],
@@ -39,14 +50,22 @@ struct Particle {
 
 /// One system per sprite emitter, started as if it had been running a whole lifetime, as Unreal's
 /// warmup does, farthest first so blended systems draw back to front from the fixed camera. Sprites that
-/// use the cloud color take `cloud_tint`.
-pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]) -> Vec<System> {
+/// use the cloud color take `cloud_tint`; mesh emitters draw from `meshes` and are left out without their mesh.
+pub(crate) fn start(
+    emitters: &[Emitter],
+    camera: [f32; 3],
+    cloud_tint: [f32; 3],
+    meshes: &HashMap<MeshKey, Rc<ParticleMesh>>,
+) -> Vec<System> {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
     let mut systems: Vec<System> = emitters
         .iter()
         .flat_map(|emitter| emitter.sprites.iter().map(move |sprite| (emitter, sprite)))
-        .filter(|(_, sprite)| sprite.texture.is_some())
-        .map(|(emitter, sprite)| {
+        .filter_map(|(emitter, sprite)| match &sprite.mesh {
+            Some(shape) => Some((emitter, sprite, Some(meshes.get(&particle_mesh::key(shape))?.clone()))),
+            None => sprite.texture.is_some().then_some((emitter, sprite, None)),
+        })
+        .map(|(emitter, sprite, mesh)| {
             let location = emitter.location;
             seed += 1;
             let mut random = Random(seed);
@@ -59,7 +78,16 @@ pub(crate) fn start(emitters: &[Emitter], camera: [f32; 3], cloud_tint: [f32; 3]
                 })
                 .collect();
             let tint = if sprite.cloud_color { cloud_tint } else { [1.0; 3] };
-            System { sprite: sprite.clone(), origin, particles, random, tint, zone: emitter.zone.clone() }
+            System {
+                sprite: sprite.clone(),
+                origin,
+                particles,
+                random,
+                tint,
+                zone: emitter.zone.clone(),
+                mesh,
+                axes: camera::axes(emitter.rotation),
+            }
         })
         .collect();
     let distance = |system: &System| {
@@ -86,9 +114,9 @@ impl System {
         }
     }
 
-    /// Four corners per particle at `time`, facing the camera given by its `rotation` unless the
+    /// Each particle at `time`: its mesh, or four corners facing the camera given by its `rotation` unless the
     /// emitter lays sprites in a plane.
-    pub(crate) fn quads(&self, time: f32, rotation: [i32; 3], vertices: &mut Vec<Vertex>) {
+    pub(crate) fn write(&self, time: f32, rotation: [i32; 3], vertices: &mut Vec<Vertex>) {
         let [_, camera_right, camera_up] = camera::axes(rotation);
         let (right, up) = self.sprite.projection_normal.and_then(plane_axes).unwrap_or((camera_right, camera_up));
         let [columns, rows] = self.sprite.subdivisions;
@@ -102,6 +130,11 @@ impl System {
                 *channel *= multiplier * tint;
             }
             color[3] *= self.sprite.opacity * fade(&self.sprite, age, particle.lifetime);
+            if let Some(mesh) = &self.mesh {
+                let grown = size_at(&self.sprite, life);
+                mesh.write(center, particle.scale.map(|scale| scale * grown), &self.axes, color, vertices);
+                continue;
+            }
             let (sin, cos) = ((particle.spin[0] + particle.spin[1] * age) * std::f32::consts::TAU).sin_cos();
             let spun_right = mix(right, up, cos, sin);
             let spun_up = mix(up, right, cos, -sin);
@@ -138,9 +171,14 @@ impl System {
         at
     }
 
-    /// Particles this system draws, which is also how many quads `quads` writes.
+    /// Particles this system draws.
     pub(crate) fn len(&self) -> usize {
         self.particles.len()
+    }
+
+    /// Vertices `write` writes for each particle.
+    pub(crate) fn vertices_each(&self) -> usize {
+        self.mesh.as_ref().map_or(4, |mesh| mesh.len())
     }
 }
 
@@ -178,6 +216,7 @@ fn spawn(sprite: &SpriteEmitter, random: &mut Random, born: f32, lifetime: f32) 
         start,
         velocity: sprite.start_velocity.map(|range| random.range(range)),
         size: random.range(sprite.start_size),
+        scale: sprite.mesh.as_ref().map_or([1.0; 3], |shape| shape.scale.map(|range| random.range(range))),
         spin: sprite.spin.map_or([0.0; 2], |(start, rate)| [random.range(start), random.range(rate)]),
         color: sprite.color_multiplier.map(|range| random.range(range)),
         revolution: sprite.revolution.map_or(([0.0; 3], [0.0; 3]), |(center, turns)| {

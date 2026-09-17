@@ -7,9 +7,11 @@ mod cast;
 mod curves;
 mod daylight;
 mod deco;
+mod emission;
 mod flight;
 mod load;
 mod mips;
+mod particle_mesh;
 mod particles;
 mod pawns;
 mod pipeline;
@@ -22,7 +24,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
 
-use l2_catalog::{Catalog, Material, Stage, UvModifier};
+use l2_catalog::{Catalog, Material, UvModifier};
 use ue2_level::{Placement, Shot, Warp};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
@@ -137,38 +139,20 @@ impl Scene {
             })
             .collect();
 
-        let mut systems = particles::start(&data.emitters, data.camera.location, data.cloud_tint);
-        systems.retain(|system| system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path)));
-        let mut quads = 0;
-        let mut sprite_batches = Vec::new();
-        for system in &systems {
-            let sprite = &system.sprite;
-            let material = Material {
-                base: Stage { texture: sprite.texture.clone().unwrap_or_default(), uv: Vec::new() },
-                frames: Vec::new(),
-                fps: 0.0,
-                layer: None,
-                blend: particles::blend(sprite.draw_style),
-                color: [255; 4],
-                fade: None,
-                glow: None,
-                alpha_ref: None,
-            };
-            let draw = Draw { blend: material.blend, depth_test: sprite.z_test, depth_write: false };
-            let start = u32::try_from(quads * 6).map_err(|_| "too many particles")?;
-            quads += system.len();
-            let end = u32::try_from(quads * 6).map_err(|_| "too many particles")?;
-            // ponytail: soft sprites fade over half their mean size; tune against the H5 login if edges show.
-            let soft = if sprite.soft { (sprite.start_size[0] + sprite.start_size[1]) / 4.0 } else { 0.0 };
-            let zone = system.zone.clone();
-            sprite_batches.extend(batch(material, draw, sprite.fogged, soft, start..end).map(|b| Batch { zone, ..b }));
-        }
+        let mut systems =
+            particles::start(&data.emitters, data.camera.location, data.cloud_tint, &data.particle_meshes);
+        systems.retain(|system| {
+            system.mesh.is_some() || system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path))
+        });
+        let (sprite_batches, particle_vertex_count, particle_index_data) = emission::layout(&systems, &mut batch)?;
+        let quads: usize = systems.iter().map(System::len).sum();
 
         let (pawn_vertices, pawn_indices) = cast::pawn_buffers(device, &pawns::layout(&[]));
 
         let vertices = buffer(device, "scene vertices", wgpu::BufferUsages::VERTEX, &vertex_bytes(&data.vertices));
         let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
-        let (particle_vertices, particle_indices) = particle_buffers(device, quads)?;
+        let (particle_vertices, particle_indices) =
+            particle_buffers(device, particle_vertex_count, &particle_index_data);
         println!(
             "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
             data.camera.location,
@@ -291,7 +275,7 @@ impl Scene {
         }
         let mut sprites = Vec::new();
         for system in &self.systems {
-            system.quads(time, self.eye.rotation, &mut sprites);
+            system.write(time, self.eye.rotation, &mut sprites);
         }
         gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
         if !self.pawns.is_empty() {
@@ -416,18 +400,16 @@ fn material_batch<'a>(
     Some(Batch { fps: material.fps, material, draw, fogged: true, soft: 0.0, uniform, groups, indices, zone: None })
 }
 
-/// A vertex buffer the particles rewrite every frame, four corners a quad, and the index buffer of `quads` quads.
-fn particle_buffers(device: &wgpu::Device, quads: usize) -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
-    let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+/// A vertex buffer of `vertices` the particles rewrite every frame, and their fixed `indices`; neither empty.
+fn particle_buffers(device: &wgpu::Device, vertices: usize, indices: &[u32]) -> (wgpu::Buffer, wgpu::Buffer) {
+    let buffer_of_vertices = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("particle vertices"),
-        size: (quads.max(1) * 4 * size_of::<Vertex>()) as u64,
+        size: (vertices.max(1) * size_of::<Vertex>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let indices: Vec<u32> = (0..u32::try_from(quads.max(1)).map_err(|_| "too many particles")?)
-        .flat_map(|quad| [0, 1, 2, 0, 2, 3].map(|corner| quad * 4 + corner))
-        .collect();
-    Ok((vertices, buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(&indices))))
+    let indices = if indices.is_empty() { &[0; 3][..] } else { indices };
+    (buffer_of_vertices, buffer(device, "particle indices", wgpu::BufferUsages::INDEX, &index_bytes(indices)))
 }
 
 fn buffer(device: &wgpu::Device, label: &str, usage: wgpu::BufferUsages, contents: &[u8]) -> wgpu::Buffer {

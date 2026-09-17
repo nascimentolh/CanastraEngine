@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::rc::Rc;
 
 use l2_catalog::{Catalog, Material, Mesh};
 use ue2_assets::{Image, StaticMesh};
@@ -10,6 +11,7 @@ use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
+use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
 use super::{bsp, camera, deco, sky, terrain};
 
@@ -42,6 +44,8 @@ pub(crate) struct SceneData {
     pub(crate) textures: HashMap<String, Image>,
     /// The emitters of the zones the camera can warp to; each draws only while the camera is in its zone.
     pub(crate) emitters: Vec<Emitter>,
+    /// The meshes mesh emitters draw, loaded with their materials' textures in `textures`.
+    pub(crate) particle_meshes: HashMap<MeshKey, Rc<ParticleMesh>>,
     /// RGB multiplier of sprites that take the sky's color.
     pub(crate) cloud_tint: [f32; 3],
     /// The client's assets, kept to stand characters in the scene later.
@@ -105,13 +109,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         indices: Vec::new(),
         batches: Vec::new(),
         textures: HashMap::new(),
-        // Only zones a warp reaches without loading the map again can show their emitters.
+        particle_meshes: HashMap::new(),
         emitters: level
             .emitters
             .into_iter()
-            .filter(|emitter| {
-                level.warps.values().any(|other| other.zone == emitter.zone && other.zone_state == warp.zone_state)
-            })
+            .filter_map(|emitter| scene_emitter(emitter, &level.warps, &warp))
             .collect(),
         // The login keeps the hour the client's clock starts at.
         // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
@@ -128,15 +130,20 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     {
         decode(&mut data.textures, &mut catalog, texture);
     }
+    for shape in data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.mesh.as_ref()) {
+        let key = particle_mesh::key(shape);
+        if data.particle_meshes.contains_key(&key) {
+            continue;
+        }
+        if let Some(mesh) = ParticleMesh::load(&mut catalog, shape) {
+            for (material, _) in &mesh.sections {
+                decode_material(&mut data.textures, &mut catalog, material);
+            }
+            data.particle_meshes.insert(key, Rc::new(mesh));
+        }
+    }
     for (material, group, fogged) in groups {
-        let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
-        for stage in stages {
-            decode(&mut data.textures, &mut catalog, &stage.texture);
-        }
-        // An animated base plays its other frames in turn, so they are decoded with it.
-        for frame in &material.frames {
-            decode(&mut data.textures, &mut catalog, frame);
-        }
+        decode_material(&mut data.textures, &mut catalog, &material);
         if !data.textures.contains_key(&material.base.texture) {
             continue;
         }
@@ -149,6 +156,24 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     }
     data.catalog = catalog;
     Ok(data)
+}
+
+/// `emitter` if it can show without loading the map again from `warp`, tagged with the zone it draws in. Zones no
+/// scene warps into show nothing. An emitter in a zone whose scenes are all in another state, such as the light
+/// beams inside the select hall that stand in the login's outdoor zone, joins the scene whose camera is nearest:
+/// the BSP lets every zone see every other, so the zone alone does not say where it shows.
+fn scene_emitter(mut emitter: Emitter, warps: &BTreeMap<String, Warp>, warp: &Warp) -> Option<Emitter> {
+    let own: Vec<&Warp> = warps.values().filter(|other| other.zone == emitter.zone).collect();
+    if own.iter().any(|other| other.zone_state == warp.zone_state) {
+        return Some(emitter);
+    }
+    own.first()?;
+    let distance = |other: &Warp| {
+        other.placement.location.iter().zip(emitter.location).map(|(a, b)| (a - b) * (a - b)).sum::<f32>()
+    };
+    let nearest = warps.values().min_by(|a, b| distance(a).total_cmp(&distance(b)))?;
+    emitter.zone.clone_from(&nearest.zone);
+    (nearest.zone_state == warp.zone_state).then_some(emitter)
 }
 
 /// The static meshes of the level and its terrain decorations, placed relative to `camera` and merged into
@@ -240,6 +265,14 @@ fn vertex_light(
     light
 }
 
+/// Decodes every texture `material` draws with: its stages and, when its base animates, the other frames.
+fn decode_material(textures: &mut HashMap<String, Image>, catalog: &mut Catalog, material: &Material) {
+    let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
+    for path in stages.map(|stage| &stage.texture).chain(&material.frames) {
+        decode(textures, catalog, path);
+    }
+}
+
 /// Decodes the texture at `path` into `textures` unless it is already there or cannot be read.
 fn decode(textures: &mut HashMap<String, Image>, catalog: &mut Catalog, path: &str) {
     if !textures.contains_key(path)
@@ -255,4 +288,38 @@ fn read_level(path: &Path) -> Result<Level, String> {
     let file = l2_crypto::decrypt(&bytes, path).map_err(|e| error(&e))?;
     let package = Package::parse(&file).map_err(|e| error(&e))?;
     ue2_level::read_level(&package, &file).map_err(|e| error(&e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_emitter_shows_with_its_zone_or_else_the_nearest_scene_in_this_state() {
+        let warp = |x: f32, zone: &str, zone_state| Warp {
+            placement: Placement { location: [x, 0.0, 0.0], rotation: [0; 3] },
+            fog: None,
+            zone: Some(zone.into()),
+            zone_state,
+        };
+        let (login, select) = (warp(0.0, "Outdoor", Some(2)), warp(8000.0, "Hall", None));
+        let warps = BTreeMap::from([("login".into(), login.clone()), ("select".into(), select.clone())]);
+        let emitter = |x: f32, zone: &str| Emitter {
+            location: [x, 0.0, 0.0],
+            rotation: [0; 3],
+            zone: Some(zone.into()),
+            sprites: Vec::new(),
+        };
+
+        // A beam in the outdoor zone but inside the hall joins the select scene; the login keeps it in its zone.
+        let beam = scene_emitter(emitter(7000.0, "Outdoor"), &warps, &select).map(|beam| beam.zone);
+        assert_eq!(beam, Some(Some("Hall".into())));
+        assert_eq!(
+            scene_emitter(emitter(7000.0, "Outdoor"), &warps, &login).map(|beam| beam.zone),
+            Some(Some("Outdoor".into()))
+        );
+        // Mist by the login camera does not show from the hall, nor anything in a zone no scene warps into.
+        assert!(scene_emitter(emitter(100.0, "Outdoor"), &warps, &select).is_none());
+        assert!(scene_emitter(emitter(7000.0, "Sky"), &warps, &select).is_none());
+    }
 }
