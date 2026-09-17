@@ -55,20 +55,8 @@ cargo run --release -p canastra-studio -- gamedata.cana "<H5 client root>"
 cargo run --release -p canastra-cli -- migrate "<H5 client root>" "<server>/data/stats" gamedata.cana
 ```
 
-Login server (PostgreSQL from `docker compose up -d postgres`):
-
-```
-cargo run -p canastra-login -- keygen                      # paste into canastra-login.toml (see the example)
-cargo run -p canastra-login -- create-account <name>       # password from CANASTRA_PASSWORD or stdin
-cargo run -p canastra-login -- serve
-```
-
-Game server (authorize its key in the login server's `[[authorized]]`):
-
-```
-cargo run -p canastra-game -- keygen                       # paste into canastra-game.toml (see the example)
-cargo run -p canastra-game -- serve
-```
+Setting up PostgreSQL (with or without Docker), the login and game servers and the client is covered step by
+step in [docs/getting-started.md](docs/getting-started.md).
 
 `scan` on a real H5 client: 3020 of 3021 files decrypt, 1244 packages parse, and all 54 `system`
 tables decode with every byte accounted for. The one failure (`Animations/RTA63900`) is a
