@@ -16,12 +16,6 @@ use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
 use super::{bsp, camera, deco, sky, terrain};
 
-/// The hour world zones are shown at. H5's lobby clock runs from 22:00 at six times real time; this is the hour
-/// whose sky and light match the H5 creation screenshot.
-// ponytail: a fixed hour; the running clock comes with the world.
-const WORLD_HOUR: f32 = 21.0;
-
-/// Position relative to the camera, UV, then an RGBA multiplier (white for level geometry).
 /// Position (3), UV (2), RGBA color (4), and, for vertices the hour lights, the world normal (3), the ramp
 /// (`daylight::Ramp`, zero for none), and how much sun and sky reach it; see `Vertex` in `scene.wgsl`.
 pub(crate) type Vertex = [f32; 15];
@@ -62,6 +56,8 @@ pub(crate) struct SceneData {
     pub(crate) catalog: Catalog,
     /// The hour's light in world zones; `None` in zones with states, which carry their light in the level.
     pub(crate) daylight: Option<Daylight>,
+    /// In world zones, the client's time-of-day ramps and where the sun shines from, to follow the clock.
+    pub(crate) environment: Option<(l2_env::Environment, [f32; 3])>,
     /// Every scene's camera shots, by the scene's tag in lowercase.
     pub(crate) shots: BTreeMap<String, Vec<Shot>>,
 }
@@ -80,11 +76,19 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let camera = warp.placement;
     let mut catalog = Catalog::open(client_root);
     let environment = l2_env::Environment::read(client_root);
-    // Zones with states carry their light in the level; world zones are lit by the hour.
-    let daylight = environment
+    // The login keeps the hour the client's clock starts at.
+    // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
+    let cloud_tint = environment
         .as_ref()
+        .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
+        .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0));
+    // Zones with states carry their light in the level; world zones are lit by the lobby clock's hour.
+    let environment = environment
         .filter(|_| warp.zone_state.is_none())
-        .and_then(|environment| Daylight::new(environment, WORLD_HOUR, &level.actors));
+        .and_then(|environment| Some((environment, Daylight::toward_sun(&level.actors)?)));
+    let daylight = environment.as_ref().and_then(|(environment, toward_sun)| {
+        Daylight::new(environment, environment.hour_after(daylight::clock_seconds()), *toward_sun)
+    });
     let lit = daylight.is_some();
     // In world zones the stored terrain maps say how much sun each vertex gets at each time of day.
     let state = daylight.as_ref().map_or(warp.zone_state, |daylight| Some(daylight.time_slot()));
@@ -92,10 +96,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, lit);
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
-    let sky = match &environment {
-        Some(environment) if warp.zone_state.is_none() => sky::groups(&mut catalog, environment, WORLD_HOUR),
-        _ => Vec::new(),
-    };
+    let sky = environment.as_ref().map(|(environment, _)| sky::groups(&mut catalog, environment)).unwrap_or_default();
     let mut groups: Vec<(Material, Group, bool)> = sky
         .into_iter()
         .map(|(material, group)| (material, group, false))
@@ -123,13 +124,10 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
             .into_iter()
             .filter_map(|emitter| scene_emitter(emitter, &level.warps, &warp))
             .collect(),
-        // The login keeps the hour the client's clock starts at.
-        // ponytail: SkyBoxColor, not a CloudColorN ramp, is the tint that matches the H5 login's haze by measurement; revisit with the world clock.
-        cloud_tint: environment
-            .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
-            .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0)),
+        cloud_tint,
         catalog: Catalog::default(),
         daylight,
+        environment,
         shots: level.shots.iter().map(|(tag, shots)| (tag.to_ascii_lowercase(), shots.clone())).collect(),
         warp,
     };

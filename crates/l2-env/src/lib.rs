@@ -5,6 +5,8 @@ use std::path::Path;
 
 pub struct Environment {
     start_hour: f32,
+    /// Game hours that pass in one real hour; zero when the clock stands still.
+    time_ratio: f32,
     time_env: String,
 }
 
@@ -17,14 +19,23 @@ impl Environment {
             // Comments are Korean in EUC-KR; only ASCII keys and numbers are read.
             Some(String::from_utf8_lossy(&l2_crypto::decrypt(&bytes, &path).ok()?).into_owned())
         };
-        let start_hour = value(&text("Env.int")?, "EnvSetup", "StartTime").and_then(|hour| hour.parse().ok())?;
+        let env = text("Env.int")?;
+        let number = |key| value(&env, "EnvSetup", key).and_then(|number| number.parse::<f32>().ok());
+        let start_hour = number("StartTime")?;
+        let clock = value(&env, "EnvSetup", "IsClock").is_some_and(|clock| clock.eq_ignore_ascii_case("true"));
+        let time_ratio = if clock { number("TimeRatio").unwrap_or(1.0) } else { 0.0 };
         // ponytail: only the normal environment, TimeEnv0; the Seven Signs variants come with the world clock.
-        Some(Self { start_hour, time_env: text("TimeEnv0.int")? })
+        Some(Self { start_hour, time_ratio, time_env: text("TimeEnv0.int")? })
     }
 
     /// The hour the client's clock starts at.
     pub fn start_hour(&self) -> f32 {
         self.start_hour
+    }
+
+    /// The hour the client's clock shows `seconds` of real time after it started, from 0 to 24.
+    pub fn hour_after(&self, seconds: f32) -> f32 {
+        clock_hour(self.start_hour, self.time_ratio, seconds)
     }
 
     /// The RGB of the color ramp `section` at `hour`, linear between its stops and held past the ends.
@@ -108,6 +119,11 @@ fn lines<'a>(text: &'a str, section: &'a str) -> impl Iterator<Item = (&'a str, 
     })
 }
 
+/// `start` plus `ratio` game hours for every real hour in `seconds`, wrapped to a day.
+fn clock_hour(start: f32, ratio: f32, seconds: f32) -> f32 {
+    (start + seconds * ratio / 3600.0).rem_euclid(24.0)
+}
+
 fn value<'a>(text: &'a str, section: &'a str, key: &str) -> Option<&'a str> {
     lines(text, section).find_map(|(name, value)| name.trim().eq_ignore_ascii_case(key).then_some(value.trim()))
 }
@@ -129,5 +145,14 @@ mod tests {
         assert_eq!(to_bytes(rgb([1.0, 255.0, 190.0])), [181, 181, 181]);
         assert_eq!(to_bytes(rgb([85.0, 0.0, 255.0])), [0, 209, 0]);
         assert_eq!(value("[EnvSetup]\nStartTime=22\n", "EnvSetup", "StartTime"), Some("22"));
+    }
+
+    #[test]
+    fn the_clock_runs_from_its_start_at_its_ratio_and_wraps_at_midnight() {
+        // H5's lobby: from 22:00 at six game hours a real hour, midnight comes after twenty real minutes.
+        assert!((clock_hour(22.0, 6.0, 0.0) - 22.0).abs() < 1e-4);
+        assert!((clock_hour(22.0, 6.0, 600.0) - 23.0).abs() < 1e-4);
+        assert!((clock_hour(22.0, 6.0, 1500.0) - 0.5).abs() < 1e-4);
+        assert!((clock_hour(22.0, 0.0, 9999.0) - 22.0).abs() < 1e-4, "a clock that stands still");
     }
 }

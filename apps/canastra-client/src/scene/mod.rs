@@ -43,7 +43,7 @@ use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform,
 const FOV: f32 = 50.0;
 /// View-projection matrix, fog color, fog start and end with the near plane, and the hour's light; see `Globals`
 /// in `scene.wgsl`.
-const GLOBALS_BYTES: u64 = 96 + 13 * 16;
+const GLOBALS_BYTES: u64 = 96 + 16 * 16;
 
 /// Geometry drawn with one material: a range of level indices or of particle quad indices.
 struct Batch {
@@ -97,6 +97,8 @@ pub(crate) struct Scene {
     catalog: Catalog,
     /// The hour's light in world zones; in zones with states, everything draws with the light the level stored.
     daylight: Option<daylight::Daylight>,
+    /// In world zones, the client's time-of-day ramps and where the sun shines from, which the hour follows.
+    environment: Option<(l2_env::Environment, [f32; 3])>,
     /// The scene the camera was last placed by, whose zone gives the fog and the particles drawn, and every scene's
     /// warp by its tag in lowercase.
     warp: Warp,
@@ -196,6 +198,7 @@ impl Scene {
             turning: (0.0, 0.0),
             catalog: data.catalog,
             daylight: data.daylight,
+            environment: data.environment,
             warp: data.warp,
             warps: data.warps,
             started: Instant::now(),
@@ -262,6 +265,7 @@ impl Scene {
         let size = gpu.size();
         let aspect = size[0] as f32 / size[1].max(1) as f32;
         self.fly();
+        self.follow_clock();
         gpu.queue.write_buffer(&self.globals, 0, &self.globals_uniform(aspect));
         let time = self.started.elapsed().as_secs_f32();
         // Most materials never change; rewriting all their uniforms each frame cost Lobby02 over 50 ms.
@@ -364,6 +368,15 @@ impl Scene {
 }
 
 impl Scene {
+    /// Moves the light on to the lobby clock's hour once a game minute has passed.
+    fn follow_clock(&mut self) {
+        let Some((environment, toward_sun)) = &self.environment else { return };
+        let hour = environment.hour_after(daylight::clock_seconds());
+        if self.daylight.as_ref().is_none_or(|daylight| (daylight.hour() - hour).abs() >= 1.0 / 60.0) {
+            self.daylight = daylight::Daylight::new(environment, hour, *toward_sun);
+        }
+    }
+
     /// The globals the shader reads this frame: the view, the fog of the camera's zone and the hour's light.
     fn globals_uniform(&self, aspect: f32) -> Vec<u8> {
         let matrix = self.view(aspect);
@@ -371,7 +384,7 @@ impl Scene {
         let (fog_color, fog_range) = self.warp.fog.map_or(([0.0; 4], [f32::MAX, f32::MAX, camera::NEAR, 0.0]), |fog| {
             (fog.color.map(|channel| f32::from(channel) / 255.0), [fog.start, fog.end, camera::NEAR, 0.0])
         });
-        let light = self.daylight.as_ref().map_or([[0.0; 4]; 13], daylight::Daylight::uniform);
+        let light = self.daylight.as_ref().map_or([[0.0; 4]; 16], daylight::Daylight::uniform);
         matrix
             .iter()
             .chain([&fog_color, &fog_range])

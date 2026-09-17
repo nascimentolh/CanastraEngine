@@ -9,9 +9,9 @@ struct Globals {
     // Start and end distance, fog linear in between, then the near plane's distance.
     fog_range: vec4<f32>,
     // The hour's light in world zones: toward the sun, then for each ramp (static mesh, terrain, BSP, actor) its
-    // ambient, sun and ground bounce colors.
+    // ambient, sun and ground bounce colors, then the haze, sky and cloud colors.
     toward_sun: vec4<f32>,
-    ramps: array<vec4<f32>, 12>,
+    ramps: array<vec4<f32>, 15>,
 }
 
 struct Material {
@@ -79,7 +79,12 @@ fn vs(vertex: Vertex) -> Varyings {
     out.uv = vertex.uv;
     out.depth = out.position.w;
     let ramp = i32(round(vertex.light.x));
-    if ramp > 0 {
+    if ramp == 5 {
+        // The sky dome, from the haze at the horizon to the sky above.
+        out.color = vec4<f32>(mix(globals.ramps[12].rgb, globals.ramps[13].rgb, vertex.light.y), vertex.color.a);
+    } else if ramp == 6 {
+        out.color = vec4<f32>(globals.ramps[14].rgb, vertex.color.a);
+    } else if ramp > 0 {
         out.color = vec4<f32>(vertex.color.rgb + daylight(vertex.normal, ramp, vertex.light.y, vertex.light.z), vertex.color.a);
     } else {
         out.color = vertex.color;
