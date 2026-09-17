@@ -56,8 +56,8 @@ pub(crate) struct SceneData {
     pub(crate) catalog: Catalog,
     /// The hour's light in world zones; `None` in zones with states, which carry their light in the level.
     pub(crate) daylight: Option<Daylight>,
-    /// In world zones, the client's time-of-day ramps and where the sun shines from, to follow the clock.
-    pub(crate) environment: Option<(l2_env::Environment, [f32; 3])>,
+    /// In world zones, the client's time-of-day ramps and sun path, to follow the clock.
+    pub(crate) environment: Option<l2_env::Environment>,
     /// Every scene's camera shots, by the scene's tag in lowercase.
     pub(crate) shots: BTreeMap<String, Vec<Shot>>,
 }
@@ -83,12 +83,10 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
         .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0));
     // Zones with states carry their light in the level; world zones are lit by the lobby clock's hour.
-    let environment = environment
-        .filter(|_| warp.zone_state.is_none())
-        .and_then(|environment| Some((environment, Daylight::toward_sun(&level.actors)?)));
-    let daylight = environment.as_ref().and_then(|(environment, toward_sun)| {
-        Daylight::new(environment, environment.hour_after(daylight::clock_seconds()), *toward_sun)
-    });
+    let environment = environment.filter(|_| warp.zone_state.is_none() && Daylight::has_sun(&level.actors));
+    let daylight = environment
+        .as_ref()
+        .and_then(|environment| Daylight::new(environment, environment.hour_after(daylight::clock_seconds())));
     let lit = daylight.is_some();
     // In world zones the stored terrain maps say how much sun each vertex gets at each time of day.
     let state = daylight.as_ref().map_or(warp.zone_state, |daylight| Some(daylight.time_slot()));
@@ -96,7 +94,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
     let brushes = bsp::groups(&level.bsp, &mut catalog, camera.location, lit);
 
     // The sky and terrain layers come first and in order: the stable sort below keeps their blending order.
-    let sky = environment.as_ref().map(|(environment, _)| sky::groups(&mut catalog, environment)).unwrap_or_default();
+    let sky = environment.as_ref().map(|environment| sky::groups(&mut catalog, environment)).unwrap_or_default();
     let mut groups: Vec<(Material, Group, bool)> = sky
         .into_iter()
         .map(|(material, group)| (material, group, false))

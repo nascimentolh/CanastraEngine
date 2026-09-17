@@ -7,6 +7,8 @@ pub struct Environment {
     start_hour: f32,
     /// Game hours that pass in one real hour; zero when the clock stands still.
     time_ratio: f32,
+    /// How far, in degrees, the plane the sun travels in leans from standing upright (`SlopeSunAngle`).
+    sun_slope: f32,
     time_env: String,
 }
 
@@ -25,7 +27,8 @@ impl Environment {
         let clock = value(&env, "EnvSetup", "IsClock").is_some_and(|clock| clock.eq_ignore_ascii_case("true"));
         let time_ratio = if clock { number("TimeRatio").unwrap_or(1.0) } else { 0.0 };
         // ponytail: only the normal environment, TimeEnv0; the Seven Signs variants come with the world clock.
-        Some(Self { start_hour, time_ratio, time_env: text("TimeEnv0.int")? })
+        let sun_slope = number("SlopeSunAngle").unwrap_or(30.0);
+        Some(Self { start_hour, time_ratio, sun_slope, time_env: text("TimeEnv0.int")? })
     }
 
     /// The hour the client's clock starts at.
@@ -36,6 +39,15 @@ impl Environment {
     /// The hour the client's clock shows `seconds` of real time after it started, from 0 to 24.
     pub fn hour_after(&self, seconds: f32) -> f32 {
         clock_hour(self.start_hour, self.time_ratio, seconds)
+    }
+
+    /// The unit vector toward the sun at `hour`, in world axes. The client computes it natively; this is the rule
+    /// its terrains' eight stored shadow states follow: fitted to Lobby02's, each lies within a degree or two of
+    /// it. The sun rises at 06:00 toward +X, climbs a circle leaning `SlopeSunAngle` toward -Y, and sets at 24:00
+    /// toward -X, ten degrees an hour. The two night states, midnight to 03:00 and 03:00 to 06:00, repeat the light
+    /// of 09:00 to 12:00 and 18:00 to 21:00.
+    pub fn toward_sun(&self, hour: f32) -> [f32; 3] {
+        sun_direction(self.sun_slope, hour)
     }
 
     /// The RGB of the color ramp `section` at `hour`, linear between its stops and held past the ends.
@@ -119,6 +131,18 @@ fn lines<'a>(text: &'a str, section: &'a str) -> impl Iterator<Item = (&'a str, 
     })
 }
 
+fn sun_direction(slope_degrees: f32, hour: f32) -> [f32; 3] {
+    let hour = hour.rem_euclid(24.0);
+    let along = match hour {
+        ..3.0 => 45.0,
+        ..6.0 => 135.0,
+        _ => (hour - 6.0) * 10.0,
+    }
+    .to_radians();
+    let slope = slope_degrees.to_radians();
+    [along.cos(), -along.sin() * slope.sin(), along.sin() * slope.cos()]
+}
+
 /// `start` plus `ratio` game hours for every real hour in `seconds`, wrapped to a day.
 fn clock_hour(start: f32, ratio: f32, seconds: f32) -> f32 {
     (start + seconds * ratio / 3600.0).rem_euclid(24.0)
@@ -154,5 +178,21 @@ mod tests {
         assert!((clock_hour(22.0, 6.0, 600.0) - 23.0).abs() < 1e-4);
         assert!((clock_hour(22.0, 6.0, 1500.0) - 0.5).abs() < 1e-4);
         assert!((clock_hour(22.0, 0.0, 9999.0) - 22.0).abs() < 1e-4, "a clock that stands still");
+    }
+
+    #[test]
+    fn the_sun_follows_the_shadows_the_terrain_stores() {
+        // Azimuth and elevation, in degrees, fitted to Lobby02's shadow states at 07:30 and 13:30.
+        let angles = |hour| {
+            let [x, y, z] = sun_direction(30.0, hour);
+            (y.atan2(x).to_degrees().rem_euclid(360.0), z.asin().to_degrees())
+        };
+        let close = |(azimuth, elevation): (f32, f32), (fitted_azimuth, fitted_elevation): (f32, f32)| {
+            (azimuth - fitted_azimuth).abs() < 2.0 && (elevation - fitted_elevation).abs() < 2.0
+        };
+        assert!(close(angles(7.5), (353.0, 11.5)), "{:?}", angles(7.5));
+        assert!(close(angles(13.5), (298.5, 55.5)), "{:?}", angles(13.5));
+        assert!(close(angles(22.5), (188.0, 11.0)), "{:?}", angles(22.5));
+        assert!(close(angles(1.0), angles(10.5)), "the first night state repeats the morning's light");
     }
 }

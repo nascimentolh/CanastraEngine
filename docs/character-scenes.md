@@ -307,3 +307,19 @@ Each step is checked against the real client: a dump of the files, or a screensh
      the types looking alike is the client's own doing, not ours.
    - What is left on characters: they stand smaller in our creation hall than in the H5 screenshot, so the
      camera sits farther back or sees wider; and the scene still casts no shadow on them.
+   *2026-09-17, the lobby clock and the sun:* H5's lobby is not held at one hour. `Env.int` sets `IsClock`,
+   `StartTime=22` and `TimeRatio=6`: the clock starts at 22:00 with the client and a game hour passes every ten
+   real minutes, so H5 screenshots of different scenes show different hours. World zones now light in the shader
+   from the hour's ramps, and the hour runs.
+   - The sun moves in native code (`NMovableSunLight` and `NSun` have no script), but the terrain keeps eight
+     shadow states, three hours each from midnight, and each was shaded by the sun of its hours. Fitting a
+     Lambert-shaded heightmap to each of Lobby02's states (correlation 0.99) gives, in azimuth and elevation:
+     06-09 353°, 11.5°; 09-12 334°, 36°; 12-15 298.5°, 55.5°; 15-18 242°, 55°; 18-21 207°, 35°; 21-24 188°, 11°.
+     Midnight to 03:00 repeats 09-12, and 03:00 to 06:00 repeats 18-21.
+   - Those six lie on one great circle (off-plane residuals under 0.01) leaning 31.7° from upright toward -Y, and
+     `Env.int` has `SlopeSunAngle=30`; they are evenly 30° apart. The sun rises at 06:00 toward +X and sets at
+     24:00 toward -X, ten degrees an hour: toward the sun is (cos φ, -sin φ sin 30°, sin φ cos 30°) with
+     φ = (hour - 6) × 10°. The direction the level saved in its `NMovableSunLight`, azimuth 337°, elevation 34°,
+     is that of 09:00 to 12:00.
+   - With it, at the clock's 22:00 the dark elf cliff and characters take the low golden side light of the H5
+     screenshot, where the level-saved sun had left them grey.

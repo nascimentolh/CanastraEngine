@@ -97,8 +97,8 @@ pub(crate) struct Scene {
     catalog: Catalog,
     /// The hour's light in world zones; in zones with states, everything draws with the light the level stored.
     daylight: Option<daylight::Daylight>,
-    /// In world zones, the client's time-of-day ramps and where the sun shines from, which the hour follows.
-    environment: Option<(l2_env::Environment, [f32; 3])>,
+    /// In world zones, the client's time-of-day ramps and sun path, which the hour follows.
+    environment: Option<l2_env::Environment>,
     /// The scene the camera was last placed by, whose zone gives the fog and the particles drawn, and every scene's
     /// warp by its tag in lowercase.
     warp: Warp,
@@ -370,10 +370,10 @@ impl Scene {
 impl Scene {
     /// Moves the light on to the lobby clock's hour once a game minute has passed.
     fn follow_clock(&mut self) {
-        let Some((environment, toward_sun)) = &self.environment else { return };
+        let Some(environment) = &self.environment else { return };
         let hour = environment.hour_after(daylight::clock_seconds());
         if self.daylight.as_ref().is_none_or(|daylight| (daylight.hour() - hour).abs() >= 1.0 / 60.0) {
-            self.daylight = daylight::Daylight::new(environment, hour, *toward_sun);
+            self.daylight = daylight::Daylight::new(environment, hour);
         }
     }
 

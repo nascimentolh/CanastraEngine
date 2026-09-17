@@ -10,7 +10,6 @@ use std::time::Instant;
 use l2_env::Environment;
 use ue2_level::Actor;
 
-use super::camera;
 use super::load::Vertex;
 
 /// How much of the sky light the ground gives back to a surface facing it.
@@ -61,17 +60,14 @@ pub(super) struct Daylight {
 }
 
 impl Daylight {
-    /// Which way the level's `NMovableSunLight` shines from, when it has one.
-    // ponytail: the sun keeps the direction the level saved; H5 moves it with the hour in native code.
-    pub(super) fn toward_sun(actors: &[Actor]) -> Option<[f32; 3]> {
-        let sun = actors.iter().find(|actor| actor.class.eq_ignore_ascii_case("NMovableSunLight"))?;
-        let [forward, _, _] = camera::axes(sun.placement.rotation);
-        Some(forward.map(|axis| -axis))
+    /// Whether a level has a sun, an `NMovableSunLight`, for the hour to light it.
+    pub(super) fn has_sun(actors: &[Actor]) -> bool {
+        actors.iter().any(|actor| actor.class.eq_ignore_ascii_case("NMovableSunLight"))
     }
 
-    /// The light of every kind of surface and the sky's colors at `hour`, from the client's ramps, with the sun
-    /// shining from `toward_sun`.
-    pub(super) fn new(environment: &Environment, hour: f32, toward_sun: [f32; 3]) -> Option<Self> {
+    /// The light of every kind of surface, the sky's colors and where the sun stands at `hour`, from the client's
+    /// ramps and sun path.
+    pub(super) fn new(environment: &Environment, hour: f32) -> Option<Self> {
         let unit = |color: [u8; 3]| color.map(|channel| f32::from(channel) / 255.0);
         // The ground gives back about half the sky, in the colour the client paints the ground with at this hour.
         let ground = unit(environment.color("TerrainAmbient", hour).unwrap_or([255; 3]));
@@ -85,15 +81,15 @@ impl Daylight {
         for (color, section) in sky.iter_mut().zip(SKY) {
             *color = unit(environment.color(section, hour)?);
         }
-        Some(Self { hour, toward_sun, ramps, sky })
+        Some(Self { hour, toward_sun: environment.toward_sun(hour), ramps, sky })
     }
 
     pub(super) fn hour(&self) -> f32 {
         self.hour
     }
 
-    /// Which of the eight time-of-day states a level stores, three hours each, holds this hour.
-    // ponytail: states assumed to start at midnight, in order; check them against more H5 screenshots.
+    /// Which of the eight time-of-day states a level stores, three hours each from midnight, holds this hour; the
+    /// shadows of Lobby02's terrain in each state follow the sun of those hours.
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 0..8")]
     pub(super) fn time_slot(&self) -> u8 {
         (self.hour / 3.0).clamp(0.0, 7.0) as u8
