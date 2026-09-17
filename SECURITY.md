@@ -1,3 +1,5 @@
+English | [Português (Brasil)](SECURITY.pt-BR.md) | [Español](SECURITY.es.md)
+
 # Security
 
 CanastraEngine includes login and game servers that face the internet, so security problems matter.

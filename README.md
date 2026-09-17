@@ -1,3 +1,5 @@
+English | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md)
+
 <p align="center"><img src="logo.png" alt="Canastra Engine" width="560"></p>
 
 # CanastraEngine

@@ -1,3 +1,5 @@
+English | [Português (Brasil)](pt-BR/architecture-rules.md) | [Español](es/architecture-rules.md)
+
 # Architecture rules
 
 Read this before writing or moving code, and check a change against it before committing. When a rule and

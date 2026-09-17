@@ -1,3 +1,5 @@
+English | [Português (Brasil)](pt-BR/getting-started.md) | [Español](es/getting-started.md)
+
 # Getting started
 
 This guide takes a fresh machine to a running CanastraEngine: the login and game servers, the client, and

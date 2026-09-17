@@ -1,3 +1,5 @@
+English | [Português (Brasil)](CODE_OF_CONDUCT.pt-BR.md) | [Español](CODE_OF_CONDUCT.es.md)
+
 # Code of conduct
 
 CanastraEngine is built by people who like Lineage II and want to make something good together. These

@@ -1,3 +1,5 @@
+English | [Português (Brasil)](CONTRIBUTING.pt-BR.md) | [Español](CONTRIBUTING.es.md)
+
 # Contributing to CanastraEngine
 
 Thanks for helping build CanastraEngine. This guide explains how the project works so your time turns into
