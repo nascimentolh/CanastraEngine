@@ -3,7 +3,7 @@
 
 use ue2_assets::{Property, find, object_properties};
 
-use crate::{Catalog, MAX_MATERIAL_DEPTH, MAX_TEXTURE_FRAMES, full_path, package_name};
+use crate::{Catalog, Fade, MAX_MATERIAL_DEPTH, MAX_TEXTURE_FRAMES, full_path, package_name};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Blend {
@@ -63,6 +63,8 @@ pub struct Material {
     pub blend: Blend,
     /// RGBA multiplier, 255 when untinted.
     pub color: [u8; 4],
+    /// A tint over time that multiplies `color`, when a `FadeColor` drives the material.
+    pub fade: Option<Fade>,
     /// Alpha out of 255 below which a masked material is cut out; `None` cuts below half.
     pub alpha_ref: Option<u8>,
 }
@@ -130,8 +132,11 @@ impl Catalog {
                     Blend::Opaque
                 },
                 color: [255; 4],
+                fade: None,
                 alpha_ref: None,
             },
+            // A fade is a tint, not a texture; drawn on its own it shows its fallback.
+            "fadecolor" => Material { fade: node.fade, ..inner(self, &node.fallback)? },
             "shader" => {
                 let diffuse = inner(self, &node.diffuse);
                 let glow = inner(self, &node.self_illumination);
@@ -190,6 +195,10 @@ impl Catalog {
                 // ponytail: only material selection, multiply and add; masked operations draw Material1.
                 match (node.combine_operation, first, second) {
                     (1, _, Some(second)) => second,
+                    // Multiplied by a fade, the first material is tinted by it rather than layered with its fallback.
+                    (2, Some(first), Some(Material { fade: Some(fade), .. })) => {
+                        Material { fade: Some(fade.scaled(node.modulate)), ..first }
+                    }
                     (operation @ (2 | 3), Some(mut first), Some(second)) => {
                         let combine = if operation == 2 { Combine::Multiply } else { Combine::Add };
                         first.layer = Some((second.base, combine, node.modulate));
@@ -267,6 +276,19 @@ impl Catalog {
             combine_operation: byte("CombineOperation"),
             color: get("Color").and_then(Property::color),
             anim_next: reference("AnimNext"),
+            fallback: reference("FallbackMaterial"),
+            fade: get("Color1").and_then(Property::color).zip(get("Color2").and_then(Property::color)).map(
+                |(from, to)| {
+                    let unit = |[r, g, b, _]: [u8; 4]| [r, g, b].map(|channel| f32::from(channel) / 255.0);
+                    Fade {
+                        from: unit(from),
+                        to: unit(to),
+                        period: float("FadePeriod", 1.0),
+                        phase: float("FadePhase", 0.0),
+                        sinusoidal: byte("ColorFadeType") == 1,
+                    }
+                },
+            ),
             frame_rate: float("MinFrameRate", float("MaxFrameRate", 0.0)),
             modifier: Modifier {
                 pan_direction: get("PanDirection").and_then(Property::rotator).unwrap_or_default(),
@@ -305,6 +327,9 @@ struct Node {
     anim_next: Option<String>,
     /// Frames a second of that animation.
     frame_rate: f32,
+    /// What a `FadeColor` draws when it stands alone, and the fade itself.
+    fallback: Option<String>,
+    fade: Option<Fade>,
     masked: bool,
     /// The alpha reference when the material cuts out by alpha.
     alpha_test: Option<u8>,

@@ -2,6 +2,7 @@
 //! place: textures, static and skeletal meshes, animations and the texture a material draws with. Packages load on first use
 //! and stay loaded.
 
+mod fade;
 mod material;
 
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use std::path::{Path, PathBuf};
 use ue2_assets::{Image, MeshAnimation, SkeletalMesh, StaticMesh};
 use ue2_package::{ObjectRef, Package};
 
+pub use fade::Fade;
 pub use material::{Blend, Combine, IDENTITY, Material, Stage, UvMatrix, UvModifier};
 
 /// Folders of the client that hold asset packages, with the extension used there.

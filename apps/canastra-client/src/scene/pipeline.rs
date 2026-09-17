@@ -272,7 +272,10 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     let masked = if material.blend == Blend::Masked { 1.0 } else { 0.0 };
     let [base_u, base_v] = rows(material.base.matrix(time));
     let [layer_u, layer_v] = rows(layer);
-    let color = material.color.map(|channel| f32::from(channel) / 255.0);
+    let mut color = material.color.map(|channel| f32::from(channel) / 255.0);
+    for (channel, tint) in color.iter_mut().zip(material.fade.map_or([1.0; 3], |fade| fade.at(time))) {
+        *channel *= tint;
+    }
     let bytes: Vec<u8> =
         [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog], [soft, masked, 0.0, 0.0]]
             .iter()

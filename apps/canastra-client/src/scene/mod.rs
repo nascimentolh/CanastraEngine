@@ -150,6 +150,7 @@ impl Scene {
                 layer: None,
                 blend: particles::blend(sprite.draw_style),
                 color: [255; 4],
+                fade: None,
                 alpha_ref: None,
             };
             let draw = Draw { blend: material.blend, depth_test: sprite.z_test, depth_write: false };
@@ -381,12 +382,13 @@ fn frame_at(time: f32, fps: f32, count: usize) -> usize {
     (time.max(0.0) * fps) as usize % count.max(1)
 }
 
-/// Whether `material`'s uniform changes with time: its stages pan or rotate.
+/// Whether `material`'s uniform changes with time: its stages pan or rotate, or its tint fades.
 fn animated(material: &Material) -> bool {
-    std::iter::once(&material.base)
-        .chain(material.layer.as_ref().map(|(stage, _, _)| stage))
-        .flat_map(|stage| &stage.uv)
-        .any(|modifier| matches!(modifier, UvModifier::Pan(_) | UvModifier::Rotate { .. }))
+    material.fade.is_some()
+        || std::iter::once(&material.base)
+            .chain(material.layer.as_ref().map(|(stage, _, _)| stage))
+            .flat_map(|stage| &stage.uv)
+            .any(|modifier| matches!(modifier, UvModifier::Pan(_) | UvModifier::Rotate { .. }))
 }
 
 /// The batch that draws `indices` with `material`, fogged and hard-edged, when its textures have views.
