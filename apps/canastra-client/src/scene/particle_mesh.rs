@@ -19,6 +19,8 @@ pub(crate) struct ParticleMesh {
     positions: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
     pub(crate) sections: Vec<(Material, Vec<u32>)>,
+    /// Light on each vertex, multiplying the color it is drawn with; empty where the mesh is unlit.
+    light: Vec<[f32; 3]>,
 }
 
 impl ParticleMesh {
@@ -38,7 +40,12 @@ impl ParticleMesh {
                 Some((material, indices.iter().copied().map(u32::from).collect()))
             })
             .collect();
-        Some(Self { positions: mesh.positions, uvs: mesh.uvs, sections })
+        Some(Self { positions: mesh.positions, uvs: mesh.uvs, sections, light: Vec::new() })
+    }
+
+    /// The same mesh with `light` on each vertex.
+    pub(super) fn lit(self, light: Vec<[f32; 3]>) -> Self {
+        Self { light, ..self }
     }
 
     /// Vertices one particle writes.
@@ -60,7 +67,18 @@ impl ParticleMesh {
         for (index, &position) in self.positions.iter().enumerate() {
             let uv = self.uvs.get(index).copied().unwrap_or_default();
             let at = camera::place(position, scale, axes, center);
-            vertices.push([at[0], at[1], at[2], uv[0], uv[1], color[0], color[1], color[2], color[3]]);
+            let [red, green, blue] = self.light.get(index).copied().unwrap_or([1.0; 3]);
+            vertices.push([
+                at[0],
+                at[1],
+                at[2],
+                uv[0],
+                uv[1],
+                color[0] * red,
+                color[1] * green,
+                color[2] * blue,
+                color[3],
+            ]);
         }
     }
 }

@@ -6,6 +6,7 @@
 mod bsp;
 mod emitters;
 mod lighting;
+mod movement;
 mod shots;
 mod terrain;
 
@@ -17,6 +18,7 @@ use ue2_package::{ObjectRef, Package};
 pub use bsp::BspPolygon;
 pub use emitters::{DrawStyle, Emitter, MeshShape, Range, SpriteEmitter};
 pub use lighting::TerrainSector;
+pub use movement::{Movement, Sway};
 pub use shots::Shot;
 pub use terrain::{DecoLayer, Terrain, TerrainLayer};
 
@@ -48,6 +50,8 @@ pub struct Actor {
     pub unlit: bool,
     /// Precomputed RGBA lighting per mesh vertex; empty when the level stores none.
     pub lighting: Vec<[u8; 4]>,
+    /// How the actor sways, for a movable static mesh actor.
+    pub movement: Option<Movement>,
 }
 
 /// Linear distance fog of a zone.
@@ -142,8 +146,10 @@ fn actor(package: &Package, file: &[u8], export: usize, properties: &[Property<'
         },
         _ => Vec::new(),
     };
+    let class = exports.get(export).map(|export| package.class_name(export).to_owned()).unwrap_or_default();
     Ok(Actor {
-        class: exports.get(export).map(|export| package.class_name(export).to_owned()).unwrap_or_default(),
+        movement: movement::read(&class, properties, placement(properties)),
+        class,
         name: package.object_name(ObjectRef::Export(export)).to_owned(),
         tag: get("Tag").and_then(|tag| tag.name_value(package)).map(str::to_owned),
         groups: get("Group")

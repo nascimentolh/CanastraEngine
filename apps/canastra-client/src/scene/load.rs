@@ -11,6 +11,7 @@ use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
+use super::movers::Mover;
 use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
 use super::{bsp, camera, deco, sky, terrain};
@@ -46,6 +47,8 @@ pub(crate) struct SceneData {
     pub(crate) emitters: Vec<Emitter>,
     /// The meshes mesh emitters draw, loaded with their materials' textures in `textures`.
     pub(crate) particle_meshes: HashMap<MeshKey, Rc<ParticleMesh>>,
+    /// Static meshes that sway, with their materials' textures in `textures`.
+    pub(crate) movers: Vec<Mover>,
     /// RGB multiplier of sprites that take the sky's color.
     pub(crate) cloud_tint: [f32; 3],
     /// The client's assets, kept to stand characters in the scene later.
@@ -110,6 +113,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         batches: Vec::new(),
         textures: HashMap::new(),
         particle_meshes: HashMap::new(),
+        movers: Vec::new(),
         emitters: level
             .emitters
             .into_iter()
@@ -154,6 +158,14 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         let end = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
         data.batches.push(Batch { material, indices: start..end, fogged });
     }
+    for actor in &level.actors {
+        if let Some(mover) = Mover::load(actor, &mut catalog, daylight.as_ref()) {
+            for material in mover.materials() {
+                decode_material(&mut data.textures, &mut catalog, material);
+            }
+            data.movers.push(mover);
+        }
+    }
     data.catalog = catalog;
     Ok(data)
 }
@@ -194,6 +206,7 @@ fn mesh_groups(
     let actors = level
         .actors
         .iter()
+        .filter(|actor| actor.movement.is_none())
         .map(|actor| (actor, 1.0, daylight.as_ref()))
         .chain(decorations.iter().map(|(actor, opacity)| (actor, *opacity, None)));
     for (actor, opacity, daylight) in actors {
@@ -238,7 +251,7 @@ fn mesh_groups(
 
 /// The light a mesh vertex draws with: what the level stored for it, plus the hour's light in world zones.
 // ponytail: actors without stored lighting (movers) draw unlit until dynamic lighting exists.
-fn vertex_light(
+pub(super) fn vertex_light(
     actor: &Actor,
     mesh: &StaticMesh,
     index: u16,

@@ -73,6 +73,7 @@ pub(super) fn actors(
                     skins: Vec::new(),
                     unlit: false,
                     lighting: vec![[red, green, blue, 255]; vertices],
+                    movement: None,
                 };
                 actors.push((actor, opacity));
             }

@@ -11,6 +11,7 @@ mod emission;
 mod flight;
 mod load;
 mod mips;
+mod movers;
 mod particle_mesh;
 mod particles;
 mod pawns;
@@ -70,6 +71,10 @@ pub(crate) struct Scene {
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
     systems: Vec<System>,
+    /// Swaying meshes, whose vertices follow the particles' in the particle buffers, and their batches, which draw
+    /// with the level geometry since they write depth.
+    movers: Vec<movers::Mover>,
+    mover_batches: Vec<Batch>,
     /// One batch per particle system, in the same order.
     sprite_batches: Vec<Batch>,
     particle_vertices: wgpu::Buffer,
@@ -144,7 +149,10 @@ impl Scene {
         systems.retain(|system| {
             system.mesh.is_some() || system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path))
         });
-        let (sprite_batches, particle_vertex_count, particle_index_data) = emission::layout(&systems, &mut batch)?;
+        let (sprite_batches, particle_vertex_count, mut particle_index_data) = emission::layout(&systems, &mut batch)?;
+        let (mover_batches, mover_vertex_count) =
+            movers::layout(&data.movers, particle_vertex_count, &mut particle_index_data, &mut batch)?;
+        let particle_vertex_count = particle_vertex_count + mover_vertex_count;
         let quads: usize = systems.iter().map(System::len).sum();
 
         let (pawn_vertices, pawn_indices) = cast::pawn_buffers(device, &pawns::layout(&[]));
@@ -154,7 +162,7 @@ impl Scene {
         let (particle_vertices, particle_indices) =
             particle_buffers(device, particle_vertex_count, &particle_index_data);
         println!(
-            "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles",
+            "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
             data.camera.location,
             data.camera.rotation,
             data.vertices.len(),
@@ -162,6 +170,7 @@ impl Scene {
             batches.len(),
             views.len(),
             systems.len(),
+            data.movers.len(),
         );
         Ok(Self {
             pipeline,
@@ -171,6 +180,8 @@ impl Scene {
             indices,
             batches,
             systems,
+            movers: data.movers,
+            mover_batches,
             sprite_batches,
             particle_vertices,
             particle_indices,
@@ -261,7 +272,8 @@ impl Scene {
         gpu.queue.write_buffer(&self.globals, 0, &bytes);
         let time = self.started.elapsed().as_secs_f32();
         // Most materials never change; rewriting all their uniforms each frame cost Lobby02 over 50 ms.
-        let batches = self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches);
+        let batches =
+            self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches).chain(&self.mover_batches);
         for batch in batches.filter(|batch| !self.uniforms_written || animated(&batch.material)) {
             gpu.queue.write_buffer(
                 &batch.uniform,
@@ -276,6 +288,9 @@ impl Scene {
         let mut sprites = Vec::new();
         for system in &self.systems {
             system.write(time, self.eye.rotation, &mut sprites);
+        }
+        for mover in &self.movers {
+            mover.write(time, self.camera, &mut sprites);
         }
         gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
         if !self.pawns.is_empty() {
@@ -310,6 +325,7 @@ impl Scene {
         let level = [
             (&self.batches, &self.vertices, &self.indices),
             (&self.pawn_batches, &self.pawn_vertices, &self.pawn_indices),
+            (&self.mover_batches, &self.particle_vertices, &self.particle_indices),
         ];
         let sprites = [(&self.sprite_batches, &self.particle_vertices, &self.particle_indices)];
         let passes: [(&[_], _, bool); 2] = [(&level, &self.globals_group, true), (&sprites, particle_globals, false)];
