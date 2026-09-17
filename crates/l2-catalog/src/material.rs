@@ -65,6 +65,8 @@ pub struct Material {
     pub color: [u8; 4],
     /// A tint over time that multiplies `color`, when a `FadeColor` drives the material.
     pub fade: Option<Fade>,
+    /// A fading color added unlit where the base texture's alpha marks it, as a shader's `Specular` glows.
+    pub glow: Option<Fade>,
     /// Alpha out of 255 below which a masked material is cut out; `None` cuts below half.
     pub alpha_ref: Option<u8>,
 }
@@ -133,40 +135,12 @@ impl Catalog {
                 },
                 color: [255; 4],
                 fade: None,
+                glow: None,
                 alpha_ref: None,
             },
             // A fade is a tint, not a texture; drawn on its own it shows its fallback.
             "fadecolor" => Material { fade: node.fade, ..inner(self, &node.fallback)? },
-            "shader" => {
-                let diffuse = inner(self, &node.diffuse);
-                let glow = inner(self, &node.self_illumination);
-                let mut material = match (diffuse, glow) {
-                    // ponytail: the self-illumination mask is taken to be the diffuse texture's alpha, as the lobby moon sets it.
-                    (Some(mut diffuse), Some(glow)) if diffuse.layer.is_none() => {
-                        diffuse.layer = Some((glow.base, Combine::AddMasked, 1.0));
-                        diffuse
-                    }
-                    (diffuse, glow) => diffuse.or(glow)?,
-                };
-                material.blend = match node.output_blending {
-                    // ponytail: an Opacity map is taken to be the diffuse texture's own alpha, as foliage shaders set it.
-                    // With an Opacity map the shader blends, and its alpha test only keeps clear texels out of the
-                    // depth buffer: foliage stays soft instead of turning into solid cards.
-                    0 if node.opacity => Blend::Alpha,
-                    0 if node.alpha_test.is_some() => Blend::Masked,
-                    // Without an Opacity map the diffuse alpha does not blend; a weapon's specularity mask is not see-through.
-                    0 if material.blend == Blend::Alpha => Blend::Opaque,
-                    0 => material.blend,
-                    1 => Blend::Masked,
-                    2 => Blend::Modulate,
-                    6 => Blend::Darken,
-                    3 => Blend::Translucent,
-                    5 => Blend::Brighten,
-                    _ => return None,
-                };
-                material.alpha_ref = node.alpha_test.or(material.alpha_ref);
-                material
-            }
+            "shader" => self.shader(&node, depth)?,
             "finalblend" => {
                 let mut material = inner(self, &node.material)?;
                 material.blend = match node.frame_buffer_blending {
@@ -223,6 +197,44 @@ impl Catalog {
         })
     }
 
+    /// A `Shader`: its diffuse with any self-illumination and glowing specular, blended as its output says.
+    fn shader(&mut self, node: &Node, depth: usize) -> Option<Material> {
+        let mut inner = |reference: &Option<String>| self.resolve(reference.as_deref()?, depth + 1);
+        let diffuse = inner(&node.diffuse);
+        let glow = inner(&node.self_illumination);
+        let mut material = match (diffuse, glow) {
+            // ponytail: the self-illumination mask is taken to be the diffuse texture's alpha, as the lobby moon sets it.
+            (Some(mut diffuse), Some(glow)) if diffuse.layer.is_none() => {
+                diffuse.layer = Some((glow.base, Combine::AddMasked, 1.0));
+                diffuse
+            }
+            (diffuse, glow) => diffuse.or(glow)?,
+        };
+        // A fading color as the specular, masked by the diffuse itself, glows through the diffuse's alpha.
+        // ponytail: other speculars, such as environment maps, and other masks are still left out.
+        if node.specularity_mask.is_some() && node.specularity_mask == node.diffuse {
+            material.glow = node.specular.as_deref().and_then(|path| self.node(path)).and_then(|node| node.fade);
+        }
+        material.blend = match node.output_blending {
+            // ponytail: an Opacity map is taken to be the diffuse texture's own alpha, as foliage shaders set it.
+            // With an Opacity map the shader blends, and its alpha test only keeps clear texels out of the
+            // depth buffer: foliage stays soft instead of turning into solid cards.
+            0 if node.opacity => Blend::Alpha,
+            0 if node.alpha_test.is_some() => Blend::Masked,
+            // Without an Opacity map the diffuse alpha does not blend; a weapon's specularity mask is not see-through.
+            0 if material.blend == Blend::Alpha => Blend::Opaque,
+            0 => material.blend,
+            1 => Blend::Masked,
+            2 => Blend::Modulate,
+            6 => Blend::Darken,
+            3 => Blend::Translucent,
+            5 => Blend::Brighten,
+            _ => return None,
+        };
+        material.alpha_ref = node.alpha_test.or(material.alpha_ref);
+        Some(material)
+    }
+
     /// The frames after `first` in its `AnimNext` chain, which the client loops. The chain ends where it
     /// points back at the first frame, and a broken one stops at `MAX_TEXTURE_FRAMES`.
     fn frames(&mut self, first: &str, node: &Node) -> Vec<String> {
@@ -254,6 +266,8 @@ impl Catalog {
         Some(Node {
             class: package.class_name(export).to_ascii_lowercase(),
             diffuse: reference("Diffuse"),
+            specular: reference("Specular"),
+            specularity_mask: reference("SpecularityMask"),
             self_illumination: reference("SelfIllumination"),
             material: reference("Material"),
             material1: reference("Material1"),
@@ -277,8 +291,10 @@ impl Catalog {
             color: get("Color").and_then(Property::color),
             anim_next: reference("AnimNext"),
             fallback: reference("FallbackMaterial"),
-            fade: get("Color1").and_then(Property::color).zip(get("Color2").and_then(Property::color)).map(
-                |(from, to)| {
+            fade: get("Color1")
+                .and_then(Property::color)
+                .map(|from| (from, get("Color2").and_then(Property::color).unwrap_or_default()))
+                .map(|(from, to)| {
                     let unit = |[r, g, b, _]: [u8; 4]| [r, g, b].map(|channel| f32::from(channel) / 255.0);
                     Fade {
                         from: unit(from),
@@ -287,8 +303,7 @@ impl Catalog {
                         phase: float("FadePhase", 0.0),
                         sinusoidal: byte("ColorFadeType") == 1,
                     }
-                },
-            ),
+                }),
             frame_rate: float("MinFrameRate", float("MaxFrameRate", 0.0)),
             modifier: Modifier {
                 pan_direction: get("PanDirection").and_then(Property::rotator).unwrap_or_default(),
@@ -318,6 +333,8 @@ struct Node {
     /// Lower-case class name.
     class: String,
     diffuse: Option<String>,
+    specular: Option<String>,
+    specularity_mask: Option<String>,
     self_illumination: Option<String>,
     material: Option<String>,
     material1: Option<String>,

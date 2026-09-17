@@ -151,6 +151,7 @@ impl Scene {
                 blend: particles::blend(sprite.draw_style),
                 color: [255; 4],
                 fade: None,
+                glow: None,
                 alpha_ref: None,
             };
             let draw = Draw { blend: material.blend, depth_test: sprite.z_test, depth_write: false };
@@ -385,6 +386,7 @@ fn frame_at(time: f32, fps: f32, count: usize) -> usize {
 /// Whether `material`'s uniform changes with time: its stages pan or rotate, or its tint fades.
 fn animated(material: &Material) -> bool {
     material.fade.is_some()
+        || material.glow.is_some()
         || std::iter::once(&material.base)
             .chain(material.layer.as_ref().map(|(stage, _, _)| stage))
             .flat_map(|stage| &stage.uv)

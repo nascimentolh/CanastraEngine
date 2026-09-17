@@ -24,6 +24,8 @@ struct Material {
     // Distance over which a soft sprite fades out in front of the geometry behind it, zero when hard; then 1
     // for masked batches, whose alpha becomes sample coverage.
     soft: vec4<f32>,
+    // Color added unlit where the base texture's alpha marks it, black when nothing glows.
+    glow: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -65,6 +67,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let layer_uv = vec2<f32>(dot(material.layer_u.xyz, uv), dot(material.layer_v.xyz, uv));
     // Both stages sample unconditionally: texture sampling must run in uniform control flow.
     var color = textureSample(base, tiling, base_uv);
+    let glow = material.glow.rgb * color.a;
     let second = textureSample(layer, tiling, layer_uv);
     let factor = material.params.y;
     if material.params.x > 3.5 {
@@ -77,6 +80,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         color = vec4<f32>(color.rgb * second.rgb * factor, color.a * second.a);
     }
     color = min(color, vec4<f32>(1.0)) * material.color * in.color;
+    color = vec4<f32>(color.rgb + glow, color.a);
     // Taken before any discard, while derivatives are still defined.
     let alpha_width = max(fwidth(color.a), 0.0001);
     let unfogged = material.params.w > 9.5;

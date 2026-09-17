@@ -14,8 +14,8 @@ pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth3
 const SAMPLES: u32 = 4;
 /// Position (3 floats), UV (2 floats) and RGBA color (4 floats).
 const VERTEX_BYTES: u64 = 36;
-/// Seven `vec4<f32>`, see `Material` in `scene.wgsl`.
-pub(super) const MATERIAL_BYTES: u64 = 112;
+/// Eight `vec4<f32>`, see `Material` in `scene.wgsl`.
+pub(super) const MATERIAL_BYTES: u64 = 128;
 
 /// How a batch meets the depth buffer and the target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -285,12 +285,21 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
     for (channel, tint) in color.iter_mut().zip(material.fade.map_or([1.0; 3], |fade| fade.at(time))) {
         *channel *= tint;
     }
-    let bytes: Vec<u8> =
-        [base_u, base_v, layer_u, layer_v, color, [combine, factor, cutoff, fog], [soft, masked, 0.0, 0.0]]
-            .iter()
-            .flatten()
-            .flat_map(|value| value.to_le_bytes())
-            .collect();
+    let [red, green, blue] = material.glow.map_or([0.0; 3], |glow| glow.at(time));
+    let bytes: Vec<u8> = [
+        base_u,
+        base_v,
+        layer_u,
+        layer_v,
+        color,
+        [combine, factor, cutoff, fog],
+        [soft, masked, 0.0, 0.0],
+        [red, green, blue, 0.0],
+    ]
+    .iter()
+    .flatten()
+    .flat_map(|value| value.to_le_bytes())
+    .collect();
     debug_assert_eq!(bytes.len() as u64, MATERIAL_BYTES);
     bytes
 }
