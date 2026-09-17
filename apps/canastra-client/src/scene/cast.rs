@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::load::Vertex;
 use super::pawns::{self, Figure, Pawn};
-use super::pipeline::{Draw, Pipeline};
+use super::pipeline::{Draw, Pipeline, draw_order};
 use super::{Scene, buffer, index_bytes, material_batch};
 use crate::gpu::Gpu;
 
@@ -34,6 +34,8 @@ impl Scene {
                 material_batch(&mut self.pipeline, device, &view, material.clone(), draw, range.clone())
             })
             .collect();
+        // Hair blends over the face and collar under it; drawn first, it would keep them out of the depth it writes.
+        self.pawn_batches.sort_by_key(|batch| draw_order(batch.material.blend));
         (self.pawn_vertices, self.pawn_indices) = pawn_buffers(device, &layout);
         self.uniforms_written = false;
     }

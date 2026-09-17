@@ -4,12 +4,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-use l2_catalog::{Blend, Catalog, Material, Mesh};
+use l2_catalog::{Catalog, Material, Mesh};
 use ue2_assets::{Image, StaticMesh};
 use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::Daylight;
+use super::pipeline::draw_order;
 use super::{bsp, camera, deco, sky, terrain};
 
 /// The hour world zones are shown at. H5's lobby clock runs from 22:00 at six times real time; this is the hour
@@ -96,11 +97,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         )
         .collect();
     // ponytail: blended batches draw by kind, not sorted by distance; sort them when overlaps show.
-    groups.sort_by_key(|(material, _, _)| match material.blend {
-        Blend::Opaque | Blend::Masked => 0,
-        Blend::Alpha | Blend::AlphaAdditive => 1,
-        Blend::Modulate | Blend::Brighten | Blend::Translucent | Blend::Darken => 2,
-    });
+    groups.sort_by_key(|(material, _, _)| draw_order(material.blend));
     let mut data = SceneData {
         camera,
         warps: level.warps.iter().map(|(tag, warp)| (tag.to_ascii_lowercase(), warp.clone())).collect(),

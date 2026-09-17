@@ -83,6 +83,8 @@ struct Part {
     in_body: Vec<Option<usize>>,
     /// The body bone this part's root hangs from, by index in the body's skeleton.
     follow: Option<usize>,
+    /// Whether the head carries the part, as it does the face and the hair around it.
+    on_head: bool,
 }
 
 /// The sequence a part plays and the track of each of its bones.
@@ -140,14 +142,18 @@ impl Pawn {
             part.follow = follow.and_then(|name| head::find(&body_bones, name));
             part.in_body = part.mesh.bones.iter().map(|bone| head::find(&body_bones, &bone.name)).collect();
         }
-        // What each vertex of the character hides from the sky, which the bind pose settles.
+        // What each vertex of the character hides from the sky, which the bind pose settles. The head is left out
+        // both ways: hair a finger's width off the forehead would shut the sky out of the face and darken the eyes
+        // in bands, and H5 shows faces evenly lit under any fringe.
+        let body_only = |part: &Part| !part.on_head && part.follow.is_none();
         let shapes: Vec<occlusion::Shape<'_>> = parts
             .iter()
+            .filter(|part| body_only(part))
             .map(|part| occlusion::Shape { vertices: &part.mesh.vertices, triangles: &part.mesh.indices })
             .collect();
-        let baked = occlusion::sky(&shapes);
-        for (part, sky) in parts.iter_mut().zip(baked) {
-            part.sky = sky;
+        let mut baked = occlusion::sky(&shapes).into_iter();
+        for part in &mut parts {
+            part.sky = if body_only(part) { baked.next().unwrap_or_default() } else { Vec::new() };
         }
         let held = figure.held.iter().filter_map(|source| Held::load(catalog, source, &parts)).collect();
         let label = figure.label.clone();
@@ -293,7 +299,7 @@ impl Part {
         animation: Option<&MeshAnimation>,
         sequences: [&str; 2],
     ) -> Self {
-        head::carry(&mesh.bones, &mut mesh.vertices);
+        let on_head = head::carry(&mesh.bones, &mut mesh.vertices);
         let bind_locals = skeleton::bind_locals(&mesh.bones);
         let bind = skeleton::world(&bind_locals, mesh.bones.iter().map(|bone| bone.parent), |_| None);
         let animations =
@@ -309,6 +315,7 @@ impl Part {
             sky: Vec::new(),
             in_body: Vec::new(),
             follow: None,
+            on_head,
         }
     }
 

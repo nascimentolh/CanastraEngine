@@ -17,15 +17,17 @@ pub(super) fn same(a: &str, b: &str) -> bool {
 }
 
 /// Hangs a mesh bound whole to its root from the head instead. Faces and hair are rigid on the root bone but
-/// modeled around the head of the bind pose, and the client carries them with the head.
-pub(super) fn carry(bones: &[Bone], vertices: &mut [SkinVertex]) {
+/// modeled around the head of the bind pose, and the client carries them with the head. Returns whether it did.
+pub(super) fn carry(bones: &[Bone], vertices: &mut [SkinVertex]) -> bool {
     let rigid = vertices.iter().all(|vertex| vertex.bones == [0; 4]);
-    let Some(head) = find(bones, BONE).and_then(|head| u16::try_from(head).ok()) else { return };
-    if rigid && head != 0 {
+    let Some(head) = find(bones, BONE).and_then(|head| u16::try_from(head).ok()) else { return false };
+    let carried = rigid && head != 0;
+    if carried {
         for vertex in vertices {
             vertex.bones[0] = head;
         }
     }
+    carried
 }
 
 #[cfg(test)]
@@ -44,11 +46,11 @@ mod tests {
             weights: [1.0, 0.0, 0.0, 0.0],
         };
         let mut hair = [vertex];
-        carry(&[bone("Bip01"), bone("Bip01 Pelvis"), bone("bip01 head")], &mut hair);
+        assert!(carry(&[bone("Bip01"), bone("Bip01 Pelvis"), bone("bip01 head")], &mut hair));
         assert_eq!(hair[0].bones, [2, 0, 0, 0]);
 
         let mut sleeve = [SkinVertex { bones: [1, 0, 0, 0], ..vertex }, vertex];
-        carry(&[bone("Bip01"), bone("Bip01_Pelvis"), bone("Bip01_Head")], &mut sleeve);
+        assert!(!carry(&[bone("Bip01"), bone("Bip01_Pelvis"), bone("Bip01_Head")], &mut sleeve));
         assert_eq!(sleeve[1].bones, [0; 4]);
     }
 }

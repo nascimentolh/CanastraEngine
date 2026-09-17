@@ -229,6 +229,15 @@ impl Pipeline {
     }
 }
 
+/// When surfaces of `blend` draw: solid ones first, so blended ones in front find what lies behind them already there.
+pub(super) fn draw_order(blend: Blend) -> u8 {
+    match blend {
+        Blend::Opaque | Blend::Masked => 0,
+        Blend::Alpha | Blend::AlphaAdditive => 1,
+        Blend::Modulate | Blend::Brighten | Blend::Translucent | Blend::Darken => 2,
+    }
+}
+
 /// A buffer for one material's uniform, which every frame of an animated material shares.
 pub(super) fn material_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
