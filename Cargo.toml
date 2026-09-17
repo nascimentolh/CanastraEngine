@@ -32,6 +32,7 @@ glyphon = "0.12"
 hex = "0.4"
 num-bigint = "0.4"
 pollster = "0.4"
+rodio = { version = "0.22", default-features = false, features = ["playback", "vorbis", "wav"] }
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 regex = "1"
 roxmltree = "0.20"

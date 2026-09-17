@@ -14,6 +14,7 @@ use canastra_data::npc::Race;
 use canastra_protocol::game::CharacterSummary;
 use canastra_protocol::login::ServerEntry;
 
+use crate::audio::{Audio, Kind};
 use crate::network::{Network, Reply, Request};
 use crate::scene::{Figure, Route};
 use crate::screen::Screen;
@@ -29,6 +30,10 @@ const SERVERS_SCREEN: &str = "servers.ui";
 const CHARACTERS_SCREEN: &str = "characters.ui";
 const DELETE_SCREEN: &str = "delete.ui";
 const CREATE_SCREEN: &str = "create.ui";
+/// The track the lobby plays, which `MusicInfo` lists first as `INTRO`.
+const LOBBY_MUSIC: &str = "intro";
+/// The settings tabs the options window shows, the first one open when it opens.
+const TABS: [&str; 2] = ["audio", "graphics"];
 
 pub(crate) struct Lobby {
     /// The network thread, or why it could not start.
@@ -45,11 +50,25 @@ pub(crate) struct Lobby {
     zoomed: bool,
     /// Which way the player turns the chosen character: -1, 0 or 1.
     turning: i8,
+    /// What the lobby plays, when a sound device opened.
+    audio: Option<Audio>,
+    /// The settings tab open in the options window, or `None` while it is closed.
+    options: Option<&'static str>,
 }
 
 impl Lobby {
-    pub(crate) fn new(network: Result<Network, String>, data: Result<GameData, String>) -> Self {
+    /// The lobby, with its music playing from the client under `client_root`.
+    pub(crate) fn new(
+        network: Result<Network, String>,
+        data: Result<GameData, String>,
+        client_root: &std::path::Path,
+    ) -> Self {
         let choices = data.as_ref().map(creation::choices).unwrap_or_default();
+        let mut audio = Audio::open();
+        match &mut audio {
+            Some(audio) => audio.play_music(client_root, LOBBY_MUSIC),
+            None => eprintln!("sound: no device opened; the lobby plays in silence"),
+        }
         Self {
             network,
             data,
@@ -60,6 +79,32 @@ impl Lobby {
             draft: Draft::default(),
             zoomed: false,
             turning: 0,
+            audio,
+            options: None,
+        }
+    }
+
+    /// Shows the volumes and which options tab is open, as the options window reads them.
+    pub(crate) fn bind_options(&self, screen: &mut Screen) {
+        for (kind, key) in [(Kind::Music, "audio.music"), (Kind::Effects, "audio.effects")] {
+            let volume = self.audio.as_ref().map_or(0, |audio| audio.volume(kind));
+            screen.set(key.into(), format!("{volume}%"));
+        }
+        let shown = |open: bool| if open { "true".to_owned() } else { String::new() };
+        let muted = self.audio.as_ref().is_some_and(Audio::muted);
+        screen.set("audio.muted".into(), shown(muted));
+        screen.set("audio.mute-label".into(), if muted { "Off".into() } else { "On".into() });
+        screen.set("options.open".into(), shown(self.options.is_some()));
+        screen.set("options.closed".into(), shown(self.options.is_none()));
+        for tab in TABS {
+            screen.set(format!("options.{tab}"), shown(self.options == Some(tab)));
+        }
+    }
+
+    /// Keeps the music going; the lobby's track starts again each time it plays out.
+    pub(crate) fn tick_audio(&mut self) {
+        if let Some(audio) = &mut self.audio {
+            audio.tick();
         }
     }
 
@@ -76,6 +121,32 @@ impl Lobby {
                     let request = Request::Login { account: account.to_owned(), password: password.to_owned() };
                     self.request(request, "Connecting...", screen);
                 }
+            }
+            ("options.open", _) => {
+                self.options = Some(TABS.first().copied().unwrap_or_default());
+                self.bind_options(screen);
+            }
+            ("options.close", _) => {
+                self.options = None;
+                self.bind_options(screen);
+            }
+            (tab, _) if TABS.iter().any(|name| verb == format!("options.{name}")) => {
+                self.options = TABS.iter().copied().find(|name| tab.ends_with(name));
+                self.bind_options(screen);
+            }
+            ("mute", _) => {
+                if let Some(audio) = &mut self.audio {
+                    let muted = audio.muted();
+                    audio.mute(!muted);
+                }
+                self.bind_options(screen);
+            }
+            ("music.up" | "music.down" | "effects.up" | "effects.down", _) => {
+                let kind = if verb.starts_with("music") { Kind::Music } else { Kind::Effects };
+                if let Some(audio) = &mut self.audio {
+                    audio.turn(kind, verb.ends_with("up"));
+                }
+                self.bind_options(screen);
             }
             ("back", _) => {
                 screen.status.clear();

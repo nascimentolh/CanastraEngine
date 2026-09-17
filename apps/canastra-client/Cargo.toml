@@ -15,6 +15,7 @@ l2-catalog.workspace = true
 l2-crypto.workspace = true
 l2-env.workspace = true
 pollster.workspace = true
+rodio.workspace = true
 ue2-assets.workspace = true
 ue2-level.workspace = true
 tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }

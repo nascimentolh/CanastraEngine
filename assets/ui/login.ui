@@ -14,5 +14,43 @@
             <button text="Exit" action="exit"/>
         </row>
     </window>
+    <button id="options-button" text="Options" action="options.open" show="options.closed"/>
+    <window id="options" show="options.open">
+        <row class="tabs">
+            <button class="tab" text="Audio" action="options.audio" checked="options.audio"/>
+            <button class="tab" text="Graphics" action="options.graphics" checked="options.graphics"/>
+        </row>
+        <column class="tab-body" show="options.audio">
+            <row class="field">
+                <label class="caption option-caption" text="Music"/>
+                <button class="step" text="&#8249;" action="music.down"/>
+                <label class="step-value" bind="audio.music" text="50%"/>
+                <button class="step" text="&#8250;" action="music.up"/>
+            </row>
+            <row class="field">
+                <label class="caption option-caption" text="Sound"/>
+                <button class="step" text="&#8249;" action="effects.down"/>
+                <label class="step-value" bind="audio.effects" text="50%"/>
+                <button class="step" text="&#8250;" action="effects.up"/>
+            </row>
+            <row class="field">
+                <label class="caption option-caption" text="Mute all"/>
+                <button class="mute" bind="audio.mute-label" text="On" action="mute" checked="audio.muted"/>
+            </row>
+        </column>
+        <column class="tab-body" show="options.graphics">
+            <row class="field">
+                <label class="caption option-caption" text="Backend"/>
+                <label class="step-value" bind="app.backend" text="?"/>
+            </row>
+            <column class="device">
+                <label class="device-caption" text="Graphics card"/>
+                <label class="device-name" bind="app.device" text="?"/>
+            </column>
+        </column>
+        <row class="actions">
+            <button text="Close" action="options.close"/>
+        </row>
+    </window>
     <label id="version" bind="app.version" text="?"/>
 </ui>

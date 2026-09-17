@@ -12,9 +12,16 @@ pub(crate) struct Gpu {
     pub(crate) queue: wgpu::Queue,
     // Dropped last: the surface must go before the window it draws into.
     pub(crate) window: Arc<Window>,
+    /// The backend and the adapter drawing, as the options window shows them.
+    description: (String, String),
 }
 
 impl Gpu {
+    /// The backend and the adapter drawing, such as `Dx12` and `Intel(R) Iris(R) Xe Graphics`.
+    pub(crate) fn description(&self) -> (String, String) {
+        self.description.clone()
+    }
+
     pub(crate) fn open(event_loop: &ActiveEventLoop, window: Arc<Window>) -> Result<Self, String> {
         let (surface, adapter) = adapter(event_loop, &window)?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
@@ -37,8 +44,9 @@ impl Gpu {
         };
         surface.configure(&device, &config);
         let info = adapter.get_info();
-        println!("graphics: {:?} on {}", info.backend, info.name);
-        Ok(Self { surface, config, device, queue, window })
+        let description = (format!("{:?}", info.backend), info.name.clone());
+        println!("graphics: {} on {}", description.0, description.1);
+        Ok(Self { surface, config, device, queue, window, description })
     }
 
     /// Size of the drawable area in physical pixels.

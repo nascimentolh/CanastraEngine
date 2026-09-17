@@ -63,7 +63,12 @@ impl App {
         let faces = renderer.fonts().load_folder(&self.ui_folder.join("fonts"));
         println!("fonts: {faces} faces from {}", self.ui_folder.join("fonts").display());
         let network = LoginAddress::from_env().and_then(|address| Network::start(address, self.proxy.clone()));
-        let mut lobby = Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")));
+        let mut lobby =
+            Lobby::new(network, game_data().inspect_err(|error| eprintln!("game data: {error}")), &self.client_root);
+        lobby.bind_options(&mut screen);
+        let (backend, device) = gpu.description();
+        screen.set("app.backend".into(), backend);
+        screen.set("app.device".into(), device);
         // Development shortcut for automated captures: logs in at start without typing.
         if let Some((account, password)) =
             std::env::var("CANASTRA_AUTOLOGIN").ok().as_deref().and_then(|value| value.split_once(':'))
@@ -93,6 +98,7 @@ impl App {
 
 impl Running {
     fn redraw(&mut self) {
+        self.lobby.tick_audio();
         let scale = self.gpu.scale();
         let [width, height] = self.gpu.size();
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());

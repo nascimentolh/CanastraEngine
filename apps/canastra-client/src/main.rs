@@ -6,6 +6,7 @@
 )]
 
 mod app;
+mod audio;
 mod gpu;
 mod lobby;
 mod network;
