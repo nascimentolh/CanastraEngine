@@ -157,6 +157,9 @@ pub(crate) struct Scene {
     mover_start: usize,
     /// Which systems are close enough to the camera to draw, worked out once a frame.
     near: Vec<bool>,
+    /// Which way the camera looks, which is its own and not the character's: a character turns where it
+    /// walks, and the view behind it stays where it was left.
+    watching: Option<i32>,
     /// Every particle and swaying mesh vertex, as the scene last wrote them. A frame fills in what moved and
     /// sends the stretch that covers it in one go: a write costs far more than the bytes it moves.
     sprites: Vec<Vertex>,
@@ -284,6 +287,7 @@ impl Scene {
             system_starts,
             mover_start: particle_vertex_count - mover_vertex_count,
             near: Vec::new(),
+            watching: None,
             sprites: vec![[0.0; 15]; particle_vertex_count],
             scratch: Vec::new(),
             particle_vertices,
@@ -365,7 +369,9 @@ impl Scene {
     pub(crate) fn steer(&mut self, steps: &[([f32; 3], i32, bool)], player: usize, middle: f32) {
         self.steering = steps.iter().map(|(at, yaw, moving)| (self.on_ground(*at), *yaw, *moving)).collect();
         let Some(&(at, yaw, _)) = self.steering.get(player) else { return };
-        self.eye = world::behind(at, yaw, middle);
+        // The camera looks the way it was left; only a character that has just arrived brings it its own.
+        let watching = *self.watching.get_or_insert(yaw);
+        self.eye = world::behind(at, watching, middle);
         // The camera keeps clear of the floor it would stand in, such as the rise of a terrace behind a
         // character on it.
         // ponytail: it is lifted where H5 would instead pull it in toward the character.
@@ -503,8 +509,13 @@ impl Scene {
             format: Some(gpu.config.format.remove_srgb_suffix()),
             ..Default::default()
         });
-        // What the camera cannot see is not drawn: a map holds far more than a screen shows.
+        // What the camera cannot see is not drawn: a map holds far more than a screen shows, and what lies
+        // beyond the fog is already hidden by it.
         let screen = camera::sides(&self.view(aspect));
+        let [eye_x, eye_y, eye_z] = self.eye.location;
+        let [origin_x, origin_y, origin_z] = self.camera;
+        let eye = [eye_x - origin_x, eye_y - origin_y, eye_z - origin_z];
+        let reach = self.warp.fog.map_or(f32::MAX, |fog| fog.end);
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
         let Some((depth, _, particle_globals, color)) = &self.depth else { return encoder.finish() };
         // Level geometry first, writing depth; then particles over it in a pass that only reads depth, so
@@ -549,7 +560,9 @@ impl Scene {
                 let shown = |batch: &&Batch| {
                     let zone = batch.zone.is_none() || batch.zone == self.warp.zone;
                     let near = batch.system.is_none_or(|system| self.near.get(system).copied().unwrap_or(false));
-                    let seen = batch.bounds.is_none_or(|bounds| camera::in_view(&screen, bounds));
+                    let seen = batch.bounds.is_none_or(|bounds| {
+                        camera::in_view(&screen, bounds) && camera::within_reach(bounds, eye, reach)
+                    });
                     zone && near && seen
                 };
                 for batch in batches.iter().filter(shown) {

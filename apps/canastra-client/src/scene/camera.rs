@@ -47,6 +47,17 @@ pub(crate) fn sides(matrix: &Matrix) -> [[f32; 4]; 5] {
     [edge(along, clip_x, 1.0), edge(along, clip_x, -1.0), edge(along, clip_y, 1.0), edge(along, clip_y, -1.0), near]
 }
 
+/// Whether any of the box between two corners lies within `reach` of `eye`.
+pub(crate) fn within_reach([low, high]: [[f32; 3]; 2], eye: [f32; 3], reach: f32) -> bool {
+    let ([low_x, low_y, low_z], [high_x, high_y, high_z]) = (low, high);
+    let [eye_x, eye_y, eye_z] = eye;
+    // The nearest point of the box to the eye is the eye itself on any axis it already lies between.
+    let away = |eye: f32, low: f32, high: f32| (low - eye).max(eye - high).max(0.0);
+    let (x, y) = (away(eye_x, low_x, high_x), away(eye_y, low_y, high_y));
+    let z = away(eye_z, low_z, high_z);
+    x.mul_add(x, y.mul_add(y, z * z)) <= reach * reach
+}
+
 /// Whether the box between two corners shows on a screen with these `sides`.
 pub(crate) fn in_view(sides: &[[f32; 4]; 5], [low, high]: [[f32; 3]; 2]) -> bool {
     let ([low_x, low_y, low_z], [high_x, high_y, high_z]) = (low, high);

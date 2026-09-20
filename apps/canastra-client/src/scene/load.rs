@@ -98,7 +98,9 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>, blocks: bool) 
         View::Scene(tag) => level.warps.get(tag).cloned().ok_or_else(|| format!("{map} has no scene `{tag}`"))?,
         // A world tile has no scene: the camera stands behind the character, in the open air the level lights.
         View::Behind(at, yaw, middle) => {
-            Warp { placement: world::behind(at, yaw, middle), fog: None, zone: None, zone_state: None }
+            // A world tile has no scene of its own: the camera stands behind the character, in the open air
+            // the level itself lights and fogs.
+            Warp { placement: world::behind(at, yaw, middle), fog: level.fog, zone: None, zone_state: None }
         }
     };
     let camera = warp.placement;

@@ -118,6 +118,8 @@ pub struct Level {
     pub ambient_sounds: Vec<AmbientSound>,
     /// The level's BSP polygons that draw.
     pub bsp: Vec<BspPolygon>,
+    /// The fog of the level's own zone, which covers everything outside a zone of its own.
+    pub fog: Option<Fog>,
 }
 
 /// Reads every placed actor, recognized by the `Level` reference the editor stores in each of them.
@@ -138,6 +140,10 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
             continue;
         }
         let properties = object_properties(package, file, export)?;
+        // The level itself is a zone: what it says covers every place no smaller zone claims.
+        if package.class_name(export).eq_ignore_ascii_case("LevelInfo") {
+            level.fog = fog(&properties);
+        }
         // Ambient sounds are the one kind of actor the editor saves without the `Level` every other one carries.
         if package.class_name(export).eq_ignore_ascii_case("AmbientSoundObject") {
             if let Some(sound) = ambient_sound(package, &properties) {
