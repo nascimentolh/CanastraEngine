@@ -336,6 +336,13 @@ O arquivo também define o `name` do servidor, `players` (endereço de escuta, p
 `public_address` (onde os jogadores se conectam), `capacity`, `game_data` e as regras de `[characters]`:
 slots por conta, o padrão de nome e as palavras proibidas.
 
+### Geodata (opcional)
+
+`geodata` aponta para uma pasta de tiles de geodata do High Five, arquivos chamados `17_25.l2j` e assim por
+diante, um por tile de mapa. Com ela o servidor decide onde fica o chão: os personagens entram em pé sobre o
+piso embaixo deles e param nas paredes em vez de atravessá-las. Sem ela, andam para onde pedirem. O
+repositório não traz geodata; use a que o seu servidor já tiver.
+
 ## 8. Rodar os servidores e o cliente
 
 Use um terminal por programa, todos na pasta do repositório. Inicie primeiro o servidor de login:

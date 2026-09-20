@@ -338,6 +338,13 @@ The file also sets the server's `name`, `players` (listen address, default port 
 (what players connect to), `capacity`, `game_data`, and the `[characters]` rules: slots per account, the
 name pattern and forbidden words.
 
+### Geodata (optional)
+
+`geodata` names a folder of High Five geodata tiles, files called `17_25.l2j` and so on, one per map tile.
+With it the server decides where the ground is: characters enter standing on the floor under them and stop at
+walls instead of walking through them. Without it they walk wherever they ask to. The repository ships no
+geodata; use the one your server already has.
+
 ## 8. Run the servers and the client
 
 Use one terminal per program, all in the repository folder. Start the login server first:
