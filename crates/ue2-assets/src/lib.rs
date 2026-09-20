@@ -5,6 +5,7 @@
 
 mod meshes;
 mod properties;
+mod sound;
 mod texture;
 
 use std::fmt;
@@ -16,6 +17,7 @@ pub use meshes::{
     read_skeletal_mesh, read_static_mesh,
 };
 pub use properties::{Property, find, object_data, object_properties};
+pub use sound::read_sound;
 pub use texture::{Image, Mip, Texture, TextureFormat, decode_rgba, decode_texture, read_palette, read_texture};
 
 #[derive(Debug)]

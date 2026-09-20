@@ -16,8 +16,8 @@ pub use fade::Fade;
 pub use material::{Blend, Combine, IDENTITY, Material, Stage, UvMatrix, UvModifier};
 
 /// Folders of the client that hold asset packages, with the extension used there.
-const FOLDERS: [(&str, &str); 4] =
-    [("SysTextures", "utx"), ("Textures", "utx"), ("StaticMeshes", "usx"), ("Animations", "ukx")];
+const FOLDERS: [(&str, &str); 5] =
+    [("SysTextures", "utx"), ("Textures", "utx"), ("StaticMeshes", "usx"), ("Animations", "ukx"), ("Sounds", "uax")];
 
 /// Deeper material chains than this are treated as cycles.
 const MAX_MATERIAL_DEPTH: usize = 8;
@@ -87,6 +87,13 @@ impl Catalog {
     }
 
     /// The raw samples of the G16 texture at `path`.
+    /// The sound at `path`, as the file the client stores: RIFF WAV.
+    pub fn sound(&mut self, path: &str) -> Option<Vec<u8>> {
+        let (loaded, index) = self.object(path, "sound")?;
+        let export = loaded.package.exports().get(index)?;
+        ue2_assets::read_sound(&loaded.package, &loaded.file, export).ok().map(<[u8]>::to_vec)
+    }
+
     pub fn heightmap(&mut self, path: &str) -> Option<Heightmap> {
         let (loaded, index) = self.object(path, "Texture")?;
         let texture =

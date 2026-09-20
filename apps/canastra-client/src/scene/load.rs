@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use l2_catalog::{Catalog, Material, Mesh};
 use ue2_assets::Image;
-use ue2_level::{Actor, Emitter, Level, Placement, Shot, Warp};
+use ue2_level::{Actor, AmbientSound, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::{self, Daylight, Ramp};
@@ -46,6 +46,8 @@ pub(crate) struct SceneData {
     pub(crate) textures: HashMap<String, Image>,
     /// The emitters of the zones the camera can warp to; each draws only while the camera is in its zone.
     pub(crate) emitters: Vec<Emitter>,
+    /// The sounds the level loops around places, wherever they stand.
+    pub(crate) ambient_sounds: Vec<AmbientSound>,
     /// The meshes mesh emitters draw, loaded with their materials' textures in `textures`.
     pub(crate) particle_meshes: HashMap<MeshKey, Rc<ParticleMesh>>,
     /// Static meshes that sway, with their materials' textures in `textures`.
@@ -115,6 +117,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         indices: Vec::new(),
         batches: Vec::new(),
         textures: HashMap::new(),
+        ambient_sounds: level.ambient_sounds.clone(),
         particle_meshes: HashMap::new(),
         movers: Vec::new(),
         emitters: level

@@ -26,7 +26,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use l2_catalog::{Catalog, Material, UvModifier};
-use ue2_level::{Placement, Shot, Warp};
+use ue2_level::{AmbientSound, Placement, Shot, Warp};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::gpu::Gpu;
@@ -41,6 +41,8 @@ use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform,
 /// screenshot at a 1.9 aspect ratio.
 // ponytail: fixed horizontal FOV; if other aspect ratios frame differently from H5, fix the vertical one instead.
 const FOV: f32 = 50.0;
+/// How many ambient sounds play at once: the loudest where the camera stands.
+const VOICES: usize = 8;
 /// View-projection matrix, fog color, fog start and end with the near plane, and the hour's light; see `Globals`
 /// in `scene.wgsl`.
 const GLOBALS_BYTES: u64 = 96 + 16 * 16;
@@ -71,6 +73,8 @@ pub(crate) struct Scene {
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
     systems: Vec<System>,
+    /// The sounds the level loops around places.
+    ambient_sounds: Vec<AmbientSound>,
     /// Swaying meshes, whose vertices follow the particles' in the particle buffers, and their batches, which draw
     /// with the level geometry since they write depth.
     movers: Vec<movers::Mover>,
@@ -182,6 +186,7 @@ impl Scene {
             indices,
             batches,
             systems,
+            ambient_sounds: data.ambient_sounds,
             movers: data.movers,
             mover_batches,
             sprite_batches,
@@ -218,6 +223,26 @@ impl Scene {
             }
             _ => false,
         }
+    }
+
+    /// What is heard where the camera stands: each sound's file and how loudly it plays, loudest first and at
+    /// most `VOICES` of them.
+    // ponytail: sounds fade linearly to nothing at their radius, and none of them pan; measure against H5 if the
+    // lobby sounds wrong.
+    pub(crate) fn ambient_sounds(&mut self) -> Vec<(Vec<u8>, f32)> {
+        let eye = self.eye.location;
+        let mut heard: Vec<(String, f32)> = self
+            .ambient_sounds
+            .iter()
+            .filter_map(|sound| {
+                let distance = sound.location.iter().zip(eye).map(|(at, eye)| (at - eye) * (at - eye)).sum::<f32>();
+                let reach = 1.0 - distance.sqrt() / sound.radius.max(1.0);
+                (reach > 0.0).then(|| (sound.sound.clone(), sound.volume * reach))
+            })
+            .collect();
+        heard.sort_by(|a, b| b.1.total_cmp(&a.1));
+        heard.truncate(VOICES);
+        heard.into_iter().filter_map(|(path, gain)| Some((self.catalog.sound(&path)?, gain))).collect()
     }
 
     /// Turns the pawns the player may turn at `speed` rotation units a second from now on; 0 stops them.

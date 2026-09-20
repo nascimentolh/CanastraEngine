@@ -14,17 +14,26 @@ const STEP: u8 = 10;
 
 /// What the player hears and how loudly.
 pub(crate) struct Audio {
-    /// Kept alive: dropping it closes the device.
-    _device: MixerDeviceSink,
+    /// The device everything plays through; dropping it closes it.
+    device: MixerDeviceSink,
     music: Player,
     /// Music and effect volumes, each from 0 to 100.
     volumes: [u8; 2],
     /// Whether everything is silenced, whatever the volumes say.
     muted: bool,
+    /// The ambient sounds heard where the camera stands, each looping on its own.
+    ambient: Vec<Ambient>,
     /// The track playing and its bytes, which start again each time it ends.
     // ponytail: the track is decoded again every time round; rodio 0.22's `repeat_infinite` ends a decoder after a
     // fraction of a second, so it cannot loop one.
     track: Option<(String, Vec<u8>)>,
+}
+
+/// One ambient sound: what plays it, its file, and how loudly it stands where the camera is.
+struct Ambient {
+    player: Player,
+    bytes: Vec<u8>,
+    reach: f32,
 }
 
 /// Which volume a call means.
@@ -40,7 +49,7 @@ impl Audio {
         let device = DeviceSinkBuilder::open_default_sink().ok()?;
         let music = Player::connect_new(device.mixer());
         let (volumes, muted) = read_settings();
-        let audio = Self { _device: device, music, volumes, muted, track: None };
+        let audio = Self { device, music, volumes, muted, ambient: Vec::new(), track: None };
         audio.apply();
         Some(audio)
     }
@@ -59,12 +68,33 @@ impl Audio {
         self.track = Some((track.to_owned(), bytes));
         self.start();
         self.music.play();
+        println!("music: {track} at {}%", self.volume(Kind::Music));
     }
 
-    /// Starts the track again when it has played out, so the lobby's music never stops.
+    /// Loops `sounds`, each a sound file and how loudly it is heard, in place of the ones playing now.
+    pub(crate) fn play_ambient(&mut self, sounds: Vec<(Vec<u8>, f32)>) {
+        self.ambient.clear();
+        for (bytes, reach) in sounds {
+            let player = Player::connect_new(self.device.mixer());
+            let ambient = Ambient { player, bytes, reach };
+            ambient.player.set_volume(self.effects_gain(ambient.reach));
+            self.ambient.push(ambient);
+        }
+        self.tick();
+    }
+
+    /// Starts every sound that has played out again, so the lobby's music and its sounds never stop.
     pub(crate) fn tick(&mut self) {
         if self.music.empty() {
             self.start();
+        }
+        for ambient in &self.ambient {
+            if ambient.player.empty() {
+                match Decoder::new(Cursor::new(ambient.bytes.clone())) {
+                    Ok(source) => ambient.player.append(source),
+                    Err(error) => eprintln!("sound: {error}"),
+                }
+            }
         }
     }
 
@@ -108,6 +138,14 @@ impl Audio {
     /// Sets what plays to the volumes now in force.
     fn apply(&self) {
         self.music.set_volume(gain(if self.muted { 0 } else { self.volume(Kind::Music) }));
+        for ambient in &self.ambient {
+            ambient.player.set_volume(self.effects_gain(ambient.reach));
+        }
+    }
+
+    /// How loudly a sound heard at `reach` of its full loudness plays.
+    fn effects_gain(&self, reach: f32) -> f32 {
+        if self.muted { 0.0 } else { gain(self.volume(Kind::Effects)) * reach }
     }
 
     fn save(&self) {

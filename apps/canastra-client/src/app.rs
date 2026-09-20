@@ -78,7 +78,8 @@ impl App {
             lobby.act("login", &mut screen);
         }
         let backdrop = lobby.backdrop(LOGIN_SCREEN);
-        let scene = load_scene(&gpu, &self.client_root, backdrop);
+        let mut scene = load_scene(&gpu, &self.client_root, backdrop);
+        lobby.play_ambient(scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default());
         let client_root = self.client_root.clone();
         Ok(Running {
             screen,
@@ -193,6 +194,8 @@ impl Running {
                 self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
             }
             self.backdrop = backdrop;
+            let sounds = self.scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default();
+            self.lobby.play_ambient(sounds);
             self.figures.clear();
             self.view.clear();
         }

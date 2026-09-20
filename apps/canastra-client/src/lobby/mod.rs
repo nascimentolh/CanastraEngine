@@ -101,6 +101,14 @@ impl Lobby {
         }
     }
 
+    /// Loops the sounds heard where the camera stands, in place of the ones playing now.
+    pub(crate) fn play_ambient(&mut self, sounds: Vec<(Vec<u8>, f32)>) {
+        println!("sound: {} ambient loops", sounds.len());
+        if let Some(audio) = &mut self.audio {
+            audio.play_ambient(sounds);
+        }
+    }
+
     /// Keeps the music going; the lobby's track starts again each time it plays out.
     pub(crate) fn tick_audio(&mut self) {
         if let Some(audio) = &mut self.audio {

@@ -54,6 +54,18 @@ pub struct Actor {
     pub movement: Option<Movement>,
 }
 
+/// A sound an `AmbientSoundObject` loops where it stands.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AmbientSound {
+    pub location: [f32; 3],
+    /// Object path of the sound, e.g. `AmbSound.Dungeon.d_wind_loop_01`.
+    pub sound: String,
+    /// How far it carries, in world units.
+    pub radius: f32,
+    /// How loudly it plays where it stands, from 0 to 1.
+    pub volume: f32,
+}
+
 /// Linear distance fog of a zone.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Fog {
@@ -85,6 +97,8 @@ pub struct Level {
     pub shots: BTreeMap<String, Vec<Shot>>,
     pub terrains: Vec<Terrain>,
     pub emitters: Vec<Emitter>,
+    /// Sounds the level loops around a place, from its `AmbientSoundObject`s.
+    pub ambient_sounds: Vec<AmbientSound>,
     /// The level's BSP polygons that draw.
     pub bsp: Vec<BspPolygon>,
 }
@@ -107,6 +121,13 @@ pub fn read_level(package: &Package, file: &[u8]) -> Result<Level, Error> {
             continue;
         }
         let properties = object_properties(package, file, export)?;
+        // Ambient sounds are the one kind of actor the editor saves without the `Level` every other one carries.
+        if package.class_name(export).eq_ignore_ascii_case("AmbientSoundObject") {
+            if let Some(sound) = ambient_sound(package, &properties) {
+                level.ambient_sounds.push(sound);
+            }
+            continue;
+        }
         if find(&properties, "Level").is_none() {
             continue;
         }
@@ -165,6 +186,19 @@ fn actor(package: &Package, file: &[u8], export: usize, properties: &[Property<'
             .unwrap_or_default(),
         unlit: get("bUnlit").and_then(Property::bool).unwrap_or(false),
         lighting,
+    })
+}
+
+/// What an `AmbientSoundObject` loops, when it names a sound. Unreal keeps a sound's radius in twenty-five
+/// world units, as `WorldSoundRadius` multiplies it, and its volume as a byte.
+fn ambient_sound(package: &Package, properties: &[Property<'_>]) -> Option<AmbientSound> {
+    let sound = find(properties, "AmbientSound").and_then(|sound| sound.object(package))?;
+    let volume = find(properties, "SoundVolume").and_then(Property::byte).unwrap_or(255);
+    Some(AmbientSound {
+        location: placement(properties).location,
+        sound: (!matches!(sound, ObjectRef::Null)).then(|| package.object_path(sound))?,
+        radius: find(properties, "SoundRadius").and_then(Property::float).unwrap_or(64.0) * 25.0,
+        volume: f32::from(volume) / 255.0,
     })
 }
 
