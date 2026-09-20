@@ -78,7 +78,8 @@ pub(super) struct Group {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum View<'a> {
     Scene(&'a str),
-    Behind([f32; 3]),
+    /// Behind a character standing at this place, facing this way, whose body reaches this far above its feet.
+    Behind([f32; 3], i32, f32),
 }
 
 /// Loads `MAPS/<map>` from the client and frames it as `view` says.
@@ -87,7 +88,9 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
     let warp = match view {
         View::Scene(tag) => level.warps.get(tag).cloned().ok_or_else(|| format!("{map} has no scene `{tag}`"))?,
         // A world tile has no scene: the camera stands behind the character, in the open air the level lights.
-        View::Behind(at) => Warp { placement: world::behind(at), fog: None, zone: None, zone_state: None },
+        View::Behind(at, yaw, middle) => {
+            Warp { placement: world::behind(at, yaw, middle), fog: None, zone: None, zone_state: None }
+        }
     };
     let camera = warp.placement;
     let mut catalog = Catalog::open(client_root);

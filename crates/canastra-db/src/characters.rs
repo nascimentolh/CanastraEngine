@@ -28,7 +28,7 @@ pub enum Creation {
     SlotsFull,
 }
 
-type Row = (i64, String, i16, bool, i16, i16, i16, i16, Vec<i32>, i32, i32, i32);
+type Row = (i64, String, i16, bool, i16, i16, i16, i16, Vec<i32>, i32, i32, i32, i32);
 
 /// Each character with what it wears, for the lobby to dress it in, and where it stands, one row per
 /// character and oldest first. `$filter` narrows the account's characters on a server further.
@@ -37,7 +37,7 @@ macro_rules! characters {
         concat!(
             "SELECT c.id, c.name, c.class_id, c.female, c.hair_style, c.hair_color, c.face, c.level, ",
             "coalesce(array_agg(i.item_id ORDER BY i.id) FILTER (WHERE i.equipped ",
-            "AND (i.expires_at IS NULL OR i.expires_at > now())), '{}') AS gear, c.x, c.y, c.z ",
+            "AND (i.expires_at IS NULL OR i.expires_at > now())), '{}') AS gear, c.x, c.y, c.z, c.heading ",
             "FROM characters c LEFT JOIN character_items i ON i.character_id = c.id ",
             "WHERE c.account_id = $1 AND c.server_id = $2",
             $filter,
@@ -122,8 +122,8 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
         Ok(row.map(|row| {
-            let (character, position) = summary(row);
-            InWorld { character, position }
+            let (character, position, heading) = summary(row);
+            InWorld { character, position, heading }
         }))
     }
 
@@ -139,10 +139,10 @@ impl Database {
     }
 }
 
-/// A row as the character it holds and where that character stands.
+/// A row as the character it holds, where that character stands and which way it faces.
 fn summary(
-    (id, name, class, female, hair_style, hair_color, face, level, gear, x, y, z): Row,
-) -> (CharacterSummary, [i32; 3]) {
+    (id, name, class, female, hair_style, hair_color, face, level, gear, x, y, z, heading): Row,
+) -> (CharacterSummary, [i32; 3], i32) {
     // Small columns hold values stored from u8 and u16 fields, so they convert back losslessly.
     let byte = |value: i16| u8::try_from(value).unwrap_or(0);
     let character = CharacterSummary {
@@ -154,7 +154,7 @@ fn summary(
         level: u32::try_from(level).unwrap_or(1),
         gear: gear.into_iter().map(|item| ItemId(item.cast_unsigned())).collect(),
     };
-    (character, [x, y, z])
+    (character, [x, y, z], heading)
 }
 
 #[cfg(test)]
@@ -202,6 +202,7 @@ mod tests {
         assert_eq!(stored[0].gear, [ItemId(2369)], "only what is worn and unexpired comes back");
         let entered = database.character(account, server, id).await.unwrap().expect("the account's own character");
         assert_eq!(entered.position, [1, 2, 3], "a character enters the world where it was left");
+        assert_eq!(entered.heading, 0, "and facing the way it was created");
         assert!(database.character(other, server, id).await.unwrap().is_none(), "another account cannot enter as it");
         assert!(!database.delete_character(other, server, id).await.unwrap());
         assert!(database.delete_character(account, server, id).await.unwrap());

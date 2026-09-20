@@ -11,7 +11,7 @@ mod views;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
-use canastra_protocol::game::{CharacterSummary, InWorld};
+use canastra_protocol::game::{CharacterSummary, InWorld, Sex};
 use canastra_protocol::login::ServerEntry;
 
 use crate::audio::{Audio, Kind};
@@ -64,7 +64,14 @@ pub(crate) struct Lobby {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Backdrop {
     Scene(&'static str, &'static str),
-    World(String, [f32; 3]),
+    /// The tile, where the character stands in it, which way it faces, and how far its body reaches above its
+    /// feet, which is where H5's camera looks.
+    World {
+        map: String,
+        at: [f32; 3],
+        heading: i32,
+        middle: f32,
+    },
 }
 
 impl Lobby {
@@ -231,7 +238,13 @@ impl Lobby {
         match (markup, &self.world) {
             (WORLD_SCREEN, Some(world)) => {
                 let at = stands_at(world);
-                Backdrop::World(crate::scene::map_at(at), at)
+                let middle = self.data.as_ref().ok().and_then(|data| middle_of(data, &world.character));
+                Backdrop::World {
+                    map: crate::scene::map_at(at),
+                    at,
+                    heading: world.heading,
+                    middle: middle.unwrap_or_default(),
+                }
             }
             (CHARACTERS_SCREEN | DELETE_SCREEN, _) => Backdrop::Scene(MAP, SELECT_CAMERA),
             // Lobby02 has one scene per race, all but Orc's named after it.
@@ -272,7 +285,7 @@ impl Lobby {
     pub(crate) fn routes(&self, markup: &str, from: &str, to: &str) -> Vec<Route> {
         match self.backdrop(markup) {
             Backdrop::Scene(_, camera) => views::routes(camera, from, to),
-            Backdrop::World(..) => Vec::new(),
+            Backdrop::World { .. } => Vec::new(),
         }
     }
 
@@ -282,7 +295,7 @@ impl Lobby {
             (Ok(data), WORLD_SCREEN) => self
                 .world
                 .as_ref()
-                .and_then(|world| figures::world(data, &world.character, stands_at(world)))
+                .and_then(|world| figures::world(data, &world.character, stands_at(world), world.heading))
                 .into_iter()
                 .collect(),
             (Ok(data), CHARACTERS_SCREEN | DELETE_SCREEN) => figures::select(data, &self.characters, self.selected),
@@ -303,6 +316,18 @@ impl Lobby {
             Err(error) => screen.status.clone_from(error),
         }
     }
+}
+
+/// How far a character's body reaches above its feet, from its class template: Unreal keeps a pawn's
+/// location at the middle of its collision cylinder, and that is what the camera looks at.
+fn middle_of(data: &GameData, character: &CharacterSummary) -> Option<f32> {
+    let start = data.starting_class(character.class)?;
+    let body = match character.sex {
+        Sex::Female => start.template.body_female,
+        Sex::Male => start.template.body_male,
+    };
+    #[expect(clippy::cast_possible_truncation, reason = "collision sizes are tens of units")]
+    Some(body.height as f32)
 }
 
 /// Where a character stands, as the scene measures places.

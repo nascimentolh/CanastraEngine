@@ -47,6 +47,8 @@ pub struct InWorld {
     pub character: CharacterSummary,
     /// Where the character stands, in map units.
     pub position: [i32; 3],
+    /// Which way it faces, in Unreal rotation units: 65536 to a full turn, 0 along +X.
+    pub heading: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

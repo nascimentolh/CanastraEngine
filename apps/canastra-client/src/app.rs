@@ -313,7 +313,7 @@ fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
 fn load_scene(gpu: &Gpu, client_root: &std::path::Path, backdrop: &Backdrop) -> Option<Scene> {
     let (map, view) = match backdrop {
         Backdrop::Scene(map, camera) => (*map, View::Scene(camera)),
-        Backdrop::World(map, at) => (map.as_str(), View::Behind(*at)),
+        Backdrop::World { map, at, heading, middle } => (map.as_str(), View::Behind(*at, *heading, *middle)),
     };
     let started = std::time::Instant::now();
     Scene::load(gpu, client_root, map, view)

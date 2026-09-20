@@ -40,12 +40,12 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
 }
 
 /// The character the player entered the world with, standing where the server left it.
-pub(super) fn world(data: &GameData, character: &CharacterSummary, at: [f32; 3]) -> Option<Figure> {
+pub(super) fn world(data: &GameData, character: &CharacterSummary, at: [f32; 3], heading: i32) -> Option<Figure> {
     let start = data.starting_class(character.class)?;
     let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
     let appearance = &character.appearance;
     let look = [appearance.face, appearance.hair_style, appearance.hair_color];
-    let figure = figure(data, body, look, &character.gear, Stand { location: at, yaw: 0 })?;
+    let figure = figure(data, body, look, &character.gear, Stand { location: at, yaw: heading })?;
     Some(Figure { label: Some(character.name.clone()), ..figure })
 }
 
