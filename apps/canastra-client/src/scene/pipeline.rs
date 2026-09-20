@@ -9,8 +9,8 @@ use wgpu::BlendFactor::{Dst, One, OneMinusSrc, Src, SrcAlpha, Zero};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
 pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-/// Samples per pixel. Masked foliage turns its alpha into coverage over them, as Fermata does, so leaf and
-/// grass edges come out smooth.
+/// Samples per pixel. Masked foliage turns its alpha into coverage over them, so leaf and grass edges come
+/// out smooth.
 const SAMPLES: u32 = 4;
 /// Fifteen floats; see `load::Vertex`.
 const VERTEX_BYTES: u64 = 60;
@@ -126,7 +126,7 @@ impl Pipeline {
                 },
                 alpha: wgpu::BlendComponent::OVER,
             }),
-            // Fermata, from the original client: Translucent is a screen blend.
+            // Translucent is a screen blend.
             // ponytail: Brighten keeps the same factors until evidence of its own shows up.
             Blend::Translucent | Blend::Brighten => Some(color(One, OneMinusSrc)),
             // Unreal's modulate doubles: source times destination, twice.

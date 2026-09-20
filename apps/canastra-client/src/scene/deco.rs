@@ -15,7 +15,7 @@ pub(super) struct Ground {
 }
 
 /// Every decoration within fade-out range of `camera` as a placed static mesh actor with its opacity,
-/// which falls from 1 to 0 across the layer's fade-out radii as Fermata fades them.
+/// which falls from 1 to 0 across the layer's fade-out radii.
 /// Each takes the light of the ground under it from the terrain's intensity maps of `state`, so grass takes the
 /// ground's color of light rather than a mesh's.
 #[expect(clippy::cast_possible_truncation, reason = "a random yaw in rotation units")]

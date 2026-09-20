@@ -6,8 +6,9 @@ Decided on 2026-09-14 through a design interview. Change an entry only with a ne
 
 - CanastraEngine is a High Five based client **and** a server rewritten from scratch, in one Rust
   workspace sharing domain, data and protocol crates.
-- Existing server projects (`l2journey`, `private_server`) are reference material only: code may be
-  copied from them, they are never modified.
+- The engine is written from scratch. Other servers on a developer's machine are only ever read, never
+  changed, and nothing in this repository names them.
+  - *2026-09-20:* code comments and docs state a rule and its numbers, never where it was seen.
 - The legacy `system` folder goes away. Assets (maps, meshes, textures, sounds) are read from
   packages; `system/*.dat` tables migrate to Canastra's own format.
 
@@ -183,14 +184,13 @@ Login, then server and character selection, then walking in the world, with a ba
 1. Domain model crate + binary format + `canastra migrate` (dat to binary), verified against the client.
 2. Texture reading (`.utx`), in place.
    - *2026-09-14:* textures are not converted or re-encoded. Parsed textures borrow the package bytes
-     untouched, and pixels are decoded to RGBA in memory only when needed (as Fermata does).
+     untouched, and pixels are decoded to RGBA in memory only when needed.
 3. Canastra Studio: game data editor.
 4. UI engine: markup + CSS subset, taffy layout, wgpu renderer, text shaping (Cyrillic/CJK), bindings,
    compiler to binary.
 5. **Login background scene (priority):** the animated 3D scene H5 shows behind the login screen,
    rendered by our client behind our own login UI. Only the rendering that scene needs comes first.
-   - *2026-09-14:* decided before the UI binary compiler and before general world rendering. Fermata
-     (Interlude) is a reference for how it loads the scene, but H5's login scene differs.
+   - *2026-09-14:* decided before the UI binary compiler and before general world rendering.
    - Findings and step plan: [`login-scene.md`](login-scene.md).
    - *2026-09-14:* accepted as it stands after a measured comparison with the H5 login screenshot
      (summed error 521 over twelve points); remaining differences are listed in `login-scene.md`.

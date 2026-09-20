@@ -244,9 +244,9 @@ pub(crate) fn blend(style: DrawStyle) -> l2_catalog::Blend {
 }
 
 /// Right and up axes of the plane perpendicular to `normal`, or `None` for a zero normal. As Unreal's
-/// sprite emitter builds them (recovered by Fermata): up is `normal × normal.GetNonParallel()`, which
+/// sprite emitter builds them: up is `normal × normal.GetNonParallel()`, which
 /// keeps its length and so shortens sprites on tilted planes, and right is `normal × up`, normalized.
-/// Fermata writes this in its Y-up viewer space, where Unreal's Y and Z swap, so the math runs there.
+/// The rule is written in a Y-up space, where Unreal's Y and Z swap, so the math runs there.
 fn plane_axes(normal: [f32; 3]) -> Option<([f32; 3], [f32; 3])> {
     let length = normal.iter().map(|axis| axis * axis).sum::<f32>().sqrt();
     if length < 1e-4 {

@@ -12,7 +12,7 @@ What the High Five client shows behind the login window, found by reading the te
 - **Which map the client loads is not in plain text** (not in `L2.ini`, the `.u` scripts,
   `interface.xdat` or the DLLs); `l2.exe` decides natively. `L2.ini` has `Map=Index.unr`,
   `LocalMap=Entry.unr` (a 7 KB empty level) and `SharedSky=True`.
-- Fermata's Interlude client uses a single `Lobby.unr` plus `skylevel.unr`; H5 differs.
+- Interlude clients use a single `Lobby.unr` plus `skylevel.unr`; H5 differs.
 
 ## Camera
 
@@ -63,7 +63,7 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    `DensityMultiplier` read as a percentage, which gives the sparse tufts along the H5 horizon (the
    plain factor saturates into a wall of bushes). Placements take a random point in the quad, the
    interpolated height, a random yaw and scale, and the terrain's intensity; they draw as static
-   meshes whose opacity falls from 1 to 0 between the two `FadeoutRadius` distances, as Fermata fades
+   meshes whose opacity falls from 1 to 0 between the two `FadeoutRadius` distances, which fades
    them; masked grass thins out as its alpha drops below the cutoff. The grass shaders cut out by `AlphaTest` and `AlphaRef`,
    which materials now honor.
 5. Emitters: sprite particles. **Done, after zone fog:** the camera's zone fog (#a8afbf from 200 to
@@ -75,11 +75,11 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    camera zone's emitters draw, since other zones are closed off. Styles that ignore alpha fade through
    the vertex color, and modulate and darken output gamma-space factors so mid gray stays neutral.
    The purple haze over the hills and around the tree now matches the H5 screenshot. Particles now
-   revolve (`UseRevolution`), and sprites laid in a plane take Unreal's axes as Fermata recovered
+   revolve (`UseRevolution`), and sprites laid in a plane take Unreal's axes as recovered
    them. Stacked on one spot, SpriteEmitter18's twelve `eva_effect_map15` sprites had drawn an
    edge-on vertical beam that H5 does not show. Not modeled: sphere and polar start shapes, the emitter's DrawScale (scaling sizes by it blew the
    clouds up to screen size), BSP portal visibility and particle depth sorting.
-   **Blending, checked against Fermata:** the scene now writes and blends gamma-space colors through a
+   **Blending:** the scene now writes and blends gamma-space colors through a
    non-sRGB view of the window, as the original client's framebuffer did; linear blending had crushed
    the dim tails of mist, stars and the moon glow. Translucent is Unreal's screen blend (One,
    OneMinusSrcColor), modulate fades and fogs towards mid gray (white doubled what lies behind), and
@@ -90,7 +90,7 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
    **Soft particles:** H5 sprites with `UseSoftParticle` (the large lobby clouds, 450–1500 units) fade
    out over half their mean size in front of the geometry behind them. Level geometry draws first and
    stores its depth; particles then draw in a pass that only reads it. This removed the hard straight
-   edges those clouds cut into the hills. Fermata ignores this flag. The flat ground mist
+   edges those clouds cut into the hills. The flat ground mist
    (`ZTest=false`, not soft) still leaves a faint band along the ground.
    **Measured blending of alpha sprites:** H5's haze lifts the dark hills yet leaves the bright horizon
    and moon at full brightness (254 red), which plain alpha blending cannot do. Drawn as
@@ -116,7 +116,7 @@ In front of the camera (under 30 000 units, within 60°): 130 StaticMeshActors, 
   `HazeringColor` both left it brown.
 - **Time of day, next:** `system/Env.int` starts the clock at 22h with 8 terrain shadow maps and 8
   actor light sets per day, and `TimeEnv0..3.int` give hourly ambient colors and HSV lights for
-  terrain, static meshes, actors and BSP, plus sky, cloud and haze colors. Fermata reads the same
+  terrain, static meshes, actors and BSP, plus sky, cloud and haze colors. Other readers take the same
   palette as an atmospheric light probe and adds hemisphere ambient, a directional sun, rim light,
   specular and local lights on top; Canastra follows that path after the faithful baseline.
 

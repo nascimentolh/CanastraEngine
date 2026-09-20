@@ -71,16 +71,15 @@ Each step is checked against the real client: a dump of the files, or a screensh
      exists. The sky is drawn from the `TimeEnv` sky, haze and cloud color ramps.
    - **Hour:** `system/Env.int` starts the clock at 22, but the H5 creation screenshot shows late
      daylight, so the lobby's hour is still to be found.
-   - **Fermata:** it lights these zones with its own improved model, driven by the same time of day:
-     hemisphere ambient, sun with sky exposure, and local lights. Try it against the screenshot too.
-   *2026-09-15:* static meshes in world zones now use Fermata's hemisphere ambient and wrapped sun
-   diffuse, fed by `StaticMeshAmbient` and `HSVStaticMeshLight` at the client's starting hour, with the sun
+   - **A richer model:** hemisphere ambient, sun with sky exposure and local lights, driven by the same
+     time of day. Try it against the screenshot too.
+   *2026-09-15:* static meshes in world zones now use a hemisphere ambient and a wrapped sun diffuse, fed by `StaticMeshAmbient` and `HSVStaticMeshLight` at the client's starting hour, with the sun
    along `NMovableSunLight0`. The HSV ramps follow Unreal 2's `FGetHSV`, whose saturation runs backwards:
    read as ordinary HSV, the daytime ramp turns everything red. At 22:00, the starting hour, the village
    houses take the warm light of the H5 screenshot, and the login is unchanged.
    *2026-09-15:* terrain in world zones. Each Lobby02 terrain sector stores eight intensity maps, like the
    eight visibility entries of mesh instances, one per three hours of the day. Three options were captured
-   against the screenshot: Fermata's model on heightmap normals alone (a bright, warm brown ground), the
+   against the screenshot: the lit model on heightmap normals alone (a bright, warm brown ground), the
    stored map of the hour alone (the grass goes dark green), and both, with the stored map scaling the sun.
    Both comes closest to the screenshot's dark olive ground, with `TerrainAmbient` and `HSVTerrainLight` and
    the map of the hour's state. The order of the states is assumed; more screenshots at other
@@ -88,9 +87,9 @@ Each step is checked against the real client: a dump of the files, or a screensh
    *2026-09-15:* the sky, drawn from the client's own data. `Env.int` names the sky's materials in
    `L2_Skies.utx` (`SkybackgroundColor`, `HazeRing_Final`, cloud and star layers), which `TimeEnv` colors by
    the hour; the engine supplies their geometry. A dome now shades from `HazeringColor` at the horizon to
-   `SkyBoxColor` above, under the wispy `Cloud_Final01_sh` layer in `CloudColor4`. Fermata's HDR panoramas
-   were captured too, and its day panorama looked closest, but it is Fermata's image, not the client's, so
-   the client's sky was kept.
+   `SkyBoxColor` above, under the wispy `Cloud_Final01_sh` layer in `CloudColor4`. Ready-made HDR panoramas
+   were captured too, and the day one looked closest, but they are someone else's images rather than the
+   client's, so the client's sky was kept.
    The hour: H5's lobby clock starts at 22:00 and runs at six times real time, so a screenshot can show any
    hour. At 22:00 the sky turns pink; at 18:00 to 20:00 the houses lose their warm light. 21:00 gives both
    the blue sky and the warm light of the screenshot, and world zones are now shown at that hour.
@@ -153,7 +152,7 @@ Each step is checked against the real client: a dump of the files, or a screensh
    - Terrain decorations added the static mesh daylight over the terrain intensity they already carried.
      They now take the terrain's own light where they stand, as the grass in the screenshot does.
    - Leaf materials with `AlphaRef` 0 kept their fully clear texels, which showed as grey cards. Unreal's
-     alpha test passes only texels above the reference. Masked edges now follow Fermata: 4× MSAA with the
+     alpha test passes only texels above the reference. Masked edges now use 4× MSAA with the
      alpha turned into sample coverage, sharpened to about a pixel, so leaves and grass come out smooth.
    *2026-09-15:* the trees still looked like solid green sheets. Their leaf materials are Shaders with an Opacity
    map, `AlphaTest` and `AlphaRef` 1, which were read as cut-outs. Cut at 1, box-filtered mips fill whole leaf
@@ -169,11 +168,11 @@ Each step is checked against the real client: a dump of the files, or a screensh
    as an overlay, drawn after everything and hit first. The limits of five male and seven female hair styles,
    four colors and three faces now live in the protocol, shared by client and server. Still to do: hair color
    on the model, held weapons, and the camera closing in on the chosen model as H5 does.
-   *2026-09-16:* held weapons and shields. What the client and Fermata show, not guessed:
+   *2026-09-16:* held weapons and shields, from what the client itself shows, not guessed:
    - The client's `Engine.u` gives `Pawn` its bones by default properties: `RightHandBone=Weapon_R_Bone`,
      `LeftHandBone=Weapon_L_Bone`, `LeftArmBone=Shield_L_Bone`, `RootBone=bip01`. The attaching itself is native
      code in `Engine.dll`, whose code section is packed and cannot be read statically.
-   - Fermata's assembly (`char_pawn`) picks the bone from candidate lists by slot (`Weapon_R_Bone`, `Sword Bone`,
+   - A working viewer of these meshes picks the bone from candidate lists by slot (`Weapon_R_Bone`, `Sword Bone`,
      `Weapon Bone`, `Bow Bone`, `Bip01 R Hand`; shields `Shield_L_Bone` first; bows in the left hand), attaches
      with an identity offset, and builds its bind skeleton conjugating only the root, with its matrices the
      transpose of ours: the same skeleton.
@@ -213,8 +212,8 @@ Each step is checked against the real client: a dump of the files, or a screensh
    they separate words with spaces or underscores (`Bip01 Head`), as Orc and Dwarf skeletons do.
    - Not done: turning heads toward the camera. H5 does not; its dark elf mystic keeps his back to the camera.
    - Lobby02 holds a scene per chosen class and gender (`Elf_Knight_Kman`, `Elf_Kman_Kwoman`) and a chest
-     close-up (`Elf_Kman_Chest`), each ActionMoveCamera moves along interpolation points; Fermata offers the
-     same with a rotate and zoom strip after gender selection. Still to build.
+     close-up (`Elf_Kman_Chest`), each ActionMoveCamera moves along interpolation points, with a rotate and
+     zoom strip after gender selection. Still to build.
    *2026-09-16:* the creation camera. Lobby02's scenes hold camera moves as well as warps: each ActionMoveCamera
    names an interpolation point, a duration and, with `PathStyle` 1, a Bezier path through the handles around
    its ends (`StartControlPoint` leaving a point, `EndControlPoint` arriving at it). The client reads every

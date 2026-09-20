@@ -38,7 +38,7 @@ impl Held {
 
     /// Each vertex's position, normal and UV in the space of the skeleton, hung from `bone` as it stands.
     ///
-    /// As Fermata attaches parts, the mesh sits in the bone's frame with no offset, its own root bone aside.
+    /// A held mesh sits in the bone's frame with no offset, its own root bone aside.
     // ponytail: the mesh's own scale and rotation are taken as identity, as the lobby's weapons store them; the
     // orientation still differs from H5 for some weapons.
     pub(super) fn vertices(&self, bone: Transform) -> impl Iterator<Item = ([f32; 3], [f32; 3], [f32; 2])> + '_ {

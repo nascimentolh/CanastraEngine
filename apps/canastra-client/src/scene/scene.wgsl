@@ -136,7 +136,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         color = vec4<f32>(color.rgb * fade, color.a);
     }
     if material.soft.y > 0.5 {
-        // Fermata's cut-out: only fully clear texels discard; the rest cover as many samples as their alpha
+        // The cut-out: only fully clear texels discard; the rest cover as many samples as their alpha
         // stands above the reference, sharpened to about a pixel.
         if color.a <= 0.0001 {
             discard;
@@ -148,7 +148,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let range = globals.fog_range;
     let fogged = clamp((range.y - in.depth) / max(range.y - range.x, 1.0), 0.0, 1.0);
     let clear = select(fogged, 1.0, unfogged);
-    // Fog as Fermata applies it per blend: opaque and alpha surfaces towards the fog color, modulate
+    // Fog applies per blend: opaque and alpha surfaces towards the fog color, modulate
     // towards its neutral gray, darken towards black, and translucent and brighten tinted by the fog so
     // black stays transparent and white lands on the fog color.
     if neutral_kind < 0.5 {
