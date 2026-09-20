@@ -46,7 +46,9 @@ pub(crate) struct SceneData {
     pub(crate) textures: HashMap<String, Image>,
     /// The emitters of the zones the camera can warp to; each draws only while the camera is in its zone.
     pub(crate) emitters: Vec<Emitter>,
-    /// The sounds the level loops around places, wherever they stand.
+    /// The hour the lobby clock showed when the scene loaded.
+    pub(crate) hour: f32,
+    /// The sounds the level plays around places, wherever they stand.
     pub(crate) ambient_sounds: Vec<AmbientSound>,
     /// The meshes mesh emitters draw, loaded with their materials' textures in `textures`.
     pub(crate) particle_meshes: HashMap<MeshKey, Rc<ParticleMesh>>,
@@ -84,6 +86,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         .as_ref()
         .and_then(|environment| environment.color("SkyBoxColor", environment.start_hour()))
         .map_or([1.0; 3], |color| color.map(|channel| f32::from(channel) / 255.0));
+    let hour = environment.as_ref().map_or(22.0, |environment| environment.hour_after(daylight::clock_seconds()));
     // Zones with states carry their light in the level; world zones are lit by the lobby clock's hour.
     let environment = environment.filter(|_| warp.zone_state.is_none() && Daylight::has_sun(&level.actors));
     let daylight = environment
@@ -117,6 +120,7 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
         indices: Vec::new(),
         batches: Vec::new(),
         textures: HashMap::new(),
+        hour,
         ambient_sounds: level.ambient_sounds.clone(),
         particle_meshes: HashMap::new(),
         movers: Vec::new(),

@@ -196,6 +196,8 @@ impl Running {
             self.backdrop = backdrop;
             let sounds = self.scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default();
             self.lobby.play_ambient(sounds);
+            self.lobby.follow_music(self.screen.markup(), &self.client_root);
+            println!("backdrop: {:?} markup {}", backdrop, self.screen.markup());
             self.figures.clear();
             self.view.clear();
         }

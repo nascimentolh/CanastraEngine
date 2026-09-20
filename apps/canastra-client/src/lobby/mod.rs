@@ -101,8 +101,18 @@ impl Lobby {
         }
     }
 
-    /// Loops the sounds heard where the camera stands, in place of the ones playing now.
-    pub(crate) fn play_ambient(&mut self, sounds: Vec<(Vec<u8>, f32)>) {
+    /// The lobby's theme plays on the login screen; the halls beyond it are carried by their own sounds.
+    pub(crate) fn follow_music(&mut self, markup: &str, client_root: &std::path::Path) {
+        let Some(audio) = &mut self.audio else { return };
+        if markup == LOGIN_SCREEN {
+            audio.play_music(client_root, LOBBY_MUSIC);
+        } else {
+            audio.stop_music();
+        }
+    }
+
+    /// Plays the sounds heard where the camera stands, in place of the ones playing now.
+    pub(crate) fn play_ambient(&mut self, sounds: Vec<crate::audio::Clip>) {
         println!("sound: {} ambient loops", sounds.len());
         if let Some(audio) = &mut self.audio {
             audio.play_ambient(sounds);

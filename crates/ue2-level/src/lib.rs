@@ -64,6 +64,23 @@ pub struct AmbientSound {
     pub radius: f32,
     /// How loudly it plays where it stands, from 0 to 1.
     pub volume: f32,
+    /// Seconds between calls for a sound heard now and then (`AmbientRandom`); `None` for one that never stops.
+    pub interval: Option<f32>,
+    /// When it is heard (`AmbientSoundType`): by day, by night, or at any hour.
+    pub heard: Heard,
+    /// How fast it plays, 1 at the client's own `SoundPitch` of 64.
+    pub pitch: f32,
+}
+
+/// The hours an ambient sound is heard in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Heard {
+    /// Birds, roosters and cicadas, which the maps mark 1.
+    Day,
+    /// Crickets, wolves and foxes, marked 2.
+    Night,
+    /// Water, fire, wind and drones, which carry no mark.
+    Always,
 }
 
 /// Linear distance fog of a zone.
@@ -189,16 +206,26 @@ fn actor(package: &Package, file: &[u8], export: usize, properties: &[Property<'
     })
 }
 
-/// What an `AmbientSoundObject` loops, when it names a sound. Unreal keeps a sound's radius in twenty-five
-/// world units, as `WorldSoundRadius` multiplies it, and its volume as a byte.
+/// What an `AmbientSoundObject` plays, when it names a sound. Unreal keeps a sound's radius in twenty-five
+/// world units, as `WorldSoundRadius` multiplies it, its volume as a byte, and its pitch as a byte where 64 plays
+/// the sound as recorded.
 fn ambient_sound(package: &Package, properties: &[Property<'_>]) -> Option<AmbientSound> {
     let sound = find(properties, "AmbientSound").and_then(|sound| sound.object(package))?;
-    let volume = find(properties, "SoundVolume").and_then(Property::byte).unwrap_or(255);
+    let byte = |name, default| find(properties, name).and_then(Property::byte).unwrap_or(default);
+    let interval = find(properties, "AmbientRandom").and_then(Property::int).filter(|seconds| *seconds > 0);
+    #[expect(clippy::cast_precision_loss, reason = "intervals are tens of seconds")]
     Some(AmbientSound {
         location: placement(properties).location,
         sound: (!matches!(sound, ObjectRef::Null)).then(|| package.object_path(sound))?,
         radius: find(properties, "SoundRadius").and_then(Property::float).unwrap_or(64.0) * 25.0,
-        volume: f32::from(volume) / 255.0,
+        volume: f32::from(byte("SoundVolume", 255)) / 255.0,
+        interval: interval.map(|seconds| seconds as f32),
+        heard: match find(properties, "AmbientSoundType").and_then(Property::byte) {
+            Some(1) => Heard::Day,
+            Some(2) => Heard::Night,
+            _ => Heard::Always,
+        },
+        pitch: f32::from(byte("SoundPitch", 64)) / 64.0,
     })
 }
 

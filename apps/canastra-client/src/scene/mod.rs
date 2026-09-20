@@ -26,9 +26,10 @@ use std::path::Path;
 use std::time::Instant;
 
 use l2_catalog::{Catalog, Material, UvModifier};
-use ue2_level::{AmbientSound, Placement, Shot, Warp};
+use ue2_level::{AmbientSound, Heard, Placement, Shot, Warp};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
+use crate::audio::Clip;
 use crate::gpu::Gpu;
 pub(crate) use flight::Route;
 use load::Vertex;
@@ -43,6 +44,10 @@ use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform,
 const FOV: f32 = 50.0;
 /// How many ambient sounds play at once: the loudest where the camera stands.
 const VOICES: usize = 8;
+/// The hours between which a scene counts as daylight, from where the client's light ramps turn warm at dawn to
+/// where they turn warm again at dusk: birds and cicadas are heard between them, crickets and wolves outside.
+const DAWN: f32 = 6.0;
+const DUSK: f32 = 21.0;
 /// View-projection matrix, fog color, fog start and end with the near plane, and the hour's light; see `Globals`
 /// in `scene.wgsl`.
 const GLOBALS_BYTES: u64 = 96 + 16 * 16;
@@ -73,8 +78,9 @@ pub(crate) struct Scene {
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
     systems: Vec<System>,
-    /// The sounds the level loops around places.
+    /// The sounds the level plays around places, and the hour they are heard at.
     ambient_sounds: Vec<AmbientSound>,
+    hour: f32,
     /// Swaying meshes, whose vertices follow the particles' in the particle buffers, and their batches, which draw
     /// with the level geometry since they write depth.
     movers: Vec<movers::Mover>,
@@ -187,6 +193,7 @@ impl Scene {
             batches,
             systems,
             ambient_sounds: data.ambient_sounds,
+            hour: data.hour,
             movers: data.movers,
             mover_batches,
             sprite_batches,
@@ -225,24 +232,37 @@ impl Scene {
         }
     }
 
-    /// What is heard where the camera stands: each sound's file and how loudly it plays, loudest first and at
-    /// most `VOICES` of them.
+    /// What is heard where the camera stands: each sound's file, how loudly it plays, how often it is called and
+    /// how fast; loudest first and at most `VOICES` of them. Sounds of the day are left out at night and the other
+    /// way round.
     // ponytail: sounds fade linearly to nothing at their radius, and none of them pan; measure against H5 if the
     // lobby sounds wrong.
-    pub(crate) fn ambient_sounds(&mut self) -> Vec<(Vec<u8>, f32)> {
+    pub(crate) fn ambient_sounds(&mut self) -> Vec<Clip> {
         let eye = self.eye.location;
-        let mut heard: Vec<(String, f32)> = self
+        let daylight = (DAWN..DUSK).contains(&self.hour);
+        let mut heard: Vec<(AmbientSound, f32)> = self
             .ambient_sounds
             .iter()
+            .filter(|sound| match sound.heard {
+                Heard::Day => daylight,
+                Heard::Night => !daylight,
+                Heard::Always => true,
+            })
             .filter_map(|sound| {
                 let distance = sound.location.iter().zip(eye).map(|(at, eye)| (at - eye) * (at - eye)).sum::<f32>();
                 let reach = 1.0 - distance.sqrt() / sound.radius.max(1.0);
-                (reach > 0.0).then(|| (sound.sound.clone(), sound.volume * reach))
+                (reach > 0.0).then(|| (sound.clone(), sound.volume * reach))
             })
             .collect();
         heard.sort_by(|a, b| b.1.total_cmp(&a.1));
         heard.truncate(VOICES);
-        heard.into_iter().filter_map(|(path, gain)| Some((self.catalog.sound(&path)?, gain))).collect()
+        heard
+            .into_iter()
+            .filter_map(|(sound, gain)| {
+                let bytes = self.catalog.sound(&sound.sound)?;
+                Some(Clip { bytes, gain, interval: sound.interval, pitch: sound.pitch })
+            })
+            .collect()
     }
 
     /// Turns the pawns the player may turn at `speed` rotation units a second from now on; 0 stops them.
@@ -397,6 +417,7 @@ impl Scene {
     fn follow_clock(&mut self) {
         let Some(environment) = &self.environment else { return };
         let hour = environment.hour_after(daylight::clock_seconds());
+        self.hour = hour;
         if self.daylight.as_ref().is_none_or(|daylight| (daylight.hour() - hour).abs() >= 1.0 / 60.0) {
             self.daylight = daylight::Daylight::new(environment, hour);
         }
