@@ -20,6 +20,8 @@ pub enum GameClient {
     },
     CreateCharacter(NewCharacter),
     DeleteCharacter(CharacterId),
+    /// Enters the world with one of the account's characters on this server; the lobby ends here.
+    EnterWorld(CharacterId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +37,16 @@ pub enum GameServer {
     /// The account's characters on this server, after admission and after every change.
     Characters(Vec<CharacterSummary>),
     CreateFailed(CreationFailure),
+    /// The player is in the world, with the character it entered as.
+    Entered(InWorld),
+}
+
+/// A character standing in the world, as the client needs it to show the world around it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InWorld {
+    pub character: CharacterSummary,
+    /// Where the character stands, in map units.
+    pub position: [i32; 3],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

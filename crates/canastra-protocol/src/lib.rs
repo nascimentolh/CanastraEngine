@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bump on any change to a message type; the `layout_is_frozen` tests fail until you do. Peers on other
 /// versions are refused, never adapted to.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// A game server, as the login server and its game servers know it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -64,7 +64,8 @@ mod tests {
             address: String::new(),
             capacity: 1,
         };
-        assert_eq!(encode(&register), [0, 3, 7, 0, 0, 1]);
+        assert_eq!(encode(&register), [0, 4, 7, 0, 0, 1]);
+        assert_eq!(encode(&game::GameClient::EnterWorld(game::CharacterId(5))), [3, 10]);
         let refused = game::GameServer::Refused(game::Refusal::Reused);
         assert_eq!(encode(&refused), [2, 2]);
         let summary = game::CharacterSummary {

@@ -2,7 +2,7 @@
 
 use canastra_data::class::InitialItem;
 use canastra_data::id::{ClassId, ItemId};
-use canastra_protocol::game::{Appearance, CharacterId, CharacterSummary, Sex};
+use canastra_protocol::game::{Appearance, CharacterId, CharacterSummary, InWorld, Sex};
 use canastra_protocol::{AccountId, ServerId};
 
 use crate::{Database, Error};
@@ -28,7 +28,23 @@ pub enum Creation {
     SlotsFull,
 }
 
-type Row = (i64, String, i16, bool, i16, i16, i16, i16, Vec<i32>);
+type Row = (i64, String, i16, bool, i16, i16, i16, i16, Vec<i32>, i32, i32, i32);
+
+/// Each character with what it wears, for the lobby to dress it in, and where it stands, one row per
+/// character and oldest first. `$filter` narrows the account's characters on a server further.
+macro_rules! characters {
+    ($filter:literal) => {
+        concat!(
+            "SELECT c.id, c.name, c.class_id, c.female, c.hair_style, c.hair_color, c.face, c.level, ",
+            "coalesce(array_agg(i.item_id ORDER BY i.id) FILTER (WHERE i.equipped ",
+            "AND (i.expires_at IS NULL OR i.expires_at > now())), '{}') AS gear, c.x, c.y, c.z ",
+            "FROM characters c LEFT JOIN character_items i ON i.character_id = c.id ",
+            "WHERE c.account_id = $1 AND c.server_id = $2",
+            $filter,
+            " GROUP BY c.id ORDER BY c.id"
+        )
+    };
+}
 
 impl Database {
     /// Stores `record` unless its name is taken on its server or the account has no free slot. The account
@@ -86,19 +102,29 @@ impl Database {
 
     /// The account's characters on `server`, oldest first.
     pub async fn characters(&self, account: AccountId, server: ServerId) -> Result<Vec<CharacterSummary>, Error> {
-        // Each character with what it wears, for the lobby to dress it in.
-        let rows: Vec<Row> = sqlx::query_as(
-            "SELECT c.id, c.name, c.class_id, c.female, c.hair_style, c.hair_color, c.face, c.level, \
-             coalesce(array_agg(i.item_id ORDER BY i.id) FILTER (WHERE i.equipped \
-             AND (i.expires_at IS NULL OR i.expires_at > now())), '{}') AS gear \
-             FROM characters c LEFT JOIN character_items i ON i.character_id = c.id \
-             WHERE c.account_id = $1 AND c.server_id = $2 GROUP BY c.id ORDER BY c.id",
-        )
-        .bind(account.0)
-        .bind(server.0.cast_signed())
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows.into_iter().map(summary).collect())
+        let rows: Vec<Row> =
+            sqlx::query_as(characters!("")).bind(account.0).bind(server.0.cast_signed()).fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|row| summary(row).0).collect())
+    }
+
+    /// The account's character `id` on `server` and where it stands; `None` when that character is not the
+    /// account's on this server.
+    pub async fn character(
+        &self,
+        account: AccountId,
+        server: ServerId,
+        id: CharacterId,
+    ) -> Result<Option<InWorld>, Error> {
+        let row: Option<Row> = sqlx::query_as(characters!(" AND c.id = $3"))
+            .bind(account.0)
+            .bind(server.0.cast_signed())
+            .bind(id.0)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|row| {
+            let (character, position) = summary(row);
+            InWorld { character, position }
+        }))
     }
 
     /// Deletes the character if it belongs to `account` on `server`; false when it does not.
@@ -113,10 +139,13 @@ impl Database {
     }
 }
 
-fn summary((id, name, class, female, hair_style, hair_color, face, level, gear): Row) -> CharacterSummary {
+/// A row as the character it holds and where that character stands.
+fn summary(
+    (id, name, class, female, hair_style, hair_color, face, level, gear, x, y, z): Row,
+) -> (CharacterSummary, [i32; 3]) {
     // Small columns hold values stored from u8 and u16 fields, so they convert back losslessly.
     let byte = |value: i16| u8::try_from(value).unwrap_or(0);
-    CharacterSummary {
+    let character = CharacterSummary {
         id: CharacterId(id),
         name,
         class: ClassId(class.cast_unsigned()),
@@ -124,7 +153,8 @@ fn summary((id, name, class, female, hair_style, hair_color, face, level, gear):
         appearance: Appearance { hair_style: byte(hair_style), hair_color: byte(hair_color), face: byte(face) },
         level: u32::try_from(level).unwrap_or(1),
         gear: gear.into_iter().map(|item| ItemId(item.cast_unsigned())).collect(),
-    }
+    };
+    (character, [x, y, z])
 }
 
 #[cfg(test)]
@@ -170,6 +200,9 @@ mod tests {
         let names: Vec<_> = stored.iter().map(|c| c.name.clone()).collect();
         assert_eq!(names, [name, second]);
         assert_eq!(stored[0].gear, [ItemId(2369)], "only what is worn and unexpired comes back");
+        let entered = database.character(account, server, id).await.unwrap().expect("the account's own character");
+        assert_eq!(entered.position, [1, 2, 3], "a character enters the world where it was left");
+        assert!(database.character(other, server, id).await.unwrap().is_none(), "another account cannot enter as it");
         assert!(!database.delete_character(other, server, id).await.unwrap());
         assert!(database.delete_character(account, server, id).await.unwrap());
         assert_eq!(database.characters(account, server).await.unwrap().len(), 1);

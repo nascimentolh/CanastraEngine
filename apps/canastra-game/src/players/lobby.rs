@@ -5,7 +5,7 @@ use canastra_data::class::{InitialItem, Origin, StartingClass};
 use canastra_data::npc::Sex as LineSex;
 use canastra_db::{Creation, Database, NewRecord};
 use canastra_net::Connection;
-use canastra_protocol::game::{CreationFailure, GameClient, GameServer, NewCharacter, Sex};
+use canastra_protocol::game::{CreationFailure, GameClient, GameServer, InWorld, NewCharacter, Sex};
 use canastra_protocol::{AccountId, ServerId};
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -22,12 +22,13 @@ pub(crate) struct Lobby {
 }
 
 impl Lobby {
-    /// Sends the account's characters, then answers changes until the player leaves.
+    /// Sends the account's characters and answers changes until the player enters the world with one of
+    /// them; leaving the lobby any other way ends the connection.
     pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
         &self,
         connection: &mut Connection<S>,
         account: AccountId,
-    ) -> Result {
+    ) -> Result<InWorld> {
         loop {
             connection.send(&GameServer::Characters(self.database.characters(account, self.server).await?)).await?;
             match connection.recv().await? {
@@ -39,6 +40,16 @@ impl Lobby {
                 }
                 GameClient::DeleteCharacter(id) => {
                     self.database.delete_character(account, self.server, id).await?;
+                }
+                GameClient::EnterWorld(id) => {
+                    // The client only ever asks for a character it was listed, so another one is a broken client.
+                    let entered = self
+                        .database
+                        .character(account, self.server, id)
+                        .await?
+                        .ok_or("a player entered the world as a character that is not theirs")?;
+                    connection.send(&GameServer::Entered(entered.clone())).await?;
+                    return Ok(entered);
                 }
             }
         }
