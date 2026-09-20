@@ -33,6 +33,7 @@ impl Lobby {
             connection.send(&GameServer::Characters(self.database.characters(account, self.server).await?)).await?;
             match connection.recv().await? {
                 GameClient::Hello { .. } => return Err("a player said hello twice".into()),
+                GameClient::MoveTo(_) => return Err("a player in the lobby tried to walk".into()),
                 GameClient::CreateCharacter(new) => {
                     if let Err(failure) = self.create(account, &new).await? {
                         connection.send(&GameServer::CreateFailed(failure)).await?;

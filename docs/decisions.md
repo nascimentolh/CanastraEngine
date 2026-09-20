@@ -210,4 +210,10 @@ Login, then server and character selection, then walking in the world, with a ba
      is centered half a tile in (`17_25` at (-81920, 245760), `18_25` a tile east, `20_21` at (16384, 114688)).
      The camera distance behind the character is by eye; H5 keeps its own in its native player controller.
      There is no movement, no HUD beyond the character's name, and the world takes no orders yet.
+   - *2026-09-19:* walking works: the player clicks the ground, the client finds the place with a ray against
+     the map's own floors, the server grants the walk from where the character stands with the run speed its
+     class template gives, and the client carries it there and turns it that way. Characters keep a heading, and
+     where they stop is stored when they leave the world. The client stands characters on the floor under them
+     rather than at the height they were stored at, since the server has no geodata yet: the floors are the
+     level's own upward-facing triangles, and the client winds those so their normals point down.
 8. MVP windows and NPC dialog templates.

@@ -46,7 +46,8 @@ pub(super) fn world(data: &GameData, character: &CharacterSummary, at: [f32; 3],
     let appearance = &character.appearance;
     let look = [appearance.face, appearance.hair_style, appearance.hair_color];
     let figure = figure(data, body, look, &character.gear, Stand { location: at, yaw: heading })?;
-    Some(Figure { label: Some(character.name.clone()), ..figure })
+    // In the world a character runs, and stands on the floor the map puts under it.
+    Some(Figure { label: Some(character.name.clone()), gait: "Run", grounded: true, ..figure })
 }
 
 /// The characters on display for `race` at creation, in their display gear; the one of the `chosen` archetype and
@@ -148,6 +149,8 @@ fn figure(data: &GameData, body: Body, [face, hair, color]: [u8; 3], gear: &[Ite
         location: stand.location,
         yaw: stand.yaw,
         sequence: idle(grip),
+        gait: "Walk",
+        grounded: false,
         label: None,
         turns: false,
     })

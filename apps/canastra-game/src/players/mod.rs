@@ -3,12 +3,12 @@
 mod admission;
 mod lobby;
 mod names;
+mod world;
 
 use std::sync::Arc;
 
 use canastra_net::{Connection, Keypair, Pattern};
 use canastra_protocol::AccountId;
-use canastra_protocol::game::GameClient;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 
@@ -53,7 +53,5 @@ async fn play<S: AsyncRead + AsyncWrite + Unpin>(
     let entered = players.lobby.run(connection, account).await?;
     let character = &entered.character;
     tracing::info!(account = account.0, character = character.id.0, name = character.name, "player in the world");
-    // ponytail: the world takes no orders yet, so the player only holds its place until it disconnects.
-    let message = connection.recv::<GameClient>().await?;
-    Err(format!("a player in the world sent {message:?}").into())
+    world::run(connection, &players.lobby.database, &players.lobby.data, entered).await
 }

@@ -29,6 +29,10 @@ pub(crate) struct Figure {
     pub(crate) yaw: i32,
     /// The sequence to loop, without the body's suffix, e.g. `Wait_Hand`.
     pub(crate) sequence: &'static str,
+    /// What the sequence's `Wait` becomes while the character moves: `Walk` in the lobby, `Run` in the world.
+    pub(crate) gait: &'static str,
+    /// Whether the character stands on the floor under it, as characters in the world do.
+    pub(crate) grounded: bool,
     /// Text shown above the head, such as the character's name.
     pub(crate) label: Option<String>,
     /// Whether the player can turn the figure around, as the chosen character at creation.
@@ -115,7 +119,7 @@ impl Pawn {
         let animation = animation_path.as_deref().and_then(|path| catalog.mesh_animation(path));
         let suffix = animation_path.as_deref().and_then(|path| path.rsplit('.').next()?.strip_suffix("_anim"));
         let sequence = format!("{}_{}", figure.sequence, suffix.unwrap_or_default());
-        let walk = sequence.replacen("Wait", "Walk", 1);
+        let walk = sequence.replacen("Wait", figure.gait, 1);
         if animation.as_ref().is_some_and(|animation| {
             !animation.sequences.iter().any(|found| found.name.eq_ignore_ascii_case(&sequence))
         }) {
@@ -169,6 +173,16 @@ impl Pawn {
             walking: 0.0,
             spin: 0.0,
         }
+    }
+
+    /// Puts the pawn where its character now stands, facing `yaw`, blending into its gait while it moves and
+    /// back to standing when it stops.
+    pub(crate) fn stride(&mut self, at: [f32; 3], yaw: i32, moving: bool, seconds: f32) {
+        self.location = at;
+        self.yaw = yaw as f32;
+        self.axes = camera::axes([0, yaw, 0]);
+        let step = seconds / BLEND_SECONDS;
+        self.walking = if moving { self.walking + step } else { self.walking - step }.clamp(0.0, 1.0);
     }
 
     /// Turns the pawn for `seconds` at `speed` rotation units a second if the player may turn it, blending into

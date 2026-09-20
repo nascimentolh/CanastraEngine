@@ -127,6 +127,19 @@ impl Database {
         }))
     }
 
+    /// Stores where a character stands and which way it faces, as it leaves the world.
+    pub async fn place_character(&self, id: CharacterId, [x, y, z]: [i32; 3], heading: i32) -> Result<(), Error> {
+        sqlx::query("UPDATE characters SET x = $2, y = $3, z = $4, heading = $5 WHERE id = $1")
+            .bind(id.0)
+            .bind(x)
+            .bind(y)
+            .bind(z)
+            .bind(heading)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Deletes the character if it belongs to `account` on `server`; false when it does not.
     pub async fn delete_character(&self, account: AccountId, server: ServerId, id: CharacterId) -> Result<bool, Error> {
         let result = sqlx::query("DELETE FROM characters WHERE id = $1 AND account_id = $2 AND server_id = $3")
@@ -204,6 +217,9 @@ mod tests {
         assert_eq!(entered.position, [1, 2, 3], "a character enters the world where it was left");
         assert_eq!(entered.heading, 0, "and facing the way it was created");
         assert!(database.character(other, server, id).await.unwrap().is_none(), "another account cannot enter as it");
+        database.place_character(id, [10, 20, 30], 16_384).await.unwrap();
+        let moved = database.character(account, server, id).await.unwrap().expect("the character");
+        assert_eq!((moved.position, moved.heading), ([10, 20, 30], 16_384), "a character stays where it left off");
         assert!(!database.delete_character(other, server, id).await.unwrap());
         assert!(database.delete_character(account, server, id).await.unwrap());
         assert_eq!(database.characters(account, server).await.unwrap().len(), 1);

@@ -11,7 +11,7 @@ mod views;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
-use canastra_protocol::game::{CharacterSummary, InWorld, Sex};
+use canastra_protocol::game::{CharacterSummary, InWorld, Move, Sex};
 use canastra_protocol::login::ServerEntry;
 
 use crate::audio::{Audio, Kind};
@@ -57,6 +57,28 @@ pub(crate) struct Lobby {
     options: Option<&'static str>,
     /// The character the player is in the world with, once it entered.
     world: Option<InWorld>,
+    /// The walk the server granted, which the character is on until it arrives.
+    walk: Option<Walk>,
+}
+
+/// A walk in the world, as the server granted it.
+struct Walk {
+    from: [f32; 3],
+    to: [f32; 3],
+    /// Map units a second.
+    speed: f32,
+    /// Which way the walk faces, in Unreal rotation units.
+    yaw: i32,
+    started: std::time::Instant,
+}
+
+/// Where the character the player steers stands now, which way it faces, whether it is on its way, and how far
+/// its body reaches above its feet.
+pub(crate) struct Steering {
+    pub(crate) at: [f32; 3],
+    pub(crate) yaw: i32,
+    pub(crate) moving: bool,
+    pub(crate) middle: f32,
 }
 
 /// What stands behind a screen: a lobby map framed by one of its own scenes, or the world tile a character
@@ -100,6 +122,7 @@ impl Lobby {
             audio,
             options: None,
             world: None,
+            walk: None,
         }
     }
 
@@ -143,6 +166,57 @@ impl Lobby {
         if let Some(audio) = &mut self.audio {
             audio.tick();
         }
+    }
+
+    /// What a character's class is called, in the player's language.
+    pub(crate) fn class_name(&self, character: &CharacterSummary) -> String {
+        let data = self.data.as_ref().ok();
+        let class = data.and_then(|data| data.classes.get(&character.class));
+        class.and_then(|class| class.name.get(canastra_data::text::Locale::En)).unwrap_or("?").to_owned()
+    }
+
+    /// Asks the server to walk the character to `to`, a place the player clicked in the world.
+    pub(crate) fn walk_to(&mut self, to: [f32; 3]) {
+        if self.world.is_none() {
+            return;
+        }
+        #[expect(clippy::cast_possible_truncation, reason = "places are whole map units")]
+        let to = to.map(|unit| unit.round() as i32);
+        if let Ok(network) = &self.network {
+            network.send(Request::Move(to));
+        }
+    }
+
+    /// Where the character stands now, once it is in the world: along its walk while it lasts, and where the
+    /// walk left it after that. The world's own record follows it, so the map tile it stands in follows too.
+    pub(crate) fn steering(&mut self) -> Option<Steering> {
+        self.world.as_ref()?;
+        let (at, yaw, moving) = if let Some(walk) = &self.walk {
+            let gone = walk.speed * walk.started.elapsed().as_secs_f32();
+            let length = distance(walk.from, walk.to);
+            let part = if length > 0.0 { (gone / length).min(1.0) } else { 1.0 };
+            let mut at = walk.from;
+            for (at, to) in at.iter_mut().zip(walk.to) {
+                *at += (to - *at) * part;
+            }
+            let (yaw, arrived) = (walk.yaw, part >= 1.0);
+            if arrived {
+                self.walk = None;
+            }
+            (at, yaw, !arrived)
+        } else {
+            let world = self.world.as_ref()?;
+            (stands_at(world), world.heading, false)
+        };
+        let middle = self.data.as_ref().ok().zip(self.world.as_ref());
+        let middle = middle.and_then(|(data, world)| middle_of(data, &world.character)).unwrap_or_default();
+        let world = self.world.as_mut()?;
+        #[expect(clippy::cast_possible_truncation, reason = "places are whole map units")]
+        {
+            world.position = at.map(|unit| unit.round() as i32);
+        }
+        world.heading = yaw;
+        Some(Steering { at, yaw, moving, middle })
     }
 
     /// Runs a screen action; false when the action is not the lobby's.
@@ -213,10 +287,15 @@ impl Lobby {
                 if self.servers.is_empty() { "No servers are online.".into() } else { String::new() }
             }
             Reply::Entered(world) => {
-                let name = world.character.name.clone();
+                let class = self.class_name(&world.character);
+                screen.set("world.character".into(), world.character.name.clone());
+                screen.set("world.detail".into(), format!("{class} · Level {}", world.character.level));
                 self.world = Some(world);
-                screen.set("world.character".into(), name);
                 screen.show(WORLD_SCREEN);
+                String::new()
+            }
+            Reply::Moving(walk) => {
+                self.walk = Some(walk_of(&walk));
                 String::new()
             }
             Reply::Characters { list, failure: Some(failure) } => {
@@ -316,6 +395,20 @@ impl Lobby {
             Err(error) => screen.status.clone_from(error),
         }
     }
+}
+
+/// The walk the server granted, in the places the scene measures in, facing the way it goes.
+fn walk_of(walk: &Move) -> Walk {
+    #[expect(clippy::cast_precision_loss, reason = "map units are whole numbers well within a float")]
+    let place = |unit: i32| unit as f32;
+    let (from, to) = (walk.from.map(place), walk.to.map(place));
+    #[expect(clippy::cast_possible_truncation, reason = "an angle is a fraction of a turn")]
+    let yaw = ((to[1] - from[1]).atan2(to[0] - from[0]) / std::f32::consts::TAU * 65536.0) as i32;
+    Walk { from, to, speed: walk.speed, yaw, started: std::time::Instant::now() }
+}
+
+fn distance(from: [f32; 3], to: [f32; 3]) -> f32 {
+    from.iter().zip(to).map(|(from, to)| (to - from) * (to - from)).sum::<f32>().sqrt()
 }
 
 /// How far a character's body reaches above its feet, from its class template: Unreal keeps a pawn's

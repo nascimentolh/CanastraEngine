@@ -9,6 +9,7 @@ mod daylight;
 mod deco;
 mod emission;
 mod flight;
+mod ground;
 mod load;
 mod mips;
 mod movers;
@@ -46,6 +47,11 @@ pub(crate) use world::map_at;
 /// screenshot at a 1.9 aspect ratio.
 // ponytail: fixed horizontal FOV; if other aspect ratios frame differently from H5, fix the vertical one instead.
 const FOV: f32 = 50.0;
+/// How far above a floor the camera keeps itself, in world units.
+const CLEARANCE: f32 = 20.0;
+/// How far a click reaches into the world looking for the floor, in world units.
+// ponytail: as far as a tile's quarter; the fog of world zones is unread, and it is what H5 stops drawing at.
+const REACH: f32 = 8192.0;
 /// How many ambient sounds play at once: the loudest where the camera stands.
 const VOICES: usize = 8;
 /// The hours between which a scene counts as daylight, from where the client's light ramps turn warm at dawn to
@@ -109,6 +115,10 @@ pub(crate) struct Scene {
     /// turned at.
     turning: (f32, f32),
     catalog: Catalog,
+    /// The floors of the map, which characters stand on and clicks land on.
+    ground: ground::Ground,
+    /// Where the character the player steers stands, which way it faces and whether it is on its way.
+    steering: Option<([f32; 3], i32, bool)>,
     /// The hour's light in world zones; in zones with states, everything draws with the light the level stored.
     daylight: Option<daylight::Daylight>,
     /// In world zones, the client's time-of-day ramps and sun path, which the hour follows.
@@ -218,6 +228,8 @@ impl Scene {
             flight: None,
             turning: (0.0, 0.0),
             catalog: data.catalog,
+            ground: data.ground,
+            steering: None,
             daylight: data.daylight,
             environment: data.environment,
             warp: data.warp,
@@ -272,6 +284,62 @@ impl Scene {
                 Some(Clip { bytes, gain, interval: sound.interval, pitch: sound.pitch })
             })
             .collect()
+    }
+
+    /// Puts the character the player steers at `at`, facing `yaw` and on its way while `moving`, standing it on
+    /// the floor under it and moving the camera behind it. Its body reaches `middle` above its feet.
+    pub(crate) fn steer(&mut self, at: [f32; 3], yaw: i32, moving: bool, middle: f32) {
+        let at = self.on_ground(at);
+        self.steering = Some((at, yaw, moving));
+        self.eye = world::behind(at, yaw, middle);
+        // The camera keeps clear of the floor it would stand in, such as the rise of a terrace behind a
+        // character on it.
+        // ponytail: it is lifted where H5 would instead pull it in toward the character.
+        let [x, y, z] = self.eye.location;
+        let [ox, oy, oz] = self.camera;
+        // Only ground no higher than a step above the character counts, so a roof over it never lifts it.
+        if let Some(floor) = self.ground.under([x - ox, y - oy, at[2] - oz]) {
+            let clear = floor + oz + CLEARANCE;
+            if clear > z {
+                self.eye.location = [x, y, clear];
+            }
+        }
+    }
+
+    /// Where a place stands on the floor under it, or where it is when the map has no floor there.
+    pub(crate) fn on_ground(&self, at: [f32; 3]) -> [f32; 3] {
+        let [x, y, z] = at;
+        let [ox, oy, oz] = self.camera;
+        match self.ground.under([x - ox, y - oy, z - oz]) {
+            Some(height) => [x, y, height + oz],
+            None => at,
+        }
+    }
+
+    /// Where the floor is under the point `pixel` of a window of `size` physical pixels, for a click that asks
+    /// the character to walk there; `None` where the ray meets no floor.
+    pub(crate) fn ground_at(&self, size: [u32; 2], [px, py]: [f32; 2]) -> Option<[f32; 3]> {
+        let [width, height] = size.map(|side| side as f32);
+        let aspect = width / height.max(1.0);
+        let [forward, right, up] = camera::axes(self.eye.rotation);
+        let across = 1.0 / (FOV.to_radians() / 2.0).tan();
+        let (x, y) = (px / width * 2.0 - 1.0, 1.0 - py / height * 2.0);
+        let (sideways, upward) = (x / across, y / (across * aspect));
+        let mut direction = forward;
+        for ((direction, right), up) in direction.iter_mut().zip(right).zip(up) {
+            *direction += right * sideways + up * upward;
+        }
+        let length = direction.iter().map(|value| value * value).sum::<f32>().sqrt();
+        let direction = direction.map(|value| value / length.max(f32::EPSILON));
+        let mut eye = self.eye.location;
+        for (eye, origin) in eye.iter_mut().zip(self.camera) {
+            *eye -= origin;
+        }
+        let mut hit = self.ground.hit(eye, direction, REACH)?;
+        for (hit, origin) in hit.iter_mut().zip(self.camera) {
+            *hit += origin;
+        }
+        Some(hit)
     }
 
     /// Turns the pawns the player may turn at `speed` rotation units a second from now on; 0 stops them.
@@ -347,7 +415,12 @@ impl Scene {
         if !self.pawns.is_empty() {
             let (speed, last) = (self.turning.0, std::mem::replace(&mut self.turning.1, time));
             for pawn in &mut self.pawns {
-                pawn.turn(speed, time - last);
+                // In the world the player steers the one character standing in the scene; in the lobby they only
+                // turn the one in front of them.
+                match self.steering {
+                    Some((at, yaw, moving)) => pawn.stride(at, yaw, moving, time - last),
+                    None => pawn.turn(speed, time - last),
+                }
             }
             let mut skinned = Vec::new();
             for pawn in &self.pawns {

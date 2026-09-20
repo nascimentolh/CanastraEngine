@@ -12,7 +12,18 @@ impl Scene {
     /// Stands `figures` in the scene in place of the characters there.
     pub(crate) fn place(&mut self, gpu: &Gpu, figures: &[Figure]) {
         let (device, queue) = (&gpu.device, &gpu.queue);
-        self.pawns = figures.iter().map(|figure| Pawn::load(&mut self.catalog, figure)).collect();
+        // A character of the world stands on the floor the map puts under it, not at the height it was stored at.
+        let grounded: Vec<Figure> = figures
+            .iter()
+            .map(|figure| {
+                if figure.grounded {
+                    Figure { location: self.on_ground(figure.location), ..figure.clone() }
+                } else {
+                    figure.clone()
+                }
+            })
+            .collect();
+        self.pawns = grounded.iter().map(|figure| Pawn::load(&mut self.catalog, figure)).collect();
         let layout = pawns::layout(&self.pawns);
         let mut views: HashMap<String, wgpu::TextureView> = HashMap::new();
         let stages = layout.ranges.iter().flat_map(|(material, _)| {

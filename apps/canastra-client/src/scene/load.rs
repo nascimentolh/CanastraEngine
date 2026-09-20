@@ -11,6 +11,7 @@ use ue2_level::{Actor, AmbientSound, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
 use super::daylight::{self, Daylight, Ramp};
+use super::ground::Ground;
 use super::movers::Mover;
 use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
@@ -56,6 +57,8 @@ pub(crate) struct SceneData {
     pub(crate) movers: Vec<Mover>,
     /// RGB multiplier of sprites that take the sky's color.
     pub(crate) cloud_tint: [f32; 3],
+    /// The floors of the level, to stand characters on and to pick a place to walk to.
+    pub(crate) ground: Ground,
     /// The client's assets, kept to stand characters in the scene later.
     pub(crate) catalog: Catalog,
     /// The hour's light in world zones; `None` in zones with states, which carry their light in the level.
@@ -145,6 +148,7 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
             .filter_map(|emitter| scene_emitter(emitter, &level.warps, &warp))
             .collect(),
         cloud_tint,
+        ground: Ground::default(),
         catalog: Catalog::default(),
         daylight,
         environment,
@@ -188,8 +192,15 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
             data.movers.push(mover);
         }
     }
+    data.ground = floors(&data);
     data.catalog = catalog;
     Ok(data)
+}
+
+/// The floors of what was built: the terrain, the buildings and everything placed on them.
+fn floors(data: &SceneData) -> Ground {
+    let positions: Vec<[f32; 3]> = data.vertices.iter().map(|vertex| [vertex[0], vertex[1], vertex[2]]).collect();
+    Ground::new(&positions, &data.indices)
 }
 
 /// `emitter` if it can show without loading the map again from `warp`, tagged with the zone it draws in. Zones no

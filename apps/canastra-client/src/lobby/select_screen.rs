@@ -1,6 +1,5 @@
 //! The character select screen: a card per character, the selected one's details, and deleting after asking.
 
-use canastra_data::text::Locale;
 use canastra_protocol::game::CharacterSummary;
 
 use super::{CHARACTERS_SCREEN, DELETE_SCREEN, Lobby};
@@ -51,11 +50,7 @@ impl Lobby {
 
     /// Binds a card per character and the selected character's details.
     pub(super) fn bind_characters(&self, screen: &mut Screen) {
-        let class = |character: &CharacterSummary| {
-            let data = self.data.as_ref().ok();
-            let class = data.and_then(|data| data.classes.get(&character.class));
-            class.and_then(|class| class.name.get(Locale::En)).unwrap_or("?").to_owned()
-        };
+        let class = |character: &CharacterSummary| self.class_name(character);
         screen.set("characters.len".into(), self.characters.len().to_string());
         for (index, character) in self.characters.iter().enumerate() {
             screen.set(format!("characters.{index}.name"), character.name.clone());

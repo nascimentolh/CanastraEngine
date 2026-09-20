@@ -43,6 +43,14 @@ impl Session {
             }
             Request::Create(new) => self.change(GameClient::CreateCharacter(new)).await,
             Request::Delete(id) => self.change(GameClient::DeleteCharacter(id)).await,
+            Request::Move(to) => {
+                let game = self.game.as_mut().ok_or("not on a game server")?;
+                game.send(&GameClient::MoveTo(to)).await?;
+                match game.recv::<GameServer>().await? {
+                    GameServer::Moving(walk) => Ok(Reply::Moving(walk)),
+                    other => Err(format!("unexpected reply to a walk: {other:?}").into()),
+                }
+            }
             Request::Enter(id) => {
                 let game = self.game.as_mut().ok_or("not on a game server")?;
                 game.send(&GameClient::EnterWorld(id)).await?;

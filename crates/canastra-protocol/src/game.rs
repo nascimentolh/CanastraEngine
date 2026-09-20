@@ -22,9 +22,12 @@ pub enum GameClient {
     DeleteCharacter(CharacterId),
     /// Enters the world with one of the account's characters on this server; the lobby ends here.
     EnterWorld(CharacterId),
+    /// Asks to walk to a place in the world.
+    MoveTo([i32; 3]),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// A granted walk carries a speed, which is a float, so these messages compare but do not sort.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GameServer {
     /// The ticket admitted the player; the character list follows.
     Admitted,
@@ -39,6 +42,18 @@ pub enum GameServer {
     CreateFailed(CreationFailure),
     /// The player is in the world, with the character it entered as.
     Entered(InWorld),
+    /// A character is on its way: where it starts, where it is bound and how fast it goes.
+    Moving(Move),
+}
+
+/// A walk the server granted.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Move {
+    /// Where the character stands as the walk begins, in map units.
+    pub from: [i32; 3],
+    pub to: [i32; 3],
+    /// Map units a second.
+    pub speed: f32,
 }
 
 /// A character standing in the world, as the client needs it to show the world around it.

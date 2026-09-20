@@ -114,6 +114,7 @@ impl App {
 impl Running {
     fn redraw(&mut self) {
         self.lobby.tick_audio();
+        self.steer();
         let scale = self.gpu.scale();
         let [width, height] = self.gpu.size();
         self.screen.layout([width as f32 / scale, height as f32 / scale], self.renderer.fonts());
@@ -185,16 +186,22 @@ impl Running {
         self.gpu.window.request_redraw();
     }
 
-    /// Selects the character under the pointer, when it points at one in the scene.
+    /// Answers a click in the scene: in the lobby it picks the character under the pointer, in the world it
+    /// walks the character to the floor the pointer is on.
     fn pick(&mut self) {
         let scale = self.gpu.scale();
         let (x, y) = self.screen.pointer_at();
-        let Some(name) = self.scene.as_ref().and_then(|scene| scene.label_at(self.gpu.size(), [x * scale, y * scale]))
-        else {
+        let (size, at) = (self.gpu.size(), [x * scale, y * scale]);
+        if let Some(name) = self.scene.as_ref().and_then(|scene| scene.label_at(size, at)) {
+            self.lobby.pick(name, &mut self.screen);
+            self.follow_screen();
             return;
-        };
-        self.lobby.pick(name, &mut self.screen);
-        self.follow_screen();
+        }
+        if let (Backdrop::World { .. }, Some(scene)) = (&self.backdrop, &self.scene)
+            && let Some(floor) = scene.ground_at(size, at)
+        {
+            self.lobby.walk_to(floor);
+        }
     }
 
     /// Follows the shown screen: reads the scene it stands in when that changed, and stands the lobby's
@@ -235,6 +242,21 @@ impl Running {
         {
             scene.place(&self.gpu, &figures);
             self.figures = figures;
+        }
+    }
+
+    /// Moves the character the player steers to where it stands this frame, and reads the next map tile when it
+    /// walked into one.
+    fn steer(&mut self) {
+        if !matches!(self.backdrop, Backdrop::World { .. }) {
+            return;
+        }
+        let Some(step) = self.lobby.steering() else { return };
+        if let Some(scene) = &mut self.scene {
+            scene.steer(step.at, step.yaw, step.moving, step.middle);
+        }
+        if self.lobby.backdrop(self.screen.markup()) != self.backdrop {
+            self.follow_screen();
         }
     }
 
