@@ -1,10 +1,15 @@
-//! The ground the world stands on: High Five geodata, one file per map tile, which says how high the floor
-//! is under a place and which way a character may leave each cell.
+//! The ground the world stands on: geodata tiles that say how high the floor is under a place, which way a
+//! character may leave each cell, and what stands between two places.
 //!
-//! The rules are the ones High Five servers walk by: a move steps from cell to cell along a straight line,
-//! each step has to be allowed by the side it leaves through, a diagonal step also needs both of the straight
-//! steps around it, and no step may climb more than [`STEP`]. A move that cannot be finished ends at the last
-//! cell it reached.
+//! A move steps from cell to cell along a straight line: each step has to be allowed by the side it leaves
+//! through, a diagonal step also needs both of the straight steps around it, and no step may climb more than
+//! [`STEP`]. A move that cannot be finished ends at the last cell it reached.
+//!
+//! Sight runs from one character's eyes to the other's, and the ground between them may not rise over that
+//! line by more than [`OBSTACLE`]. It is checked both ways, since each of the two sees the other only when
+//! the line is clear from where it stands.
+
+#![expect(clippy::cast_precision_loss, reason = "heights and cell counts are small whole numbers")]
 
 mod cells;
 mod line;
@@ -21,12 +26,12 @@ const WORLD_MIN_X: i32 = -655_360;
 const WORLD_MIN_Y: i32 = -589_824;
 /// How far a character climbs in one step of a cell, in world units.
 const STEP: i32 = 48;
-/// How far a place may be from the floor nearest it and still stand on that one, and how far a floor may be
-/// from it once the place is one of several floors, where the one below is preferred.
-const SPAWN_REACH: i32 = 100;
-const FLOOR_REACH: i32 = 60;
-/// How far apart two floors of the same place are before it counts as a building with floors above it.
-const FLOORS_APART: i32 = 80;
+/// Half a cell's height, which a place may stand over its floor and still belong to it.
+const HALF_CELL: i32 = 8;
+/// How far a character's eyes are up its body, of the body's whole height.
+const EYES: f32 = 0.75;
+/// How far the ground may rise over a line of sight and still be seen over, in world units.
+const OBSTACLE: f32 = 32.0;
 
 /// The world's geodata, with the tiles read so far.
 pub(crate) struct Geo {
@@ -43,25 +48,63 @@ impl Geo {
         Self { folder: folder.to_path_buf(), tiles: Mutex::new(HashMap::new()) }
     }
 
-    /// The floor under `at`, or `at`'s own height where the world has no geodata there. A character entering
-    /// the world takes the floor below it when the one nearest is further than a fall.
+    /// The floor a character at `at` stands on: the one under its feet, allowing half a cell above them, so a
+    /// character indoors keeps the floor it is on instead of the roof over it. Where the world has no geodata,
+    /// or nothing is built under the place, it stands where it is.
     pub(crate) fn spawn_height(&self, at: [i32; 3]) -> i32 {
         let [x, y, z] = at;
         let floors = self.floors([geo_x(x), geo_y(y)]);
-        let Some(nearest) = nearest(&floors, z) else { return z };
-        // A place well off its nearest floor, or one with floors above it, stands on the floor below it: that
-        // is what keeps a character inside a building instead of on its roof.
-        let stacked = floors.windows(2).any(|pair| {
-            pair.get(1).zip(pair.first()).is_some_and(|(over, under)| over.height - under.height > FLOORS_APART)
-        });
-        if (nearest - z).abs() <= SPAWN_REACH && !stacked {
-            return nearest;
+        if floors.is_empty() {
+            return z;
         }
-        // The floor below comes first, then the nearest, then the one above, as far as a floor's reach.
-        let below = floors.iter().map(|floor| floor.height).filter(|height| *height <= z).max();
-        let above = floors.iter().map(|floor| floor.height).filter(|height| *height >= z).min();
-        let mut tried = [below, Some(nearest), above].into_iter().flatten();
-        tried.find(|height| (height - z).abs() <= FLOOR_REACH).unwrap_or(z)
+        below(&floors, z + HALF_CELL).or_else(|| nearest(&floors, z)).map_or(z, |floor| floor.height)
+    }
+
+    /// Whether two characters can see each other. Each looks from its eyes, which sit `EYES` of the way up a
+    /// body `body` units to its middle. The line is checked from both ends.
+    // ponytail: nothing in the world is looked at yet; the first target or npc is what calls this.
+    #[allow(dead_code, reason = "the world has no targets yet")]
+    pub(crate) fn can_see(&self, from: [i32; 3], from_body: f32, to: [i32; 3], to_body: f32) -> bool {
+        self.sees(from, from_body, to, to_body) && self.sees(to, to_body, from, from_body)
+    }
+
+    /// Whether a character at `from` sees one at `to`: the ground between their eyes may not rise over the
+    /// line between them.
+    fn sees(&self, from: [i32; 3], from_body: f32, to: [i32; 3], to_body: f32) -> bool {
+        let (start, end) = ([geo_x(from[0]), geo_y(from[1])], [geo_x(to[0]), geo_y(to[1])]);
+        let (standing, watched) = (self.floors(start), self.floors(end));
+        if standing.is_empty() || watched.is_empty() {
+            // Nothing is built there to stand in the way.
+            return true;
+        }
+        let (Some(mut floor), Some(target)) =
+            (below(&standing, from[2] + HALF_CELL), below(&watched, to[2] + HALF_CELL))
+        else {
+            return false;
+        };
+        if start == end {
+            return floor.height == target.height;
+        }
+        let eyes = |floor: Cell, body: f32| floor.height as f32 + 2.0 * body * EYES;
+        let (from_eyes, to_eyes) = (eyes(floor, from_body), eyes(target, to_body));
+        let away = |[x, y]: [i32; 2]| {
+            let (sideways, along) = ((x - start[0]) as f32, (y - start[1]) as f32);
+            sideways.mul_add(sideways, along * along).sqrt()
+        };
+        let climb = (to_eyes - from_eyes) / away(end).max(1.0);
+        let mut at = start;
+        for step in Line::new(start, end) {
+            // The ground of the next cell, as the line meets it: over a wall, it is the top of the wall.
+            let floors = self.floors(step);
+            let walled = floor.sides & side(at, step) == 0;
+            let next = if walled { above(&floors, floor.height - CELL) } else { below(&floors, floor.height + STEP) };
+            let Some(next) = next else { return false };
+            if next.height as f32 > climb.mul_add(away(step), from_eyes) + OBSTACLE {
+                return false;
+            }
+            (at, floor) = (step, next);
+        }
+        true
     }
 
     /// Where a character walking from `from` toward `to` really ends: `to` when the way is clear, and
@@ -89,18 +132,9 @@ impl Geo {
     /// Whether a character standing on `at` may step to `next`: the side it leaves by has to be open, and a
     /// diagonal step also needs the two straight steps that make it.
     fn may_leave(&self, at: [i32; 2], height: i32, sides: u8, next: [i32; 2]) -> bool {
-        let (east, south) = (next[0] - at[0], next[1] - at[1]);
-        let sideways = match east.signum() {
-            1 => EAST,
-            -1 => WEST,
-            _ => 0,
-        };
-        let along = match south.signum() {
-            1 => SOUTH,
-            -1 => NORTH,
-            _ => 0,
-        };
-        if sides & (sideways | along) != sideways | along {
+        let leaving = side(at, next);
+        let (sideways, along) = (leaving & (EAST | WEST), leaving & (NORTH | SOUTH));
+        if sides & leaving != leaving {
             return false;
         }
         if sideways == 0 || along == 0 {
@@ -146,9 +180,32 @@ impl Geo {
     }
 }
 
-/// The floor of `floors` nearest `z`.
-fn nearest(floors: &[Cell], z: i32) -> Option<i32> {
-    floors.iter().map(|floor| floor.height).min_by_key(|height| (height - z).abs())
+/// The floor of `floors` nearest `z`, the highest at or under it, and the lowest over it.
+fn nearest(floors: &[Cell], z: i32) -> Option<Cell> {
+    floors.iter().min_by_key(|floor| (floor.height - z).abs()).copied()
+}
+
+fn below(floors: &[Cell], z: i32) -> Option<Cell> {
+    floors.iter().filter(|floor| floor.height <= z).max_by_key(|floor| floor.height).copied()
+}
+
+fn above(floors: &[Cell], z: i32) -> Option<Cell> {
+    floors.iter().filter(|floor| floor.height > z).min_by_key(|floor| floor.height).copied()
+}
+
+/// The side a step from `at` to `next` leaves by, as a cell marks the sides it opens onto.
+fn side(at: [i32; 2], next: [i32; 2]) -> u8 {
+    let sideways = match (next[0] - at[0]).signum() {
+        1 => EAST,
+        -1 => WEST,
+        _ => 0,
+    };
+    let along = match (next[1] - at[1]).signum() {
+        1 => SOUTH,
+        -1 => NORTH,
+        _ => 0,
+    };
+    sideways | along
 }
 
 /// The cell a world place falls in, and the middle of the world a cell covers.
@@ -193,6 +250,12 @@ mod tests {
         let spawn = [-71_338, 258_271, -3104];
         let floor = geo.spawn_height(spawn);
         assert!((floor - spawn[2]).abs() <= 24, "the temple floor is at {floor}");
+        // A character sees along the temple floor it stands on, and not through its walls.
+        let body = 23.5;
+        let ahead = [spawn[0] + 200, spawn[1], spawn[2]];
+        assert!(geo.can_see(spawn, body, ahead, body), "the floor ahead is in plain sight");
+        let outside = [spawn[0], spawn[1] - 1500, spawn[2]];
+        assert!(!geo.can_see(spawn, body, outside, body), "the wall between them is not seen through");
         // The temple's walls stop a walk well before a place a thousand units outside it.
         let outside = [spawn[0], spawn[1] - 1000, spawn[2]];
         let stopped = geo.walk(spawn, outside);
@@ -210,5 +273,6 @@ mod tests {
         let to = [100, 200, 300];
         assert_eq!(geo.walk([0, 0, 0], to), to);
         assert_eq!(geo.spawn_height([0, 0, -3104]), -3104, "and a character stands where it was left");
+        assert!(geo.can_see([0, 0, 0], 23.5, to, 23.5), "with nothing built, nothing blocks sight");
     }
 }

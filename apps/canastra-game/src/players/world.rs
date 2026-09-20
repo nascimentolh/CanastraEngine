@@ -8,49 +8,84 @@
     reason = "map units, speeds and rotation units are small whole numbers beside the exact range of a float"
 )]
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use canastra_data::GameData;
 use canastra_net::Connection;
 use canastra_protocol::game::{CharacterId, GameClient, GameServer, InWorld, Move};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::sync::mpsc;
 
-use super::Players;
+use super::registry::OUTBOX;
+use super::{Players, Registry};
 use crate::config::Result;
 use crate::geo::Geo;
 
-/// Runs the world for one player: it walks where the ground allows until it leaves, and wherever it stands
-/// then is where it stands again next time.
-pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
-    connection: &mut Connection<S>,
+/// Asks a player may have waiting before its connection stops being read, which slows that one player and
+/// nothing else.
+const ASKS: usize = 16;
+/// How long a message waits to reach a player before its session ends.
+const WRITE: Duration = Duration::from_secs(10);
+
+/// Runs the world for one player: what it asks for and what the world tells it travel apart, so the world
+/// never waits on this one connection. Wherever the character stands when it leaves is where it stands again
+/// next time.
+pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    connection: Connection<S>,
     players: &Players,
     entered: InWorld,
 ) -> Result {
     let mut player = Player::new(&entered, speed_of(&players.lobby.data, &entered));
-    let result = steer(connection, &mut player, players.geo.as_ref()).await;
+    let (mut reader, mut writer) = connection.split();
+    let (heard, asks) = mpsc::channel(ASKS);
+    // One task reads the player's asks, so a message being written never holds up what it is saying.
+    let listening = tokio::spawn(async move {
+        while let Ok(ask) = reader.recv::<GameClient>().await {
+            if heard.send(ask).await.is_err() {
+                break;
+            }
+        }
+    });
+    let (outbox, told) = mpsc::channel(OUTBOX);
+    players.world.join(player.character, outbox);
+    let result = steer(&mut writer, &mut player, players, asks, told).await;
+    players.world.leave(player.character);
+    listening.abort();
     let (at, heading) = (player.at(), player.heading);
     players.lobby.database.place_character(player.character, at.map(round), heading).await?;
     result
 }
 
-/// Answers the player's asks until the connection ends.
+/// Answers the player's asks and passes on what the world tells it, until either end stops.
 async fn steer<S: AsyncRead + AsyncWrite + Unpin>(
-    connection: &mut Connection<S>,
+    writer: &mut canastra_net::Writer<S>,
     player: &mut Player,
-    geo: Option<&Geo>,
+    players: &Players,
+    mut asks: mpsc::Receiver<GameClient>,
+    mut told: mpsc::Receiver<GameServer>,
 ) -> Result {
     loop {
-        match connection.recv().await? {
-            GameClient::MoveTo(to) => {
-                // The geodata says how far of the way asked for the character really gets, and how high the
-                // ground is along it; without geodata it walks wherever it asked to.
-                let to = geo.map_or(to, |geo| geo.walk(player.at().map(round), to));
-                let walk = player.walk_to(to.map(|unit| unit as f32));
-                connection.send(&GameServer::Moving(walk)).await?;
-            }
-            other => return Err(format!("a player in the world sent {other:?}").into()),
+        tokio::select! {
+            ask = asks.recv() => match ask {
+                Some(GameClient::MoveTo(to)) => walk(player, players.geo.as_ref(), &players.world, to),
+                Some(other) => return Err(format!("a player in the world sent {other:?}").into()),
+                None => return Ok(()),
+            },
+            told = told.recv() => match told {
+                Some(message) => tokio::time::timeout(WRITE, writer.send(&message)).await.map_err(|_| "a player stopped taking messages")??,
+                None => return Ok(()),
+            },
         }
     }
+}
+
+/// Grants the walk a player asked for, as far as the ground allows, and tells it where it is going.
+fn walk(player: &mut Player, geo: Option<&Geo>, world: &Registry, to: [i32; 3]) {
+    // The geodata says how far of the way asked for the character really gets, and how high the ground is
+    // along it; without geodata it walks wherever it asked to.
+    let to = geo.map_or(to, |geo| geo.walk(player.at().map(round), to));
+    let walk = player.walk_to(to.map(|unit| unit as f32));
+    world.tell(player.character, GameServer::Moving(walk));
 }
 
 /// A character in the world, walking in a straight line from where it was to where it is bound.

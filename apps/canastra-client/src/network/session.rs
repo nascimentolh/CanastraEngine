@@ -1,32 +1,48 @@
 //! The connections a player holds, and how each request travels over them.
 
-use canastra_net::Connection;
+use canastra_net::{Connection, Writer};
 use canastra_protocol::VERSION;
 use canastra_protocol::game::{GameClient, GameServer};
 use canastra_protocol::login::{LoginClient, LoginServer};
 use tokio::net::TcpStream;
+use winit::event_loop::EventLoopProxy;
 
 use super::{LoginAddress, Reply, Request};
+use crate::app::Event;
 
-/// To the login server after authenticating, then to a game server after joining.
+/// To the login server after authenticating, then to a game server after joining. In the world the game
+/// connection is split: a task of its own listens for whatever the server says, and this side only writes.
 #[derive(Default)]
 pub(super) struct Session {
     login: Option<Connection<TcpStream>>,
     game: Option<Connection<TcpStream>>,
+    world: Option<Writer<TcpStream>>,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 impl Session {
-    pub(super) async fn handle(&mut self, server: &LoginAddress, request: Request) -> Result<Reply> {
+    /// Answers `request`; `None` for one the server does not answer, whose messages arrive through the
+    /// listening task instead.
+    pub(super) async fn handle(
+        &mut self,
+        server: &LoginAddress,
+        request: Request,
+        proxy: &EventLoopProxy<Event>,
+    ) -> Result<Option<Reply>> {
         match request {
-            Request::Login { account, password } => self.login(server, account, password).await,
+            Request::Login { account, password } => self.login(server, account, password).await.map(Some),
+            Request::Move(to) => {
+                let world = self.world.as_mut().ok_or("not in the world")?;
+                world.send(&GameClient::MoveTo(to)).await?;
+                Ok(None)
+            }
             Request::Join(entry) => {
                 let login = self.login.as_mut().ok_or("not logged in")?;
                 login.send(&LoginClient::RequestTicket { server: entry.id }).await?;
                 let ticket = match login.recv::<LoginServer>().await? {
                     LoginServer::Ticket(ticket) => ticket,
-                    LoginServer::TicketRefused(refusal) => return Ok(Reply::TicketRefused(refusal)),
+                    LoginServer::TicketRefused(refusal) => return Ok(Some(Reply::TicketRefused(refusal))),
                     other => return Err(format!("unexpected reply to a ticket request: {other:?}").into()),
                 };
                 let stream = TcpStream::connect(entry.address.as_str()).await?;
@@ -34,30 +50,39 @@ impl Session {
                 game.send(&GameClient::Hello { version: VERSION, ticket }).await?;
                 match game.recv::<GameServer>().await? {
                     GameServer::Admitted => {}
-                    GameServer::UpdateRequired { .. } => return Ok(Reply::UpdateRequired),
-                    GameServer::Refused(refusal) => return Ok(Reply::GameRefused(refusal)),
+                    GameServer::UpdateRequired { .. } => return Ok(Some(Reply::UpdateRequired)),
+                    GameServer::Refused(refusal) => return Ok(Some(Reply::GameRefused(refusal))),
                     other => return Err(format!("unexpected reply to hello: {other:?}").into()),
                 }
                 let game = self.game.insert(game);
-                characters(game).await
+                characters(game).await.map(Some)
             }
-            Request::Create(new) => self.change(GameClient::CreateCharacter(new)).await,
-            Request::Delete(id) => self.change(GameClient::DeleteCharacter(id)).await,
-            Request::Move(to) => {
-                let game = self.game.as_mut().ok_or("not on a game server")?;
-                game.send(&GameClient::MoveTo(to)).await?;
-                match game.recv::<GameServer>().await? {
-                    GameServer::Moving(walk) => Ok(Reply::Moving(walk)),
-                    other => Err(format!("unexpected reply to a walk: {other:?}").into()),
-                }
-            }
+            Request::Create(new) => self.change(GameClient::CreateCharacter(new)).await.map(Some),
+            Request::Delete(id) => self.change(GameClient::DeleteCharacter(id)).await.map(Some),
             Request::Enter(id) => {
-                let game = self.game.as_mut().ok_or("not on a game server")?;
+                let mut game = self.game.take().ok_or("not on a game server")?;
                 game.send(&GameClient::EnterWorld(id)).await?;
-                match game.recv::<GameServer>().await? {
-                    GameServer::Entered(world) => Ok(Reply::Entered(world)),
-                    other => Err(format!("unexpected reply to entering the world: {other:?}").into()),
-                }
+                let entered = match game.recv::<GameServer>().await? {
+                    GameServer::Entered(world) => world,
+                    other => return Err(format!("unexpected reply to entering the world: {other:?}").into()),
+                };
+                // From here on the server speaks unasked, so one task does nothing but listen.
+                let (mut reader, writer) = game.split();
+                let listening = proxy.clone();
+                tokio::spawn(async move {
+                    loop {
+                        let told = match reader.recv::<GameServer>().await {
+                            Ok(told) => heard(told),
+                            Err(error) => Reply::Failed(error.to_string()),
+                        };
+                        let failed = matches!(told, Reply::Failed(_));
+                        if listening.send_event(Event::Network(told)).is_err() || failed {
+                            return;
+                        }
+                    }
+                });
+                self.world = Some(writer);
+                Ok(Some(Reply::Entered(entered)))
             }
         }
     }
@@ -88,6 +113,15 @@ impl Session {
         };
         self.login = Some(login);
         Ok(reply)
+    }
+}
+
+/// What the world saying `told` means to the lobby.
+fn heard(told: GameServer) -> Reply {
+    match told {
+        GameServer::Moving(walk) => Reply::Moving(walk),
+        GameServer::Characters(list) => Reply::Characters { list, failure: None },
+        other => Reply::Failed(format!("the world said {other:?}")),
     }
 }
 

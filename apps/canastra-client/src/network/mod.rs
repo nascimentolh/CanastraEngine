@@ -101,14 +101,16 @@ async fn run(
 ) {
     let mut session = Session::default();
     while let Some(request) = requests.recv().await {
-        let reply = match session.handle(&server, request).await {
+        let reply = match session.handle(&server, request, &proxy).await {
             Ok(reply) => reply,
             Err(error) => {
                 session = Session::default();
-                Reply::Failed(error.to_string())
+                Some(Reply::Failed(error.to_string()))
             }
         };
-        if proxy.send_event(crate::app::Event::Network(reply)).is_err() {
+        if let Some(reply) = reply
+            && proxy.send_event(crate::app::Event::Network(reply)).is_err()
+        {
             return;
         }
     }

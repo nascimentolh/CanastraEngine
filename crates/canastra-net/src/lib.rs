@@ -8,6 +8,6 @@ mod frame;
 mod keys;
 pub mod ticket;
 
-pub use connection::{Connection, HANDSHAKE_TIMEOUT, Pattern};
+pub use connection::{Connection, HANDSHAKE_TIMEOUT, Pattern, Reader, Writer};
 pub use error::Error;
 pub use keys::{Keypair, parse_key};

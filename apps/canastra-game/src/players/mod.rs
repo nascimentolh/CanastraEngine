@@ -3,6 +3,7 @@
 mod admission;
 mod lobby;
 mod names;
+mod registry;
 mod world;
 
 use std::sync::Arc;
@@ -15,6 +16,7 @@ use tokio::net::TcpListener;
 pub(crate) use admission::Admission;
 pub(crate) use lobby::Lobby;
 pub(crate) use names::NameRules;
+pub(crate) use registry::Registry;
 
 use crate::config::Result;
 
@@ -24,6 +26,8 @@ pub(crate) struct Players {
     pub(crate) lobby: Lobby,
     /// The ground the world stands on, when this server has geodata.
     pub(crate) geo: Option<crate::geo::Geo>,
+    /// The players in the world and how to reach them.
+    pub(crate) world: Registry,
 }
 
 pub(crate) async fn listen(listener: TcpListener, players: Arc<Players>) {
@@ -38,22 +42,29 @@ pub(crate) async fn listen(listener: TcpListener, players: Arc<Players>) {
     }
 }
 
-async fn serve<S: AsyncRead + AsyncWrite + Unpin>(stream: S, players: &Players) -> Result {
+async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(stream: S, players: &Players) -> Result {
     let mut connection = Connection::accept(stream, &players.keys, Pattern::Player).await?;
     let Some(account) = players.admission.admit(&mut connection).await? else { return Ok(()) };
-    let result = play(&mut connection, players, account).await;
+    let result = play(connection, players, account).await;
     players.admission.release();
     result
 }
 
 /// The lobby, and then the world for as long as the player stays in it.
-async fn play<S: AsyncRead + AsyncWrite + Unpin>(
-    connection: &mut Connection<S>,
+async fn play<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    mut connection: Connection<S>,
     players: &Players,
     account: AccountId,
 ) -> Result {
-    let entered = players.lobby.run(connection, account, players.geo.as_ref()).await?;
+    let entered = players.lobby.run(&mut connection, account, players.geo.as_ref()).await?;
     let character = &entered.character;
-    tracing::info!(account = account.0, character = character.id.0, name = character.name, "player in the world");
+    let inside = players.world.len() + 1;
+    tracing::info!(
+        account = account.0,
+        character = character.id.0,
+        name = character.name,
+        inside,
+        "player in the world"
+    );
     world::run(connection, players, entered).await
 }

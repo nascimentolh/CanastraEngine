@@ -76,6 +76,7 @@ async fn serve(path: &Path) -> Result {
         admission: Admission::new(id, config.capacity, config.tickets()?),
         lobby,
         geo,
+        world: players::Registry::default(),
     });
     let listener = TcpListener::bind(config.players).await?;
     tracing::info!(players = %config.players, "game server listening");

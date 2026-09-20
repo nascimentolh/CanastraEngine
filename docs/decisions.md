@@ -223,4 +223,14 @@ Login, then server and character selection, then walking in the world, with a ba
      where they stop is stored when they leave the world. The client stands characters on the floor under them
      rather than at the height they were stored at, since the server has no geodata yet: the floors are the
      level's own upward-facing triangles, and the client winds those so their normals point down.
+   - *2026-09-20:* the game connection speaks both ways. Once a player enters the world its connection is
+     split: one task does nothing but read what the player asks, and the world reaches the player through a
+     bounded outbox that its own task writes out. A player that falls more than a hundred and twenty-eight
+     messages behind, or whose socket stops taking them, leaves the world instead of holding it up, so one
+     slow connection costs only itself. Who is in the world is kept in one registry, ready for the players
+     around a place to be told what happens there.
+   - *2026-09-20:* the server decides where a character may stand and see. Sight runs from the eyes, three
+     quarters of the way up a body, checked from both ends, and the ground between may rise no more than
+     thirty-two units over that line. A character stands on the floor under its feet, allowing half a cell
+     above them.
 8. MVP windows and NPC dialog templates.
