@@ -203,4 +203,11 @@ Login, then server and character selection, then walking in the world, with a ba
      copied: data now, runtime with inventories ([`recruit-kit.md`](recruit-kit.md)).
    - *2026-09-15:* the initial kit is the server owner's, edited in Studio's Classes tab. The migrated kit
      is only a suggested default, not a rule of the engine.
+   - *2026-09-19:* entering the world works end to end. The client asks the game server for one of its
+     characters, the server answers with that character and where it stands, and the client loads the world
+     tile holding that place and stands the character in it, watched from behind. The tile grid is measured
+     from the client's own maps: a tile spans 32768 units, tile `20_18` starts at zero, and each map's terrain
+     is centered half a tile in (`17_25` at (-81920, 245760), `18_25` a tile east, `20_21` at (16384, 114688)).
+     The camera distance behind the character is by eye; H5 keeps its own in its native player controller.
+     There is no movement, no HUD beyond the character's name, and the world takes no orders yet.
 8. MVP windows and NPC dialog templates.

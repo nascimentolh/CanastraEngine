@@ -12,7 +12,11 @@ impl Lobby {
     pub(super) fn act_select(&mut self, verb: &str, index: Option<usize>, screen: &mut Screen) -> bool {
         match (verb, index) {
             ("select", Some(index)) if index < self.characters.len() => self.selected = index,
-            ("start", _) => screen.status = "Entering the world is not ready yet.".into(),
+            ("start", _) => {
+                if let Some(character) = self.characters.get(self.selected) {
+                    self.request(Request::Enter(character.id), "Entering the world...", screen);
+                }
+            }
             ("delete", _) => {
                 let Some(character) = self.characters.get(self.selected) else { return true };
                 let question = format!("Delete {}? This cannot be undone.", character.name);

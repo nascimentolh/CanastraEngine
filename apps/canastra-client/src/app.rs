@@ -12,10 +12,10 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
-use crate::lobby::{LOGIN_SCREEN, Lobby};
+use crate::lobby::{Backdrop, LOGIN_SCREEN, Lobby};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
-use crate::scene::{Figure, Scene};
+use crate::scene::{Figure, Scene, View};
 use crate::screen::Screen;
 
 pub(crate) struct App {
@@ -32,8 +32,8 @@ struct Running {
     modifiers: ModifiersState,
     /// `None` when the client's map could not be loaded; the UI then draws over black.
     scene: Option<Scene>,
-    /// The map and camera scene `scene` was loaded for.
-    backdrop: (&'static str, &'static str),
+    /// What `scene` was loaded to stand behind the screen.
+    backdrop: Backdrop,
     /// The characters standing in `scene`.
     figures: Vec<Figure>,
     /// The camera view `scene` shows or is flying to, as the lobby names it.
@@ -78,7 +78,7 @@ impl App {
             lobby.act("login", &mut screen);
         }
         let backdrop = lobby.backdrop(LOGIN_SCREEN);
-        let mut scene = load_scene(&gpu, &self.client_root, backdrop);
+        let mut scene = load_scene(&gpu, &self.client_root, &backdrop);
         lobby.play_ambient(scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default());
         let client_root = self.client_root.clone();
         Ok(Running {
@@ -189,15 +189,19 @@ impl Running {
         let backdrop = self.lobby.backdrop(self.screen.markup());
         if backdrop != self.backdrop {
             // Another scene of the same map only moves the camera, when it lands in a zone lit the same way.
-            let same_map = backdrop.0 == self.backdrop.0;
-            if !(same_map && self.scene.as_mut().is_some_and(|scene| scene.warp(backdrop.1))) {
-                self.scene = load_scene(&self.gpu, &self.client_root, backdrop);
+            let warped = match (&self.backdrop, &backdrop) {
+                (Backdrop::Scene(loaded, _), Backdrop::Scene(map, camera)) if loaded == map => {
+                    self.scene.as_mut().is_some_and(|scene| scene.warp(camera))
+                }
+                _ => false,
+            };
+            if !warped {
+                self.scene = load_scene(&self.gpu, &self.client_root, &backdrop);
             }
             self.backdrop = backdrop;
             let sounds = self.scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default();
             self.lobby.play_ambient(sounds);
             self.lobby.follow_music(self.screen.markup(), &self.client_root);
-            println!("backdrop: {:?} markup {}", backdrop, self.screen.markup());
             self.figures.clear();
             self.view.clear();
         }
@@ -305,10 +309,14 @@ fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
     }
 }
 
-/// The scene of `map` framed by `camera`, or `None` with the reason logged.
-fn load_scene(gpu: &Gpu, client_root: &std::path::Path, (map, camera): (&str, &str)) -> Option<Scene> {
+/// The scene standing behind the screen, or `None` with the reason logged.
+fn load_scene(gpu: &Gpu, client_root: &std::path::Path, backdrop: &Backdrop) -> Option<Scene> {
+    let (map, view) = match backdrop {
+        Backdrop::Scene(map, camera) => (*map, View::Scene(camera)),
+        Backdrop::World(map, at) => (map.as_str(), View::Behind(*at)),
+    };
     let started = std::time::Instant::now();
-    Scene::load(gpu, client_root, map, camera)
+    Scene::load(gpu, client_root, map, view)
         .inspect(|_| println!("scene loaded in {:?}", started.elapsed()))
         .inspect_err(|error| eprintln!("scene: {error}"))
         .ok()

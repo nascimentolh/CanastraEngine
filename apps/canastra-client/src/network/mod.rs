@@ -5,7 +5,7 @@ mod session;
 
 use std::net::SocketAddr;
 
-use canastra_protocol::game::{CharacterId, CharacterSummary, CreationFailure, NewCharacter, Refusal};
+use canastra_protocol::game::{CharacterId, CharacterSummary, CreationFailure, InWorld, NewCharacter, Refusal};
 use canastra_protocol::login::{AuthFailure, ServerEntry, TicketRefusal};
 use tokio::sync::mpsc;
 use winit::event_loop::EventLoopProxy;
@@ -22,6 +22,8 @@ pub(crate) enum Request {
     Join(ServerEntry),
     Create(NewCharacter),
     Delete(CharacterId),
+    /// Enters the world with a character of the joined server.
+    Enter(CharacterId),
 }
 
 /// What the network reports back, as window events.
@@ -40,6 +42,8 @@ pub(crate) enum Reply {
         list: Vec<CharacterSummary>,
         failure: Option<CreationFailure>,
     },
+    /// The player is in the world, with the character it entered as.
+    Entered(InWorld),
 }
 
 /// Where the login server is and the key it must prove it holds.

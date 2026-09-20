@@ -39,6 +39,16 @@ pub(super) fn select(data: &GameData, characters: &[CharacterSummary], selected:
         .collect()
 }
 
+/// The character the player entered the world with, standing where the server left it.
+pub(super) fn world(data: &GameData, character: &CharacterSummary, at: [f32; 3]) -> Option<Figure> {
+    let start = data.starting_class(character.class)?;
+    let body = body_of(start.race, start.archetype, character.sex == Sex::Female)?;
+    let appearance = &character.appearance;
+    let look = [appearance.face, appearance.hair_style, appearance.hair_color];
+    let figure = figure(data, body, look, &character.gear, Stand { location: at, yaw: 0 })?;
+    Some(Figure { label: Some(character.name.clone()), ..figure })
+}
+
 /// The characters on display for `race` at creation, in their display gear; the one of the `chosen` archetype and
 /// sex wears `look`.
 // ponytail: held weapons are left out until parts attach to bones; hair color waits for how H5 tints hair.

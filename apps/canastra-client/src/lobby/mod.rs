@@ -11,7 +11,7 @@ mod views;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
-use canastra_protocol::game::CharacterSummary;
+use canastra_protocol::game::{CharacterSummary, InWorld};
 use canastra_protocol::login::ServerEntry;
 
 use crate::audio::{Audio, Kind};
@@ -30,6 +30,7 @@ const SERVERS_SCREEN: &str = "servers.ui";
 const CHARACTERS_SCREEN: &str = "characters.ui";
 const DELETE_SCREEN: &str = "delete.ui";
 const CREATE_SCREEN: &str = "create.ui";
+const WORLD_SCREEN: &str = "world.ui";
 /// The track the lobby plays, which `MusicInfo` lists first as `INTRO`.
 const LOBBY_MUSIC: &str = "intro";
 /// The settings tabs the options window shows, the first one open when it opens.
@@ -54,6 +55,16 @@ pub(crate) struct Lobby {
     audio: Option<Audio>,
     /// The settings tab open in the options window, or `None` while it is closed.
     options: Option<&'static str>,
+    /// The character the player is in the world with, once it entered.
+    world: Option<InWorld>,
+}
+
+/// What stands behind a screen: a lobby map framed by one of its own scenes, or the world tile a character
+/// stands in, seen from behind it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Backdrop {
+    Scene(&'static str, &'static str),
+    World(String, [f32; 3]),
 }
 
 impl Lobby {
@@ -81,6 +92,7 @@ impl Lobby {
             turning: 0,
             audio,
             options: None,
+            world: None,
         }
     }
 
@@ -193,6 +205,13 @@ impl Lobby {
                 screen.show(SERVERS_SCREEN);
                 if self.servers.is_empty() { "No servers are online.".into() } else { String::new() }
             }
+            Reply::Entered(world) => {
+                let name = world.character.name.clone();
+                self.world = Some(world);
+                screen.set("world.character".into(), name);
+                screen.show(WORLD_SCREEN);
+                String::new()
+            }
             Reply::Characters { list, failure: Some(failure) } => {
                 self.characters = list;
                 messages::creation(failure).into()
@@ -207,12 +226,16 @@ impl Lobby {
         };
     }
 
-    /// The map and camera scene shown behind `markup`.
-    pub(crate) fn backdrop(&self, markup: &str) -> (&'static str, &'static str) {
-        match markup {
-            CHARACTERS_SCREEN | DELETE_SCREEN => (MAP, SELECT_CAMERA),
+    /// What stands behind `markup`.
+    pub(crate) fn backdrop(&self, markup: &str) -> Backdrop {
+        match (markup, &self.world) {
+            (WORLD_SCREEN, Some(world)) => {
+                let at = stands_at(world);
+                Backdrop::World(crate::scene::map_at(at), at)
+            }
+            (CHARACTERS_SCREEN | DELETE_SCREEN, _) => Backdrop::Scene(MAP, SELECT_CAMERA),
             // Lobby02 has one scene per race, all but Orc's named after it.
-            CREATE_SCREEN => (
+            (CREATE_SCREEN, _) => Backdrop::Scene(
                 CREATION_MAP,
                 match self.draft.race {
                     Race::Elf => "Elf",
@@ -223,7 +246,7 @@ impl Lobby {
                     _ => "Human",
                 },
             ),
-            _ => (MAP, LOGIN_CAMERA),
+            _ => Backdrop::Scene(MAP, LOGIN_CAMERA),
         }
     }
 
@@ -245,14 +268,23 @@ impl Lobby {
         if markup == CREATE_SCREEN { f32::from(self.turning) * QUARTER_TURN } else { 0.0 }
     }
 
-    /// The camera routes from view `from` to view `to` of the scene behind `markup`.
+    /// The camera routes from view `from` to view `to` of the scene behind `markup`; the world has none.
     pub(crate) fn routes(&self, markup: &str, from: &str, to: &str) -> Vec<Route> {
-        views::routes(self.backdrop(markup).1, from, to)
+        match self.backdrop(markup) {
+            Backdrop::Scene(_, camera) => views::routes(camera, from, to),
+            Backdrop::World(..) => Vec::new(),
+        }
     }
 
     /// The characters to stand in the scene behind `markup`.
     pub(crate) fn figures(&self, markup: &str) -> Vec<Figure> {
         match (&self.data, markup) {
+            (Ok(data), WORLD_SCREEN) => self
+                .world
+                .as_ref()
+                .and_then(|world| figures::world(data, &world.character, stands_at(world)))
+                .into_iter()
+                .collect(),
             (Ok(data), CHARACTERS_SCREEN | DELETE_SCREEN) => figures::select(data, &self.characters, self.selected),
             (Ok(data), CREATE_SCREEN) => {
                 let chosen = self.draft.choice(&self.choices).map(|choice| choice.archetype).zip(self.draft.sex);
@@ -271,6 +303,12 @@ impl Lobby {
             Err(error) => screen.status.clone_from(error),
         }
     }
+}
+
+/// Where a character stands, as the scene measures places.
+fn stands_at(world: &InWorld) -> [f32; 3] {
+    #[expect(clippy::cast_precision_loss, reason = "map units are whole numbers well within a float")]
+    world.position.map(|unit| unit as f32)
 }
 
 fn bind_servers(servers: &[ServerEntry], screen: &mut Screen) {

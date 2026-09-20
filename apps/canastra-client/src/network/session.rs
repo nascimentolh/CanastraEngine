@@ -43,6 +43,14 @@ impl Session {
             }
             Request::Create(new) => self.change(GameClient::CreateCharacter(new)).await,
             Request::Delete(id) => self.change(GameClient::DeleteCharacter(id)).await,
+            Request::Enter(id) => {
+                let game = self.game.as_mut().ok_or("not on a game server")?;
+                game.send(&GameClient::EnterWorld(id)).await?;
+                match game.recv::<GameServer>().await? {
+                    GameServer::Entered(world) => Ok(Reply::Entered(world)),
+                    other => Err(format!("unexpected reply to entering the world: {other:?}").into()),
+                }
+            }
         }
     }
 

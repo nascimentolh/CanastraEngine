@@ -14,7 +14,7 @@ use super::daylight::{self, Daylight, Ramp};
 use super::movers::Mover;
 use super::particle_mesh::{self, MeshKey, ParticleMesh};
 use super::pipeline::draw_order;
-use super::{bsp, camera, deco, sky, terrain};
+use super::{bsp, camera, deco, sky, terrain, world};
 
 /// Position (3), UV (2), RGBA color (4), and, for vertices the hour lights, the world normal (3), the ramp
 /// (`daylight::Ramp`, zero for none), and how much sun and sky reach it; see `Vertex` in `scene.wgsl`.
@@ -73,10 +73,22 @@ pub(super) struct Group {
     pub(super) indices: Vec<u32>,
 }
 
-/// Loads `MAPS/<map>` from the client and frames it from the scene tagged `camera_tag`.
-pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<SceneData, String> {
+/// How a map is framed: by one of its own scenes, as the lobby maps are, or from behind a character standing
+/// in the world, where the maps have no scenes of their own.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum View<'a> {
+    Scene(&'a str),
+    Behind([f32; 3]),
+}
+
+/// Loads `MAPS/<map>` from the client and frames it as `view` says.
+pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<SceneData, String> {
     let level = read_level(&client_root.join("MAPS").join(map))?;
-    let warp = level.warps.get(camera_tag).cloned().ok_or_else(|| format!("{map} has no scene `{camera_tag}`"))?;
+    let warp = match view {
+        View::Scene(tag) => level.warps.get(tag).cloned().ok_or_else(|| format!("{map} has no scene `{tag}`"))?,
+        // A world tile has no scene: the camera stands behind the character, in the open air the level lights.
+        View::Behind(at) => Warp { placement: world::behind(at), fog: None, zone: None, zone_state: None },
+    };
     let camera = warp.placement;
     let mut catalog = Catalog::open(client_root);
     let environment = l2_env::Environment::read(client_root);
@@ -182,6 +194,11 @@ pub(crate) fn load(client_root: &Path, map: &str, camera_tag: &str) -> Result<Sc
 /// beams inside the select hall that stand in the login's outdoor zone, joins the scene whose camera is nearest:
 /// the BSP lets every zone see every other, so the zone alone does not say where it shows.
 fn scene_emitter(mut emitter: Emitter, warps: &BTreeMap<String, Warp>, warp: &Warp) -> Option<Emitter> {
+    // A world tile has no scenes at all, so nothing narrows its emitters: every one of them shows.
+    if warps.is_empty() {
+        emitter.zone.clone_from(&warp.zone);
+        return Some(emitter);
+    }
     let own: Vec<&Warp> = warps.values().filter(|other| other.zone == emitter.zone).collect();
     if own.iter().any(|other| other.zone_state == warp.zone_state) {
         return Some(emitter);

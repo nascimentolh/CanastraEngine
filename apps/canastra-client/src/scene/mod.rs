@@ -19,6 +19,7 @@ mod pipeline;
 mod random;
 mod sky;
 mod terrain;
+mod world;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -33,10 +34,12 @@ use crate::audio::Clip;
 use crate::gpu::Gpu;
 pub(crate) use flight::Route;
 use load::Vertex;
+pub(crate) use load::View;
 use particles::System;
 use pawns::Pawn;
 pub(crate) use pawns::{Figure, HeldSource, PartSource};
 use pipeline::{Draw, Pipeline, depth_texture, material_buffer, material_uniform, target};
+pub(crate) use world::map_at;
 
 /// Horizontal field of view in degrees, measured from where the moon and the tree fall in an H5 login
 /// screenshot at a 1.9 aspect ratio.
@@ -123,9 +126,10 @@ pub(crate) struct Scene {
 }
 
 impl Scene {
-    /// Loads `map` from the client, framed by the scene tagged `camera_tag`.
-    pub(crate) fn load(gpu: &Gpu, client_root: &Path, map: &str, camera_tag: &str) -> Result<Self, String> {
-        let data = load::load(client_root, map, camera_tag)?;
+    /// Loads `map` from the client, framed as `view` says.
+    pub(crate) fn load(gpu: &Gpu, client_root: &Path, map: &str, view: View<'_>) -> Result<Self, String> {
+        let framing = format!("{view:?}");
+        let data = load::load(client_root, map, view)?;
         let (device, queue) = (&gpu.device, &gpu.queue);
         let mut pipeline = Pipeline::new(device, gpu.config.format.remove_srgb_suffix());
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
@@ -174,7 +178,7 @@ impl Scene {
         let (particle_vertices, particle_indices) =
             particle_buffers(device, particle_vertex_count, &particle_index_data);
         println!(
-            "scene: {map} from {camera_tag} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
+            "scene: {map} {framing} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
             data.camera.location,
             data.camera.rotation,
             data.vertices.len(),

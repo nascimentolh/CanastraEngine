@@ -1,0 +1,7 @@
+<ui>
+    <column id="hud">
+        <label class="hud-name" bind="world.character"/>
+        <label class="hud-line" bind="app.status" text=""/>
+    </column>
+    <label id="version" bind="app.version" text="?"/>
+</ui>
