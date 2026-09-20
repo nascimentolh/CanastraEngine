@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use l2_catalog::{Catalog, Material, Mesh};
 use ue2_assets::Image;
@@ -51,7 +51,7 @@ pub(crate) struct SceneData {
     /// The sounds the level plays around places, wherever they stand.
     pub(crate) ambient_sounds: Vec<AmbientSound>,
     /// The meshes mesh emitters draw, loaded with their materials' textures in `textures`.
-    pub(crate) particle_meshes: HashMap<MeshKey, Rc<ParticleMesh>>,
+    pub(crate) particle_meshes: HashMap<MeshKey, Arc<ParticleMesh>>,
     /// Static meshes that sway, with their materials' textures in `textures`.
     pub(crate) movers: Vec<Mover>,
     /// RGB multiplier of sprites that take the sky's color.
@@ -165,7 +165,7 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
             for (material, _) in &mesh.sections {
                 decode_material(&mut data.textures, &mut catalog, material);
             }
-            data.particle_meshes.insert(key, Rc::new(mesh));
+            data.particle_meshes.insert(key, Arc::new(mesh));
         }
     }
     for (material, group, fogged) in groups {

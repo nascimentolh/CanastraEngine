@@ -4,7 +4,7 @@
 //! emitters' particles move the same way and draw a mesh instead of a sprite.
 
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ue2_level::{DrawStyle, Emitter, SpriteEmitter};
 
@@ -25,7 +25,7 @@ pub(crate) struct System {
     /// The zone the owning emitter stands in.
     pub(crate) zone: Option<String>,
     /// For a mesh emitter, the mesh each particle draws.
-    pub(crate) mesh: Option<Rc<ParticleMesh>>,
+    pub(crate) mesh: Option<Arc<ParticleMesh>>,
     /// How the owning emitter is turned, which turns its meshes.
     axes: [[f32; 3]; 3],
 }
@@ -55,7 +55,7 @@ pub(crate) fn start(
     emitters: &[Emitter],
     camera: [f32; 3],
     cloud_tint: [f32; 3],
-    meshes: &HashMap<MeshKey, Rc<ParticleMesh>>,
+    meshes: &HashMap<MeshKey, Arc<ParticleMesh>>,
 ) -> Vec<System> {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
     let mut systems: Vec<System> = emitters

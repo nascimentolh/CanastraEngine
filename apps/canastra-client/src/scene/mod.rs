@@ -33,6 +33,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use crate::audio::Clip;
 use crate::gpu::Gpu;
 pub(crate) use flight::Route;
+pub(crate) use load::SceneData;
 use load::Vertex;
 pub(crate) use load::View;
 use particles::System;
@@ -126,10 +127,14 @@ pub(crate) struct Scene {
 }
 
 impl Scene {
-    /// Loads `map` from the client, framed as `view` says.
-    pub(crate) fn load(gpu: &Gpu, client_root: &Path, map: &str, view: View<'_>) -> Result<Self, String> {
-        let framing = format!("{view:?}");
-        let data = load::load(client_root, map, view)?;
+    /// Reads `map` from the client, framed as `view` says. This is the slow half, which touches no GPU and
+    /// runs off the window's thread; [`Scene::build`] makes a scene of what it read.
+    pub(crate) fn read(client_root: &Path, map: &str, view: View<'_>) -> Result<SceneData, String> {
+        load::load(client_root, map, view)
+    }
+
+    /// Builds the scene of what [`Scene::read`] read of `map`.
+    pub(crate) fn build(gpu: &Gpu, map: &str, data: SceneData) -> Result<Self, String> {
         let (device, queue) = (&gpu.device, &gpu.queue);
         let mut pipeline = Pipeline::new(device, gpu.config.format.remove_srgb_suffix());
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
@@ -178,7 +183,7 @@ impl Scene {
         let (particle_vertices, particle_indices) =
             particle_buffers(device, particle_vertex_count, &particle_index_data);
         println!(
-            "scene: {map} {framing} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
+            "scene: {map} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
             data.camera.location,
             data.camera.rotation,
             data.vertices.len(),

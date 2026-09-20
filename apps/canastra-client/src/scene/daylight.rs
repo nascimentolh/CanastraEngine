@@ -48,7 +48,7 @@ pub(super) fn clock_seconds() -> f32 {
 }
 
 /// Sky light at one hour and where the sun shines from.
-pub(super) struct Daylight {
+pub(crate) struct Daylight {
     hour: f32,
     /// Unit vector pointing toward the sun.
     toward_sun: [f32; 3],

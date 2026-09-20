@@ -15,13 +15,21 @@ use crate::gpu::Gpu;
 use crate::lobby::{Backdrop, LOGIN_SCREEN, Lobby};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
-use crate::scene::{Figure, Scene, View};
+use crate::scene::{Figure, Scene, SceneData, View};
 use crate::screen::Screen;
+
+/// What reaches the window loop from elsewhere: the network thread's replies and the scenes read off the
+/// window's thread.
+pub(crate) enum Event {
+    Network(Reply),
+    /// What a map was read as, and what it was read to stand behind; `None` when it could not be read.
+    Read(Backdrop, Box<Option<SceneData>>),
+}
 
 pub(crate) struct App {
     client_root: PathBuf,
     ui_folder: PathBuf,
-    proxy: EventLoopProxy<Reply>,
+    proxy: EventLoopProxy<Event>,
     running: Option<Running>,
     /// Why the app stopped early, reported after the event loop ends.
     pub(crate) error: Option<String>,
@@ -40,6 +48,9 @@ struct Running {
     view: String,
     /// The action of the control the pointer holds down.
     held: Option<String>,
+    /// What a thread is reading now, so the same map is not read twice over.
+    reading: Option<Backdrop>,
+    proxy: EventLoopProxy<Event>,
     client_root: PathBuf,
     renderer: Renderer,
     lobby: Lobby,
@@ -47,7 +58,7 @@ struct Running {
 }
 
 impl App {
-    pub(crate) fn new(client_root: PathBuf, ui_folder: PathBuf, proxy: EventLoopProxy<Reply>) -> Self {
+    pub(crate) fn new(client_root: PathBuf, ui_folder: PathBuf, proxy: EventLoopProxy<Event>) -> Self {
         Self { client_root, ui_folder, proxy, running: None, error: None }
     }
 
@@ -77,8 +88,9 @@ impl App {
             screen.set("login.password".into(), password.to_owned());
             lobby.act("login", &mut screen);
         }
+        // The login's scene is read here, before the window shows anything, so the player never sees it empty.
         let backdrop = lobby.backdrop(LOGIN_SCREEN);
-        let mut scene = load_scene(&gpu, &self.client_root, &backdrop);
+        let mut scene = read_scene(&self.client_root, &backdrop).and_then(|data| build_scene(&gpu, &backdrop, data));
         lobby.play_ambient(scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default());
         let client_root = self.client_root.clone();
         Ok(Running {
@@ -89,6 +101,8 @@ impl App {
             figures: Vec::new(),
             view: String::new(),
             held: None,
+            reading: None,
+            proxy: self.proxy.clone(),
             client_root,
             renderer,
             lobby,
@@ -183,11 +197,11 @@ impl Running {
         self.follow_screen();
     }
 
-    /// Loads the scene the shown screen stands in and stands the lobby's characters in it, when they changed.
-    // ponytail: loads block the window for a moment; load in the background if it shows.
+    /// Follows the shown screen: reads the scene it stands in when that changed, and stands the lobby's
+    /// characters in the scene already shown.
     fn follow_screen(&mut self) {
         let backdrop = self.lobby.backdrop(self.screen.markup());
-        if backdrop != self.backdrop {
+        if backdrop != self.backdrop && self.reading.as_ref() != Some(&backdrop) {
             // Another scene of the same map only moves the camera, when it lands in a zone lit the same way.
             let warped = match (&self.backdrop, &backdrop) {
                 (Backdrop::Scene(loaded, _), Backdrop::Scene(map, camera)) if loaded == map => {
@@ -195,15 +209,15 @@ impl Running {
                 }
                 _ => false,
             };
-            if !warped {
-                self.scene = load_scene(&self.gpu, &self.client_root, &backdrop);
+            if warped {
+                self.settle(backdrop);
+            } else {
+                self.read_in_background(backdrop);
             }
-            self.backdrop = backdrop;
-            let sounds = self.scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default();
-            self.lobby.play_ambient(sounds);
-            self.lobby.follow_music(self.screen.markup(), &self.client_root);
-            self.figures.clear();
-            self.view.clear();
+        }
+        // While a map is being read, the scene still up is the one it replaces: nothing new belongs in it.
+        if self.reading.is_some() {
+            return;
         }
         let view = self.lobby.view(self.screen.markup());
         if view != self.view {
@@ -223,9 +237,46 @@ impl Running {
             self.figures = figures;
         }
     }
+
+    /// Reads a map on a thread of its own, so the window keeps drawing while it is read; the scene it becomes
+    /// arrives as an [`Event::Read`].
+    fn read_in_background(&mut self, backdrop: Backdrop) {
+        self.reading = Some(backdrop.clone());
+        let (client_root, proxy) = (self.client_root.clone(), self.proxy.clone());
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let read = read_scene(&client_root, &backdrop);
+            println!("scene read in {:?}", started.elapsed());
+            let _ = proxy.send_event(Event::Read(backdrop, Box::new(read)));
+        });
+    }
+
+    /// Takes the scene read for `backdrop` as the one standing behind the screen.
+    fn read(&mut self, backdrop: &Backdrop, data: Option<SceneData>) {
+        if self.reading.as_ref() == Some(backdrop) {
+            self.reading = None;
+        }
+        // A scene read for a screen the player has left since is dropped; the one they are on is on its way.
+        if self.lobby.backdrop(self.screen.markup()) != *backdrop {
+            return;
+        }
+        self.scene = data.and_then(|data| build_scene(&self.gpu, backdrop, data));
+        self.settle(backdrop.clone());
+        self.follow_screen();
+    }
+
+    /// Takes `backdrop` as the one shown, and lets what follows the scene follow it.
+    fn settle(&mut self, backdrop: Backdrop) {
+        self.backdrop = backdrop;
+        let sounds = self.scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default();
+        self.lobby.play_ambient(sounds);
+        self.lobby.follow_music(self.screen.markup(), &self.client_root);
+        self.figures.clear();
+        self.view.clear();
+    }
 }
 
-impl ApplicationHandler<Reply> for App {
+impl ApplicationHandler<Event> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.running.is_some() {
             return;
@@ -275,12 +326,16 @@ impl ApplicationHandler<Reply> for App {
         }
     }
 
-    fn user_event(&mut self, _: &ActiveEventLoop, reply: Reply) {
-        if let Some(running) = &mut self.running {
-            running.lobby.reply(reply, &mut running.screen);
-            running.follow_screen();
-            running.gpu.window.request_redraw();
+    fn user_event(&mut self, _: &ActiveEventLoop, event: Event) {
+        let Some(running) = &mut self.running else { return };
+        match event {
+            Event::Network(reply) => {
+                running.lobby.reply(reply, &mut running.screen);
+                running.follow_screen();
+            }
+            Event::Read(backdrop, data) => running.read(&backdrop, *data),
         }
+        running.gpu.window.request_redraw();
     }
 
     fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
@@ -309,17 +364,22 @@ fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
     }
 }
 
-/// The scene standing behind the screen, or `None` with the reason logged.
-fn load_scene(gpu: &Gpu, client_root: &std::path::Path, backdrop: &Backdrop) -> Option<Scene> {
+/// What stands behind `backdrop`, read from the client, or `None` with the reason logged.
+fn read_scene(client_root: &std::path::Path, backdrop: &Backdrop) -> Option<SceneData> {
     let (map, view) = match backdrop {
         Backdrop::Scene(map, camera) => (*map, View::Scene(camera)),
         Backdrop::World { map, at, heading, middle } => (map.as_str(), View::Behind(*at, *heading, *middle)),
     };
-    let started = std::time::Instant::now();
-    Scene::load(gpu, client_root, map, view)
-        .inspect(|_| println!("scene loaded in {:?}", started.elapsed()))
-        .inspect_err(|error| eprintln!("scene: {error}"))
-        .ok()
+    Scene::read(client_root, map, view).inspect_err(|error| eprintln!("scene: {error}")).ok()
+}
+
+/// The scene of what was read, on the GPU, or `None` with the reason logged.
+fn build_scene(gpu: &Gpu, backdrop: &Backdrop, data: SceneData) -> Option<Scene> {
+    let map = match backdrop {
+        Backdrop::Scene(map, _) => *map,
+        Backdrop::World { map, .. } => map.as_str(),
+    };
+    Scene::build(gpu, map, data).inspect_err(|error| eprintln!("scene: {error}")).ok()
 }
 
 /// The game data at `CANASTRA_GAME_DATA`, by default `gamedata.cana` in the working folder.

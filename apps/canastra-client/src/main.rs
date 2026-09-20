@@ -36,7 +36,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let event_loop = match EventLoop::<network::Reply>::with_user_event().build() {
+    let event_loop = match EventLoop::<app::Event>::with_user_event().build() {
         Ok(event_loop) => event_loop,
         Err(error) => {
             eprintln!("{error}");

@@ -71,7 +71,7 @@ pub(crate) struct Network {
 
 impl Network {
     /// Starts the network thread; replies wake the event loop through `proxy`.
-    pub(crate) fn start(server: LoginAddress, proxy: EventLoopProxy<Reply>) -> Result<Self, String> {
+    pub(crate) fn start(server: LoginAddress, proxy: EventLoopProxy<crate::app::Event>) -> Result<Self, String> {
         let (requests, receiver) = mpsc::unbounded_channel();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -90,7 +90,11 @@ impl Network {
     }
 }
 
-async fn run(server: LoginAddress, mut requests: mpsc::UnboundedReceiver<Request>, proxy: EventLoopProxy<Reply>) {
+async fn run(
+    server: LoginAddress,
+    mut requests: mpsc::UnboundedReceiver<Request>,
+    proxy: EventLoopProxy<crate::app::Event>,
+) {
     let mut session = Session::default();
     while let Some(request) = requests.recv().await {
         let reply = match session.handle(&server, request).await {
@@ -100,7 +104,7 @@ async fn run(server: LoginAddress, mut requests: mpsc::UnboundedReceiver<Request
                 Reply::Failed(error.to_string())
             }
         };
-        if proxy.send_event(reply).is_err() {
+        if proxy.send_event(crate::app::Event::Network(reply)).is_err() {
             return;
         }
     }
