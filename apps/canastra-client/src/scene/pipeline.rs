@@ -3,8 +3,7 @@
 
 use std::collections::HashMap;
 
-use l2_catalog::Blend;
-use ue2_assets::Image;
+use l2_catalog::{Blend, Layout, Pixels};
 use wgpu::BlendFactor::{Dst, One, OneMinusSrc, Src, SrcAlpha, Zero};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
@@ -189,18 +188,30 @@ impl Pipeline {
     }
 
     /// Uploads `image` and its mips as gamma-space texels, which the scene blends as they are.
-    pub(super) fn texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Image) -> wgpu::TextureView {
-        let (levels, texels) = super::mips::chain(image.width, image.height, &image.rgba);
+    /// Uploads a texture as the client keeps it: compressed blocks with the mips they ship go straight to
+    /// the GPU, and plain pixels get a mip chain built for them.
+    pub(super) fn texture(device: &wgpu::Device, queue: &wgpu::Queue, pixels: &Pixels) -> wgpu::TextureView {
+        let stored = u32::try_from(pixels.mips.len()).unwrap_or(1).max(1);
+        let (format, levels, texels) = match pixels.layout {
+            Layout::Rgba => {
+                let top = pixels.mips.first().map(Vec::as_slice).unwrap_or_default();
+                let (levels, texels) = super::mips::chain(pixels.width, pixels.height, top);
+                (wgpu::TextureFormat::Rgba8Unorm, levels, texels)
+            }
+            Layout::Bc1 => (wgpu::TextureFormat::Bc1RgbaUnorm, stored, pixels.mips.concat()),
+            Layout::Bc2 => (wgpu::TextureFormat::Bc2RgbaUnorm, stored, pixels.mips.concat()),
+            Layout::Bc3 => (wgpu::TextureFormat::Bc3RgbaUnorm, stored, pixels.mips.concat()),
+        };
         device
             .create_texture_with_data(
                 queue,
                 &wgpu::TextureDescriptor {
                     label: Some("scene texture"),
-                    size: wgpu::Extent3d { width: image.width, height: image.height, depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d { width: pixels.width, height: pixels.height, depth_or_array_layers: 1 },
                     mip_level_count: levels,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 },

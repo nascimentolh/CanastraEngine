@@ -52,6 +52,9 @@ const CLEARANCE: f32 = 20.0;
 /// How far a click reaches into the world looking for the floor, in world units.
 // ponytail: as far as a tile's quarter; the fog of world zones is unread, and it is what H5 stops drawing at.
 const REACH: f32 = 8192.0;
+/// How far from the camera a particle system still shows, in world units.
+// ponytail: one radius for every system; the client's own emitters carry no reach of their own.
+const PARTICLE_REACH: f32 = 4000.0;
 /// How many ambient sounds play at once: the loudest where the camera stands.
 const VOICES: usize = 8;
 /// The hours between which a scene counts as daylight, from where the client's light ramps turn warm at dawn to
@@ -77,6 +80,11 @@ struct Batch {
     indices: Range<u32>,
     /// For a particle system's sprites, the zone they draw in.
     zone: Option<String>,
+    /// For a particle system's sprites, which system they belong to, so far ones are left out.
+    system: Option<usize>,
+    /// The box this batch fills, for leaving out what falls outside the screen; what moves with the camera,
+    /// such as the sky and the characters, has none.
+    bounds: Option<[[f32; 3]; 2]>,
 }
 
 pub(crate) struct Scene {
@@ -97,6 +105,13 @@ pub(crate) struct Scene {
     mover_batches: Vec<Batch>,
     /// One batch per particle system, in the same order.
     sprite_batches: Vec<Batch>,
+    /// Where each system's vertices begin in the particle buffer, and where the swaying meshes begin.
+    system_starts: Vec<usize>,
+    mover_start: usize,
+    /// Which systems are close enough to the camera to draw, worked out once a frame.
+    near: Vec<bool>,
+    /// Vertices written each frame, kept between frames so no frame allocates them again.
+    scratch: Vec<Vertex>,
     particle_vertices: wgpu::Buffer,
     particle_indices: wgpu::Buffer,
     pawns: Vec<Pawn>,
@@ -117,8 +132,9 @@ pub(crate) struct Scene {
     catalog: Catalog,
     /// The floors of the map, which characters stand on and clicks land on.
     ground: ground::Ground,
-    /// Where the character the player steers stands, which way it faces and whether it is on its way.
-    steering: Option<([f32; 3], i32, bool)>,
+    /// Where each character in the scene stands, which way it faces and whether it is on its way, in the
+    /// order the figures were placed.
+    steering: Vec<([f32; 3], i32, bool)>,
     /// The hour's light in world zones; in zones with states, everything draws with the light the level stored.
     daylight: Option<daylight::Daylight>,
     /// In world zones, the client's time-of-day ramps and sun path, which the hour follows.
@@ -139,8 +155,8 @@ pub(crate) struct Scene {
 impl Scene {
     /// Reads `map` from the client, framed as `view` says. This is the slow half, which touches no GPU and
     /// runs off the window's thread; [`Scene::build`] makes a scene of what it read.
-    pub(crate) fn read(client_root: &Path, map: &str, view: View<'_>) -> Result<SceneData, String> {
-        load::load(client_root, map, view)
+    pub(crate) fn read(client_root: &Path, map: &str, view: View<'_>, blocks: bool) -> Result<SceneData, String> {
+        load::load(client_root, map, view, blocks)
     }
 
     /// Builds the scene of what [`Scene::read`] read of `map`.
@@ -167,20 +183,16 @@ impl Scene {
                 ..batch
             })
         };
-        let batches: Vec<Batch> = data
-            .batches
-            .into_iter()
-            .filter_map(|level| {
-                batch(level.material.clone(), Draw::surface(level.material.blend), level.fogged, 0.0, level.indices)
-            })
-            .collect();
+        let batches = level_batches(data.batches, &mut batch);
 
         let mut systems =
             particles::start(&data.emitters, data.camera.location, data.cloud_tint, &data.particle_meshes);
         systems.retain(|system| {
             system.mesh.is_some() || system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path))
         });
-        let (sprite_batches, particle_vertex_count, mut particle_index_data) = emission::layout(&systems, &mut batch)?;
+        let laid = emission::layout(&systems, &mut batch)?;
+        let (sprite_batches, system_starts) = (laid.batches, laid.starts);
+        let (particle_vertex_count, mut particle_index_data) = (laid.vertices, laid.indices);
         let (mover_batches, mover_vertex_count) =
             movers::layout(&data.movers, particle_vertex_count, &mut particle_index_data, &mut batch)?;
         let particle_vertex_count = particle_vertex_count + mover_vertex_count;
@@ -216,6 +228,10 @@ impl Scene {
             movers: data.movers,
             mover_batches,
             sprite_batches,
+            system_starts,
+            mover_start: particle_vertex_count - mover_vertex_count,
+            near: Vec::new(),
+            scratch: Vec::new(),
             particle_vertices,
             particle_indices,
             pawns: Vec::new(),
@@ -229,7 +245,7 @@ impl Scene {
             turning: (0.0, 0.0),
             catalog: data.catalog,
             ground: data.ground,
-            steering: None,
+            steering: Vec::new(),
             daylight: data.daylight,
             environment: data.environment,
             warp: data.warp,
@@ -286,11 +302,11 @@ impl Scene {
             .collect()
     }
 
-    /// Puts the character the player steers at `at`, facing `yaw` and on its way while `moving`, standing it on
-    /// the floor under it and moving the camera behind it. Its body reaches `middle` above its feet.
-    pub(crate) fn steer(&mut self, at: [f32; 3], yaw: i32, moving: bool, middle: f32) {
-        let at = self.on_ground(at);
-        self.steering = Some((at, yaw, moving));
+    /// Puts each character in the scene where it now stands, on the floor under it, and moves the camera
+    /// behind the one at `player`, whose body reaches `middle` above its feet.
+    pub(crate) fn steer(&mut self, steps: &[([f32; 3], i32, bool)], player: usize, middle: f32) {
+        self.steering = steps.iter().map(|(at, yaw, moving)| (self.on_ground(*at), *yaw, *moving)).collect();
+        let Some(&(at, yaw, _)) = self.steering.get(player) else { return };
         self.eye = world::behind(at, yaw, middle);
         // The camera keeps clear of the floor it would stand in, such as the rise of a terrace behind a
         // character on it.
@@ -401,33 +417,8 @@ impl Scene {
             );
         }
         self.uniforms_written = true;
-        for system in &mut self.systems {
-            system.update(time);
-        }
-        let mut sprites = Vec::new();
-        for system in &self.systems {
-            system.write(time, self.eye.rotation, &mut sprites);
-        }
-        for mover in &self.movers {
-            mover.write(time, self.camera, &mut sprites);
-        }
-        gpu.queue.write_buffer(&self.particle_vertices, 0, &vertex_bytes(&sprites));
-        if !self.pawns.is_empty() {
-            let (speed, last) = (self.turning.0, std::mem::replace(&mut self.turning.1, time));
-            for pawn in &mut self.pawns {
-                // In the world the player steers the one character standing in the scene; in the lobby they only
-                // turn the one in front of them.
-                match self.steering {
-                    Some((at, yaw, moving)) => pawn.stride(at, yaw, moving, time - last),
-                    None => pawn.turn(speed, time - last),
-                }
-            }
-            let mut skinned = Vec::new();
-            for pawn in &self.pawns {
-                pawn.write(time, self.camera, self.daylight.is_some(), &mut skinned);
-            }
-            gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
-        }
+        self.write_particles(gpu, time);
+        self.write_pawns(gpu, time);
         if self.depth.as_ref().is_none_or(|(_, depth_size, _, _)| *depth_size != size) {
             let view = depth_texture(&gpu.device, size);
             let format = gpu.config.format.remove_srgb_suffix();
@@ -440,6 +431,8 @@ impl Scene {
             format: Some(gpu.config.format.remove_srgb_suffix()),
             ..Default::default()
         });
+        // What the camera cannot see is not drawn: a map holds far more than a screen shows.
+        let screen = camera::sides(&self.view(aspect));
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
         let Some((depth, _, particle_globals, color)) = &self.depth else { return encoder.finish() };
         // Level geometry first, writing depth; then particles over it in a pass that only reads depth, so
@@ -481,7 +474,13 @@ impl Scene {
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
                 // Other zones are closed off from the camera's; only its own emitters can be seen.
                 // ponytail: zones stand in for BSP portal visibility; add portals when a scene looks into another zone.
-                for batch in batches.iter().filter(|batch| batch.zone.is_none() || batch.zone == self.warp.zone) {
+                let shown = |batch: &&Batch| {
+                    let zone = batch.zone.is_none() || batch.zone == self.warp.zone;
+                    let near = batch.system.is_none_or(|system| self.near.get(system).copied().unwrap_or(false));
+                    let seen = batch.bounds.is_none_or(|bounds| camera::in_view(&screen, bounds));
+                    zone && near && seen
+                };
+                for batch in batches.iter().filter(shown) {
                     let Some(pipeline) = self.pipeline.get(batch.draw) else { continue };
                     pass.set_pipeline(pipeline);
                     let Some(group) = batch.group(time) else { continue };
@@ -495,6 +494,59 @@ impl Scene {
 }
 
 impl Scene {
+    /// Moves every particle near the camera and writes what it draws. Systems too far to be seen are neither
+    /// moved nor written, and their old vertices are never read, since their batches do not draw either.
+    fn write_particles(&mut self, gpu: &Gpu, time: f32) {
+        let [eye_x, eye_y, eye_z] = self.eye.location;
+        let [origin_x, origin_y, origin_z] = self.camera;
+        let eye = [eye_x - origin_x, eye_y - origin_y, eye_z - origin_z];
+        self.near = self.systems.iter().map(|system| system.within(eye, PARTICLE_REACH)).collect();
+        for (system, near) in self.systems.iter_mut().zip(&self.near) {
+            if *near {
+                system.update(time);
+            }
+        }
+        let mut scratch = std::mem::take(&mut self.scratch);
+        for (index, system) in self.systems.iter().enumerate() {
+            if !self.near.get(index).copied().unwrap_or(false) {
+                continue;
+            }
+            scratch.clear();
+            system.write(time, self.eye.rotation, &mut scratch);
+            let start = self.system_starts.get(index).copied().unwrap_or(0);
+            gpu.queue.write_buffer(&self.particle_vertices, vertex_offset(start), &vertex_bytes(&scratch));
+        }
+        if !self.movers.is_empty() {
+            scratch.clear();
+            for mover in &self.movers {
+                mover.write(time, self.camera, &mut scratch);
+            }
+            gpu.queue.write_buffer(&self.particle_vertices, vertex_offset(self.mover_start), &vertex_bytes(&scratch));
+        }
+        self.scratch = scratch;
+    }
+
+    /// Moves every character in the scene and writes the skin they draw with.
+    fn write_pawns(&mut self, gpu: &Gpu, time: f32) {
+        if self.pawns.is_empty() {
+            return;
+        }
+        let (speed, last) = (self.turning.0, std::mem::replace(&mut self.turning.1, time));
+        for (index, pawn) in self.pawns.iter_mut().enumerate() {
+            // In the world every character walks where the world says; in the lobby the player only turns the
+            // one in front of them.
+            match self.steering.get(index) {
+                Some(&(at, yaw, moving)) => pawn.stride(at, yaw, moving, time - last),
+                None => pawn.turn(speed, time - last),
+            }
+        }
+        let mut skinned = Vec::new();
+        for pawn in &self.pawns {
+            pawn.write(time, self.camera, self.daylight.is_some(), &mut skinned);
+        }
+        gpu.queue.write_buffer(&self.pawn_vertices, 0, &vertex_bytes(&skinned));
+    }
+
     /// Moves the light on to the lobby clock's hour once a game minute has passed.
     fn follow_clock(&mut self) {
         let Some(environment) = &self.environment else { return };
@@ -547,6 +599,26 @@ fn animated(material: &Material) -> bool {
 }
 
 /// The batch that draws `indices` with `material`, fogged and hard-edged, when its textures have views.
+/// The batches the level's own geometry draws with, each keeping the box it fills.
+fn level_batches(
+    level: Vec<load::Batch>,
+    batch: &mut dyn FnMut(Material, Draw, bool, f32, Range<u32>) -> Option<Batch>,
+) -> Vec<Batch> {
+    level
+        .into_iter()
+        .filter_map(|chunk| {
+            let draw = Draw::surface(chunk.material.blend);
+            let made = batch(chunk.material, draw, chunk.fogged, 0.0, chunk.indices);
+            made.map(|made| Batch { bounds: chunk.bounds, ..made })
+        })
+        .collect()
+}
+
+/// Where a vertex sits in the particle buffer, in bytes.
+fn vertex_offset(vertex: usize) -> u64 {
+    (vertex * size_of::<Vertex>()) as u64
+}
+
 fn material_batch<'a>(
     pipeline: &mut Pipeline,
     device: &wgpu::Device,
@@ -566,7 +638,19 @@ fn material_batch<'a>(
         .map(|frame| pipeline.material(device, &uniform, frame, layer.unwrap_or(frame)))
         .collect();
     pipeline.prepare(device, draw);
-    Some(Batch { fps: material.fps, material, draw, fogged: true, soft: 0.0, uniform, groups, indices, zone: None })
+    Some(Batch {
+        fps: material.fps,
+        material,
+        draw,
+        fogged: true,
+        soft: 0.0,
+        uniform,
+        groups,
+        indices,
+        zone: None,
+        system: None,
+        bounds: None,
+    })
 }
 
 /// A vertex buffer of `vertices` the particles rewrite every frame, and their fixed `indices`; neither empty.

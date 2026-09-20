@@ -9,16 +9,26 @@ use super::Batch;
 use super::particles::{self, System};
 use super::pipeline::Draw;
 
-/// The batches `systems` draw with, made by `batch`, how many vertices they write, and their indices.
+/// What laying out the particle systems gives: the batches they draw with, where each system's vertices
+/// begin, how many vertices they write in all, and the indices over them.
+pub(super) struct Laid {
+    pub(super) batches: Vec<Batch>,
+    pub(super) starts: Vec<usize>,
+    pub(super) vertices: usize,
+    pub(super) indices: Vec<u32>,
+}
+
+/// The batches `systems` draw with, made by `batch`.
 pub(super) fn layout(
     systems: &[System],
     batch: &mut dyn FnMut(Material, Draw, bool, f32, Range<u32>) -> Option<Batch>,
-) -> Result<(Vec<Batch>, usize, Vec<u32>), String> {
+) -> Result<Laid, String> {
     // Every particle system's vertices follow the last one's; each draws its sprites, or its mesh's sections,
     // over indices laid out for all of its particles.
     let (mut vertex_count, mut indices_all) = (0_usize, Vec::<u32>::new());
-    let mut batches = Vec::new();
-    for system in systems {
+    let (mut batches, mut starts) = (Vec::new(), Vec::with_capacity(systems.len()));
+    for (index, system) in systems.iter().enumerate() {
+        starts.push(vertex_count);
         let sprite = &system.sprite;
         let base = u32::try_from(vertex_count).map_err(|_| "too many particles")?;
         let each = u32::try_from(system.vertices_each()).map_err(|_| "too many particles")?;
@@ -64,8 +74,9 @@ pub(super) fn layout(
             indices_all.extend(indices);
             let end = u32::try_from(indices_all.len()).map_err(|_| "too many particles")?;
             let zone = system.zone.clone();
-            batches.extend(batch(material, draw, sprite.fogged, soft, start..end).map(|b| Batch { zone, ..b }));
+            let made = batch(material, draw, sprite.fogged, soft, start..end);
+            batches.extend(made.map(|b| Batch { zone, system: Some(index), ..b }));
         }
     }
-    Ok((batches, vertex_count, indices_all))
+    Ok(Laid { batches, starts, vertices: vertex_count, indices: indices_all })
 }

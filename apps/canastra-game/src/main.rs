@@ -78,6 +78,7 @@ async fn serve(path: &Path) -> Result {
         geo,
         world: players::Registry::default(),
     });
+    tokio::spawn(players::follow(players.clone()));
     let listener = TcpListener::bind(config.players).await?;
     tracing::info!(players = %config.players, "game server listening");
     tokio::spawn(players::listen(listener, players.clone()));

@@ -5,8 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use l2_catalog::{Catalog, Material, Mesh};
-use ue2_assets::Image;
+use l2_catalog::{Catalog, Material, Mesh, Pixels};
 use ue2_level::{Actor, AmbientSound, Emitter, Level, Placement, Shot, Warp};
 use ue2_package::Package;
 
@@ -31,7 +30,14 @@ pub(crate) struct Batch {
     pub(crate) indices: std::ops::Range<u32>,
     /// Whether distance fog covers it; the sky stands beyond fog.
     pub(crate) fogged: bool,
+    /// The corners of the box the batch fills, for leaving out what the camera cannot see; the sky, which
+    /// stands wherever the camera does, has none.
+    pub(crate) bounds: Option<[[f32; 3]; 2]>,
 }
+
+/// World units a chunk of level geometry covers on each axis. Geometry is cut into chunks so a camera draws
+/// what is in front of it instead of the whole map.
+const CHUNK: f32 = 4096.0;
 
 pub(crate) struct SceneData {
     pub(crate) camera: Placement,
@@ -43,8 +49,8 @@ pub(crate) struct SceneData {
     pub(crate) indices: Vec<u32>,
     /// Opaque batches first, then blended ones, in drawing order.
     pub(crate) batches: Vec<Batch>,
-    /// Decoded textures by path, for every stage of every batch and every emitter sprite.
-    pub(crate) textures: HashMap<String, Image>,
+    /// The textures of every stage of every batch and every emitter sprite, by path.
+    pub(crate) textures: HashMap<String, Pixels>,
     /// The emitters of the zones the camera can warp to; each draws only while the camera is in its zone.
     pub(crate) emitters: Vec<Emitter>,
     /// The hour the lobby clock showed when the scene loaded.
@@ -86,7 +92,7 @@ pub(crate) enum View<'a> {
 }
 
 /// Loads `MAPS/<map>` from the client and frames it as `view` says.
-pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<SceneData, String> {
+pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>, blocks: bool) -> Result<SceneData, String> {
     let level = read_level(&client_root.join("MAPS").join(map))?;
     let warp = match view {
         View::Scene(tag) => level.warps.get(tag).cloned().ok_or_else(|| format!("{map} has no scene `{tag}`"))?,
@@ -158,7 +164,7 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
     for texture in
         data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.texture.as_ref())
     {
-        decode(&mut data.textures, &mut catalog, texture);
+        decode(&mut data.textures, &mut catalog, texture, blocks);
     }
     for shape in data.emitters.iter().flat_map(|emitter| &emitter.sprites).filter_map(|sprite| sprite.mesh.as_ref()) {
         let key = particle_mesh::key(shape);
@@ -167,27 +173,16 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
         }
         if let Some(mesh) = ParticleMesh::load(&mut catalog, shape) {
             for (material, _) in &mesh.sections {
-                decode_material(&mut data.textures, &mut catalog, material);
+                decode_material(&mut data.textures, &mut catalog, material, blocks);
             }
             data.particle_meshes.insert(key, Arc::new(mesh));
         }
     }
-    for (material, group, fogged) in groups {
-        decode_material(&mut data.textures, &mut catalog, &material);
-        if !data.textures.contains_key(&material.base.texture) {
-            continue;
-        }
-        let base = u32::try_from(data.vertices.len()).map_err(|_| "scene has too many vertices")?;
-        let start = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
-        data.indices.extend(group.indices.iter().map(|index| base + index));
-        data.vertices.extend(group.vertices);
-        let end = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
-        data.batches.push(Batch { material, indices: start..end, fogged });
-    }
+    merge(&mut data, groups, &mut catalog, blocks)?;
     for actor in &level.actors {
         if let Some(mover) = Mover::load(actor, &mut catalog, lit) {
             for material in mover.materials() {
-                decode_material(&mut data.textures, &mut catalog, material);
+                decode_material(&mut data.textures, &mut catalog, material, blocks);
             }
             data.movers.push(mover);
         }
@@ -195,6 +190,66 @@ pub(crate) fn load(client_root: &Path, map: &str, view: View<'_>) -> Result<Scen
     data.ground = floors(&data);
     data.catalog = catalog;
     Ok(data)
+}
+
+/// Part of a group that stands together, drawn on its own so the rest can be left out.
+struct Chunk {
+    indices: Vec<u32>,
+    /// The corners of the box it fills; the sky, which stands wherever the camera does, has none.
+    bounds: Option<[[f32; 3]; 2]>,
+}
+
+/// Puts every group's geometry into the scene's buffers, each group cut into the chunks it spans.
+fn merge(
+    data: &mut SceneData,
+    groups: Vec<(Material, Group, bool)>,
+    catalog: &mut Catalog,
+    blocks: bool,
+) -> Result<(), String> {
+    for (material, group, fogged) in groups {
+        decode_material(&mut data.textures, catalog, &material, blocks);
+        if !data.textures.contains_key(&material.base.texture) {
+            continue;
+        }
+        let base = u32::try_from(data.vertices.len()).map_err(|_| "scene has too many vertices")?;
+        // The sky moves with the camera, so it is never left out; everything else draws chunk by chunk.
+        let chunks =
+            if fogged { chunks_of(&group) } else { vec![Chunk { indices: group.indices.clone(), bounds: None }] };
+        for chunk in chunks {
+            let start = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
+            data.indices.extend(chunk.indices.iter().map(|index| base + index));
+            let end = u32::try_from(data.indices.len()).map_err(|_| "scene has too many indices")?;
+            let batch = Batch { material: material.clone(), indices: start..end, fogged, bounds: chunk.bounds };
+            data.batches.push(batch);
+        }
+        data.vertices.extend(group.vertices);
+    }
+    Ok(())
+}
+
+/// A group's triangles cut into chunks by where they stand, each with the box it fills. Triangles keep the
+/// vertices they had: only the order they are drawn in changes.
+fn chunks_of(group: &Group) -> Vec<Chunk> {
+    let mut chunks: HashMap<[i32; 2], Vec<u32>> = HashMap::new();
+    for triangle in group.indices.as_chunks::<3>().0 {
+        let corners = triangle.map(|index| group.vertices.get(index as usize).copied().unwrap_or_default());
+        let middle = |axis: usize| corners.iter().filter_map(|corner| corner.get(axis)).sum::<f32>() / 3.0;
+        #[expect(clippy::cast_possible_truncation, reason = "a map is a few dozen chunks across")]
+        let cell = [(middle(0) / CHUNK).floor() as i32, (middle(1) / CHUNK).floor() as i32];
+        chunks.entry(cell).or_default().extend(triangle);
+    }
+    chunks
+        .into_values()
+        .map(|indices| {
+            let (mut low, mut high) = ([f32::MAX; 3], [f32::MIN; 3]);
+            for corner in indices.iter().filter_map(|index| group.vertices.get(*index as usize)) {
+                for ((low, high), value) in low.iter_mut().zip(high.iter_mut()).zip(corner) {
+                    (*low, *high) = (low.min(*value), high.max(*value));
+                }
+            }
+            Chunk { indices, bounds: Some([low, high]) }
+        })
+        .collect()
 }
 
 /// The floors of what was built: the terrain, the buildings and everything placed on them.
@@ -321,19 +376,20 @@ pub(super) fn mesh_vertex(
 }
 
 /// Decodes every texture `material` draws with: its stages and, when its base animates, the other frames.
-fn decode_material(textures: &mut HashMap<String, Image>, catalog: &mut Catalog, material: &Material) {
+fn decode_material(textures: &mut HashMap<String, Pixels>, catalog: &mut Catalog, material: &Material, blocks: bool) {
     let stages = std::iter::once(&material.base).chain(material.layer.as_ref().map(|(stage, _, _)| stage));
     for path in stages.map(|stage| &stage.texture).chain(&material.frames) {
-        decode(textures, catalog, path);
+        decode(textures, catalog, path, blocks);
     }
 }
 
-/// Decodes the texture at `path` into `textures` unless it is already there or cannot be read.
-fn decode(textures: &mut HashMap<String, Image>, catalog: &mut Catalog, path: &str) {
+/// Reads the texture at `path` into `textures` unless it is already there or cannot be read. With `blocks`
+/// the client's compressed textures are kept as they are.
+fn decode(textures: &mut HashMap<String, Pixels>, catalog: &mut Catalog, path: &str, blocks: bool) {
     if !textures.contains_key(path)
-        && let Some(image) = catalog.texture(path)
+        && let Some(pixels) = catalog.pixels(path, blocks)
     {
-        textures.insert(path.to_owned(), image);
+        textures.insert(path.to_owned(), pixels);
     }
 }
 

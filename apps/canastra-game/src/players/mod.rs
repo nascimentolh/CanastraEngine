@@ -17,6 +17,7 @@ pub(crate) use admission::Admission;
 pub(crate) use lobby::Lobby;
 pub(crate) use names::NameRules;
 pub(crate) use registry::Registry;
+pub(crate) use world::follow;
 
 use crate::config::Result;
 

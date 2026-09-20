@@ -14,6 +14,8 @@ pub(crate) struct Gpu {
     pub(crate) window: Arc<Window>,
     /// The backend and the adapter drawing, as the options window shows them.
     description: (String, String),
+    /// Whether this GPU reads the client's compressed textures as they are.
+    pub(crate) blocks: bool,
 }
 
 impl Gpu {
@@ -24,8 +26,14 @@ impl Gpu {
 
     pub(crate) fn open(event_loop: &ActiveEventLoop, window: Arc<Window>) -> Result<Self, String> {
         let (surface, adapter) = adapter(event_loop, &window)?;
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .map_err(|error| error.to_string())?;
+        // Block compressed textures are what the client stores; a GPU that reads them saves both the work of
+        // unpacking every texture and the memory of holding it unpacked.
+        let blocks = adapter.features().contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
+        let wanted = wgpu::DeviceDescriptor {
+            required_features: if blocks { wgpu::Features::TEXTURE_COMPRESSION_BC } else { wgpu::Features::empty() },
+            ..wgpu::DeviceDescriptor::default()
+        };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wanted)).map_err(|error| error.to_string())?;
         let capabilities = surface.get_capabilities(&adapter);
         let format =
             capabilities.formats.iter().copied().find(wgpu::TextureFormat::is_srgb).ok_or("no sRGB surface format")?;
@@ -46,7 +54,7 @@ impl Gpu {
         let info = adapter.get_info();
         let description = (format!("{:?}", info.backend), info.name.clone());
         println!("graphics: {} on {}", description.0, description.1);
-        Ok(Self { surface, config, device, queue, window, description })
+        Ok(Self { surface, config, device, queue, window, description, blocks })
     }
 
     /// Size of the drawable area in physical pixels.

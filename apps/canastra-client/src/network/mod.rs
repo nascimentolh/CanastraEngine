@@ -46,8 +46,15 @@ pub(crate) enum Reply {
     },
     /// The player is in the world, with the character it entered as.
     Entered(InWorld),
-    /// The character is on its way.
-    Moving(Move),
+    /// A character came into view, or was already there when the player arrived.
+    Appears(InWorld),
+    /// A character left the player's view, or left the world.
+    Vanishes(CharacterId),
+    /// A character is on its way.
+    Moving {
+        character: CharacterId,
+        walk: Move,
+    },
 }
 
 /// Where the login server is and the key it must prove it holds.

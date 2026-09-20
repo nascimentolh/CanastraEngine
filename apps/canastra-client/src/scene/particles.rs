@@ -104,6 +104,12 @@ pub(crate) fn start(
 
 impl System {
     /// Replaces particles whose life ended before `time`.
+    /// Whether the emitter stands within `reach` of `eye`, both measured from where the map was loaded.
+    pub(crate) fn within(&self, eye: [f32; 3], reach: f32) -> bool {
+        let away: f32 = self.origin.iter().zip(eye).map(|(at, eye)| (at - eye) * (at - eye)).sum();
+        away <= reach * reach
+    }
+
     pub(crate) fn update(&mut self, time: f32) {
         let Self { sprite, particles, random, .. } = self;
         for particle in particles.iter_mut() {

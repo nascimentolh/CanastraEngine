@@ -10,6 +10,9 @@ const STEP: f32 = 64.0;
 /// How flat a triangle must be to count as a floor, as the cosine of its slope: half, which is a slope of 60
 /// degrees, so ramps count and walls do not.
 const FLAT: f32 = 0.5;
+/// How far from where the map was loaded its floors are kept, in world units. A map tile is twice this
+/// across, and a character walks into the next tile, which is read afresh, before it runs out of floors.
+const KEPT: f32 = 16_384.0;
 
 /// The floors of a map, in the same places as the scene's vertices, grouped by the cell they fall in.
 // ponytail: floors only, and a ray meets them by sampling along it; walls and ceilings are left out, so a click
@@ -28,7 +31,7 @@ impl Ground {
         let mut ground = Self::default();
         for triangle in indices.as_chunks::<3>().0 {
             let corners = triangle.map(|index| positions.get(index as usize).copied().unwrap_or_default());
-            if !is_floor(corners) {
+            if !is_floor(corners) || !within(corners, KEPT) {
                 continue;
             }
             let index = u32::try_from(ground.corners.len()).unwrap_or(u32::MAX);
@@ -81,6 +84,13 @@ impl Ground {
         }
         None
     }
+}
+
+/// Whether a triangle stands within `reach` of where the map was loaded, which is where the scene's own
+/// places are measured from.
+fn within([first, _, _]: [[f32; 3]; 3], reach: f32) -> bool {
+    let (x, y) = (first.first().copied().unwrap_or_default(), first.get(1).copied().unwrap_or_default());
+    x.mul_add(x, y * y) <= reach * reach
 }
 
 /// Whether a triangle lies flat enough to stand on and faces up, so ceilings are not floors. The client winds

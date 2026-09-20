@@ -119,7 +119,9 @@ impl Session {
 /// What the world saying `told` means to the lobby.
 fn heard(told: GameServer) -> Reply {
     match told {
-        GameServer::Moving(walk) => Reply::Moving(walk),
+        GameServer::Moving { character, walk } => Reply::Moving { character, walk },
+        GameServer::Appears(who) => Reply::Appears(who),
+        GameServer::Vanishes(character) => Reply::Vanishes(character),
         GameServer::Characters(list) => Reply::Characters { list, failure: None },
         other => Reply::Failed(format!("the world said {other:?}")),
     }

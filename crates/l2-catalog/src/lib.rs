@@ -47,6 +47,29 @@ pub struct Heightmap {
     pub samples: Vec<u16>,
 }
 
+/// A texture ready for a GPU: the client's own blocks with the mip chain it stores, or plain pixels for the
+/// formats a GPU cannot read as they are.
+#[derive(Debug, Clone)]
+pub struct Pixels {
+    pub layout: Layout,
+    pub width: u32,
+    pub height: u32,
+    /// Each mip level's bytes, largest first.
+    pub mips: Vec<Vec<u8>>,
+}
+
+/// How a texture's bytes are laid out: block compressed, four by four texels a block, or plain RGBA.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// Colour with one bit of transparency, half a byte a texel.
+    Bc1,
+    /// Colour with four bits of transparency, one byte a texel.
+    Bc2,
+    /// Colour with interpolated transparency, one byte a texel.
+    Bc3,
+    Rgba,
+}
+
 /// A skeletal mesh with its default animation and each section's material as client-wide paths.
 #[derive(Debug, Clone)]
 pub struct Skinned {
@@ -61,6 +84,26 @@ pub struct Mesh {
     pub mesh: StaticMesh,
     /// Material of each section, `None` when unset.
     pub materials: Vec<Option<String>>,
+}
+
+impl Layout {
+    /// Bytes one four by four block of texels takes.
+    fn block_bytes(self) -> usize {
+        match self {
+            Self::Bc1 => 8,
+            Self::Bc2 | Self::Bc3 => 16,
+            Self::Rgba => 64,
+        }
+    }
+}
+
+/// How many blocks a mip level of a texture holds.
+fn blocks_of(width: u32, height: u32, level: usize) -> usize {
+    let side = |size: u32| {
+        let shrunk = (size >> u32::try_from(level).unwrap_or(0)).max(1);
+        (shrunk as usize).div_ceil(4)
+    };
+    side(width) * side(height)
 }
 
 impl Catalog {
@@ -84,6 +127,42 @@ impl Catalog {
     pub fn texture(&mut self, path: &str) -> Option<Image> {
         let (loaded, index) = self.object(path, "Texture")?;
         ue2_assets::decode_texture(&loaded.package, &loaded.file, index).ok()
+    }
+
+    /// The texture at `path` as a GPU takes it. With `blocks` the client's own compressed blocks and mips
+    /// are kept, which a GPU reads directly; without it, and for formats that are not blocks, the top mip is
+    /// decoded to RGBA.
+    pub fn pixels(&mut self, path: &str, blocks: bool) -> Option<Pixels> {
+        let (loaded, index) = self.object(path, "Texture")?;
+        let export = loaded.package.exports().get(index)?;
+        let texture = ue2_assets::read_texture(&loaded.package, &loaded.file, export).ok()?;
+        let layout = match texture.format {
+            ue2_assets::TextureFormat::Dxt1 => Layout::Bc1,
+            ue2_assets::TextureFormat::Dxt3 => Layout::Bc2,
+            ue2_assets::TextureFormat::Dxt5 => Layout::Bc3,
+            _ => Layout::Rgba,
+        };
+        if !blocks || layout == Layout::Rgba {
+            let image = ue2_assets::decode_texture(&loaded.package, &loaded.file, index).ok()?;
+            return Some(Pixels {
+                layout: Layout::Rgba,
+                width: image.width,
+                height: image.height,
+                mips: vec![image.rgba],
+            });
+        }
+        let top = texture.mips.first()?;
+        let (width, height) = (top.width, top.height);
+        // Mips run to the smallest one the client stored; any that does not hold whole blocks ends the chain.
+        let mut mips = Vec::new();
+        for (level, mip) in texture.mips.iter().enumerate() {
+            let expected = blocks_of(width, height, level) * layout.block_bytes();
+            if mip.data.len() < expected || expected == 0 {
+                break;
+            }
+            mips.push(mip.data.get(..expected)?.to_vec());
+        }
+        (!mips.is_empty()).then_some(Pixels { layout, width, height, mips })
     }
 
     /// The raw samples of the G16 texture at `path`.

@@ -26,6 +26,10 @@ use crate::geo::Geo;
 const ASKS: usize = 16;
 /// How long a message waits to reach a player before its session ends.
 const WRITE: Duration = Duration::from_secs(10);
+/// How often the world brings every player's view of the others up to date.
+const FOLLOW: Duration = Duration::from_millis(250);
+/// How often a character's place is written down while it plays.
+const SAVE: Duration = Duration::from_secs(300);
 
 /// Runs the world for one player: what it asks for and what the world tells it travel apart, so the world
 /// never waits on this one connection. Wherever the character stands when it leaves is where it stands again
@@ -47,7 +51,7 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
     });
     let (outbox, told) = mpsc::channel(OUTBOX);
-    players.world.join(player.character, outbox);
+    players.world.join(entered, outbox);
     let result = steer(&mut writer, &mut player, players, asks, told).await;
     players.world.leave(player.character);
     listening.abort();
@@ -64,6 +68,8 @@ async fn steer<S: AsyncRead + AsyncWrite + Unpin>(
     mut asks: mpsc::Receiver<GameClient>,
     mut told: mpsc::Receiver<GameServer>,
 ) -> Result {
+    let mut saving = tokio::time::interval(SAVE);
+    saving.tick().await;
     loop {
         tokio::select! {
             ask = asks.recv() => match ask {
@@ -75,17 +81,30 @@ async fn steer<S: AsyncRead + AsyncWrite + Unpin>(
                 Some(message) => tokio::time::timeout(WRITE, writer.send(&message)).await.map_err(|_| "a player stopped taking messages")??,
                 None => return Ok(()),
             },
+            _ = saving.tick() => {
+                // A character that plays for hours is written down along the way, not only when it leaves.
+                players.lobby.database.place_character(player.character, player.at().map(round), player.heading).await?;
+            }
         }
     }
 }
 
-/// Grants the walk a player asked for, as far as the ground allows, and tells it where it is going.
+/// Keeps every player's view of the others up to date for as long as the server runs.
+pub(crate) async fn follow(players: std::sync::Arc<Players>) {
+    let mut turns = tokio::time::interval(FOLLOW);
+    loop {
+        turns.tick().await;
+        players.world.follow();
+    }
+}
+
+/// Grants the walk a player asked for, as far as the ground allows, and tells everyone who can see it.
 fn walk(player: &mut Player, geo: Option<&Geo>, world: &Registry, to: [i32; 3]) {
     // The geodata says how far of the way asked for the character really gets, and how high the ground is
     // along it; without geodata it walks wherever it asked to.
     let to = geo.map_or(to, |geo| geo.walk(player.at().map(round), to));
     let walk = player.walk_to(to.map(|unit| unit as f32));
-    world.tell(player.character, GameServer::Moving(walk));
+    world.walks(player.character, walk);
 }
 
 /// A character in the world, walking in a straight line from where it was to where it is bound.

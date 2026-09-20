@@ -31,9 +31,9 @@ impl Scene {
         });
         for stage in stages {
             if !views.contains_key(&stage.texture)
-                && let Some(image) = self.catalog.texture(&stage.texture)
+                && let Some(pixels) = self.catalog.pixels(&stage.texture, gpu.blocks)
             {
-                views.insert(stage.texture.clone(), Pipeline::texture(device, queue, &image));
+                views.insert(stage.texture.clone(), Pipeline::texture(device, queue, &pixels));
             }
         }
         let view = |path: &str| views.get(path);

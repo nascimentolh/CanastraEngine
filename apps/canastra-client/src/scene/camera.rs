@@ -32,6 +32,34 @@ pub(crate) fn place(vertex: [f32; 3], scale: [f32; 3], axes: &[[f32; 3]; 3], loc
     world
 }
 
+/// The sides of what the camera sees, as planes in the space the scene's vertices are given in. A point is
+/// inside the screen when it is on the positive side of every one of them.
+pub(crate) fn sides(matrix: &Matrix) -> [[f32; 4]; 5] {
+    let [[xx, xy, _, xw], [yx, yy, _, yw], [zx, zy, _, zw], [wx, wy, _, ww]] = *matrix;
+    let (clip_x, clip_y) = ([xx, yx, zx, wx], [xy, yy, zy, wy]);
+    let along = [xw, yw, zw, ww];
+    let edge = |[ax, ay, az, aw]: [f32; 4], [bx, by, bz, bw]: [f32; 4], sign: f32| {
+        [sign.mul_add(bx, ax), sign.mul_add(by, ay), sign.mul_add(bz, az), sign.mul_add(bw, aw)]
+    };
+    // Left, right, bottom and top from the clip edges, and the near plane from how far along the view a point
+    // has to be to draw at all.
+    let near = [xw, yw, zw, ww - NEAR];
+    [edge(along, clip_x, 1.0), edge(along, clip_x, -1.0), edge(along, clip_y, 1.0), edge(along, clip_y, -1.0), near]
+}
+
+/// Whether the box between two corners shows on a screen with these `sides`.
+pub(crate) fn in_view(sides: &[[f32; 4]; 5], [low, high]: [[f32; 3]; 2]) -> bool {
+    let ([low_x, low_y, low_z], [high_x, high_y, high_z]) = (low, high);
+    sides.iter().all(|&[toward_x, toward_y, toward_z, offset]| {
+        // The corner of the box furthest along the plane's normal: if even that one is behind the plane, the
+        // whole box is.
+        let corner = |toward: f32, low: f32, high: f32| if toward >= 0.0 { high } else { low };
+        let (x, y) = (corner(toward_x, low_x, high_x), corner(toward_y, low_y, high_y));
+        let z = corner(toward_z, low_z, high_z);
+        toward_x.mul_add(x, toward_y.mul_add(y, toward_z * z)) + offset >= 0.0
+    })
+}
+
 /// Projects points given relative to the camera. `fov` is horizontal, in degrees, as in Unreal.
 pub(crate) fn view_projection(rotation: [i32; 3], fov: f32, aspect: f32) -> Matrix {
     let [forward, right, up] = axes(rotation);
@@ -69,6 +97,20 @@ mod tests {
         assert!(close(project(&matrix, [-100.0, 100.0, 0.0]), [1.0, 0.0, 0.1]));
         assert!(close(project(&matrix, [0.0, 100.0, 100.0]), [0.0, 1.0, 0.1]));
         assert!(close(project(&matrix, [0.0, 1000.0, 0.0]), [0.0, 0.0, 0.01]));
+    }
+
+    #[test]
+    fn only_what_falls_on_the_screen_is_kept() {
+        // Looking along +X, half a right angle wide on a square screen.
+        let matrix = view_projection([0, 0, 0], 90.0, 1.0);
+        let sides = sides(&matrix);
+        let box_at = |x: f32, y: f32| [[x - 10.0, y - 10.0, -10.0], [x + 10.0, y + 10.0, 10.0]];
+        assert!(in_view(&sides, box_at(500.0, 0.0)), "straight ahead is seen");
+        assert!(!in_view(&sides, box_at(-500.0, 0.0)), "behind the camera is not");
+        assert!(!in_view(&sides, box_at(100.0, 900.0)), "far off to the side is not");
+        assert!(in_view(&sides, box_at(100.0, 80.0)), "a little off to the side still is");
+        // A box that reaches from behind to in front is kept, since part of it shows.
+        assert!(in_view(&sides, [[-500.0, -10.0, -10.0], [500.0, 10.0, 10.0]]));
     }
 
     #[test]
