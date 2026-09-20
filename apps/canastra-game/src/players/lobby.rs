@@ -11,6 +11,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::names::NameRules;
 use crate::config::Result;
+use crate::geo::Geo;
 
 pub(crate) struct Lobby {
     pub(crate) server: ServerId,
@@ -28,6 +29,7 @@ impl Lobby {
         &self,
         connection: &mut Connection<S>,
         account: AccountId,
+        geo: Option<&Geo>,
     ) -> Result<InWorld> {
         loop {
             connection.send(&GameServer::Characters(self.database.characters(account, self.server).await?)).await?;
@@ -44,11 +46,15 @@ impl Lobby {
                 }
                 GameClient::EnterWorld(id) => {
                     // The client only ever asks for a character it was listed, so another one is a broken client.
-                    let entered = self
+                    let mut entered = self
                         .database
                         .character(account, self.server, id)
                         .await?
                         .ok_or("a player entered the world as a character that is not theirs")?;
+                    // A character enters standing on the ground the geodata puts under where it was left.
+                    if let Some(geo) = geo {
+                        entered.position[2] = geo.spawn_height(entered.position);
+                    }
                     connection.send(&GameServer::Entered(entered.clone())).await?;
                     return Ok(entered);
                 }

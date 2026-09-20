@@ -2,6 +2,7 @@
 //! their tickets and keeps their characters; the world comes next.
 
 mod config;
+mod geo;
 mod players;
 mod registration;
 
@@ -66,10 +67,15 @@ async fn serve(path: &Path) -> Result {
         names: NameRules::new(&config.characters.name_pattern, &config.characters.forbidden_names)?,
         slots: config.characters.slots,
     };
+    let geo = config.geodata.as_deref().map(|folder| {
+        tracing::info!(geodata = %folder.display(), "the world stands on geodata");
+        geo::Geo::open(folder)
+    });
     let players = Arc::new(Players {
         keys: keys.clone(),
         admission: Admission::new(id, config.capacity, config.tickets()?),
         lobby,
+        geo,
     });
     let listener = TcpListener::bind(config.players).await?;
     tracing::info!(players = %config.players, "game server listening");

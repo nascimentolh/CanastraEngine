@@ -12,6 +12,9 @@ capacity = 1000
 database_url = "postgres://canastra:canastra@localhost:5433/canastra"
 # The game data file this server plays by, from `canastra migrate`.
 game_data = "gamedata.cana"
+# The folder of High Five geodata tiles the world stands on, named `17_25.l2j` and so on. Leaving it out lets
+# characters walk wherever they ask to.
+# geodata = "geodata"
 
 [login]
 # The login server's internal game_servers address.

@@ -11,34 +11,40 @@
 use std::time::Instant;
 
 use canastra_data::GameData;
-use canastra_db::Database;
 use canastra_net::Connection;
 use canastra_protocol::game::{CharacterId, GameClient, GameServer, InWorld, Move};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use super::Players;
 use crate::config::Result;
+use crate::geo::Geo;
 
-/// Runs the world for one player: it walks where it asks to until it leaves, and wherever it stands then is
-/// where it stands again next time.
+/// Runs the world for one player: it walks where the ground allows until it leaves, and wherever it stands
+/// then is where it stands again next time.
 pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
     connection: &mut Connection<S>,
-    database: &Database,
-    data: &GameData,
+    players: &Players,
     entered: InWorld,
 ) -> Result {
-    let mut player = Player::new(&entered, speed_of(data, &entered));
-    let result = steer(connection, &mut player).await;
+    let mut player = Player::new(&entered, speed_of(&players.lobby.data, &entered));
+    let result = steer(connection, &mut player, players.geo.as_ref()).await;
     let (at, heading) = (player.at(), player.heading);
-    database.place_character(player.character, at.map(round), heading).await?;
+    players.lobby.database.place_character(player.character, at.map(round), heading).await?;
     result
 }
 
 /// Answers the player's asks until the connection ends.
-async fn steer<S: AsyncRead + AsyncWrite + Unpin>(connection: &mut Connection<S>, player: &mut Player) -> Result {
+async fn steer<S: AsyncRead + AsyncWrite + Unpin>(
+    connection: &mut Connection<S>,
+    player: &mut Player,
+    geo: Option<&Geo>,
+) -> Result {
     loop {
         match connection.recv().await? {
-            // ponytail: every destination is granted as asked; geodata will say what the ground allows.
             GameClient::MoveTo(to) => {
+                // The geodata says how far of the way asked for the character really gets, and how high the
+                // ground is along it; without geodata it walks wherever it asked to.
+                let to = geo.map_or(to, |geo| geo.walk(player.at().map(round), to));
                 let walk = player.walk_to(to.map(|unit| unit as f32));
                 connection.send(&GameServer::Moving(walk)).await?;
             }

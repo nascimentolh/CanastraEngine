@@ -24,6 +24,10 @@ pub(crate) struct Config {
     pub(crate) database_url: String,
     /// The game data file (`.cana`) this server plays by.
     pub(crate) game_data: PathBuf,
+    /// The folder of geodata tiles (`17_25.l2j` and the like) the world stands on; without it characters
+    /// walk wherever they ask to.
+    #[serde(default)]
+    pub(crate) geodata: Option<PathBuf>,
     pub(crate) login: Login,
     #[serde(default)]
     pub(crate) characters: Characters,

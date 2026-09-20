@@ -22,6 +22,8 @@ pub(crate) struct Players {
     pub(crate) keys: Keypair,
     pub(crate) admission: Admission,
     pub(crate) lobby: Lobby,
+    /// The ground the world stands on, when this server has geodata.
+    pub(crate) geo: Option<crate::geo::Geo>,
 }
 
 pub(crate) async fn listen(listener: TcpListener, players: Arc<Players>) {
@@ -50,8 +52,8 @@ async fn play<S: AsyncRead + AsyncWrite + Unpin>(
     players: &Players,
     account: AccountId,
 ) -> Result {
-    let entered = players.lobby.run(connection, account).await?;
+    let entered = players.lobby.run(connection, account, players.geo.as_ref()).await?;
     let character = &entered.character;
     tracing::info!(account = account.0, character = character.id.0, name = character.name, "player in the world");
-    world::run(connection, &players.lobby.database, &players.lobby.data, entered).await
+    world::run(connection, players, entered).await
 }
