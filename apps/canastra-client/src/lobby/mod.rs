@@ -103,14 +103,20 @@ pub(crate) struct Step {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Backdrop {
     Scene(&'static str, &'static str),
-    /// The tile, where the character stands in it, which way it faces, and how far its body reaches above its
-    /// feet, which is where H5's camera looks.
+    /// The map tile a character stands in. Only the tile names it: a character walks all over a tile without
+    /// the map behind it changing, and where it stands is asked for again when the tile is read.
     World {
         map: String,
-        at: [f32; 3],
-        heading: i32,
-        middle: f32,
     },
+}
+
+/// Where a character stands in the world, which way it faces, and how far its body reaches above its feet,
+/// which is where the camera looks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Standing {
+    pub(crate) at: [f32; 3],
+    pub(crate) heading: i32,
+    pub(crate) middle: f32,
 }
 
 impl Lobby {
@@ -226,6 +232,13 @@ impl Lobby {
         self.in_world.get(&self.player?)
     }
 
+    /// Where the character the player steers stands, for framing the map it stands in.
+    pub(crate) fn standing(&self) -> Option<Standing> {
+        let own = self.stands_at()?;
+        let middle = self.data.as_ref().ok().and_then(|data| middle_of(data, &own.shown.character));
+        Some(Standing { at: own.at, heading: own.yaw, middle: middle.unwrap_or_default() })
+    }
+
     /// Runs a screen action; false when the action is not the lobby's.
     pub(crate) fn act(&mut self, action: &str, screen: &mut Screen) -> bool {
         let (verb, index) =
@@ -336,15 +349,7 @@ impl Lobby {
     /// What stands behind `markup`.
     pub(crate) fn backdrop(&self, markup: &str) -> Backdrop {
         match (markup, self.stands_at()) {
-            (WORLD_SCREEN, Some(own)) => {
-                let middle = self.data.as_ref().ok().and_then(|data| middle_of(data, &own.shown.character));
-                Backdrop::World {
-                    map: crate::scene::map_at(own.at),
-                    at: own.at,
-                    heading: own.yaw,
-                    middle: middle.unwrap_or_default(),
-                }
-            }
+            (WORLD_SCREEN, Some(own)) => Backdrop::World { map: crate::scene::map_at(own.at) },
             (CHARACTERS_SCREEN | DELETE_SCREEN, _) => Backdrop::Scene(MAP, SELECT_CAMERA),
             // Lobby02 has one scene per race, all but Orc's named after it.
             (CREATE_SCREEN, _) => Backdrop::Scene(

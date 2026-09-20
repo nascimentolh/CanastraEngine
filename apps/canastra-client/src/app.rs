@@ -12,7 +12,7 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::gpu::Gpu;
-use crate::lobby::{Backdrop, LOGIN_SCREEN, Lobby};
+use crate::lobby::{Backdrop, LOGIN_SCREEN, Lobby, Standing};
 use crate::network::{LoginAddress, Network, Reply};
 use crate::renderer::Renderer;
 use crate::scene::{Figure, Scene, SceneData, View};
@@ -53,8 +53,9 @@ struct Running {
     held: Option<String>,
     /// What a thread is reading now, so the same map is not read twice over.
     reading: Option<Backdrop>,
-    /// How long each frame took since the last time it was reported.
-    frames: Vec<std::time::Duration>,
+    /// How long each frame took since the last report: the whole frame, the UI, the scene and the wait for
+    /// the screen.
+    frames: Vec<[std::time::Duration; 4]>,
     proxy: EventLoopProxy<Event>,
     client_root: PathBuf,
     renderer: Renderer,
@@ -95,8 +96,8 @@ impl App {
         }
         // The login's scene is read here, before the window shows anything, so the player never sees it empty.
         let backdrop = lobby.backdrop(LOGIN_SCREEN);
-        let mut scene =
-            read_scene(&self.client_root, &backdrop, gpu.blocks).and_then(|data| build_scene(&gpu, &backdrop, data));
+        let mut scene = read_scene(&self.client_root, &backdrop, lobby.standing(), gpu.blocks)
+            .and_then(|data| build_scene(&gpu, &backdrop, data));
         lobby.play_ambient(scene.as_mut().map(Scene::ambient_sounds).unwrap_or_default());
         let client_root = self.client_root.clone();
         Ok(Running {
@@ -149,19 +150,26 @@ impl Running {
             self.screen.frame.overlay_from += tags.len();
             self.screen.frame.draws.splice(from..from, tags);
         }
+        let laid = started.elapsed();
+        let waiting = std::time::Instant::now();
         let Some(frame) = self.gpu.frame() else { return };
+        let waited = waiting.elapsed();
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let drawing = std::time::Instant::now();
         let scene = self.scene.as_mut().map(|scene| scene.draw(&self.gpu, &frame.texture));
+        let drew = drawing.elapsed();
         match self.renderer.render(&self.gpu, &view, &self.screen.frame, scene.is_none()) {
             Ok(ui) => {
                 self.gpu.queue.submit(scene.into_iter().chain([ui]));
                 self.gpu.queue.present(frame);
                 // Frames are timed and reported once a second, so a heavy scene says so in the log.
-                self.frames.push(started.elapsed());
+                self.frames.push([started.elapsed(), laid, drew, waited]);
                 let count = u32::try_from(self.frames.len()).unwrap_or(1);
                 if count >= REPORT {
-                    let mean = self.frames.iter().sum::<std::time::Duration>() / count;
-                    println!("frame: {mean:?} over {count} frames");
+                    let mean = |part: usize| {
+                        self.frames.iter().filter_map(|frame| frame.get(part)).sum::<std::time::Duration>() / count
+                    };
+                    println!("frame: {:?} | ui {:?} | scene {:?} | screen {:?}", mean(0), mean(1), mean(2), mean(3));
                     self.frames.clear();
                 }
                 // The scene's materials move every frame; the UI only while a transition runs.
@@ -283,10 +291,10 @@ impl Running {
     fn read_in_background(&mut self, backdrop: Backdrop) {
         self.reading = Some(backdrop.clone());
         let (client_root, proxy) = (self.client_root.clone(), self.proxy.clone());
-        let blocks = self.gpu.blocks;
+        let (blocks, standing) = (self.gpu.blocks, self.lobby.standing());
         std::thread::spawn(move || {
             let started = std::time::Instant::now();
-            let read = read_scene(&client_root, &backdrop, blocks);
+            let read = read_scene(&client_root, &backdrop, standing, blocks);
             println!("scene read in {:?}", started.elapsed());
             let _ = proxy.send_event(Event::Read(backdrop, Box::new(read)));
         });
@@ -405,11 +413,20 @@ fn name_tag(label: &str, [x, y]: [f32; 2]) -> Draw {
     }
 }
 
-/// What stands behind `backdrop`, read from the client, or `None` with the reason logged.
-fn read_scene(client_root: &std::path::Path, backdrop: &Backdrop, blocks: bool) -> Option<SceneData> {
+/// What stands behind `backdrop`, read from the client, or `None` with the reason logged. A world tile is
+/// framed from where the character stood when the reading began.
+fn read_scene(
+    client_root: &std::path::Path,
+    backdrop: &Backdrop,
+    standing: Option<Standing>,
+    blocks: bool,
+) -> Option<SceneData> {
     let (map, view) = match backdrop {
         Backdrop::Scene(map, camera) => (*map, View::Scene(camera)),
-        Backdrop::World { map, at, heading, middle } => (map.as_str(), View::Behind(*at, *heading, *middle)),
+        Backdrop::World { map } => {
+            let standing = standing?;
+            (map.as_str(), View::Behind(standing.at, standing.heading, standing.middle))
+        }
     };
     Scene::read(client_root, map, view, blocks).inspect_err(|error| eprintln!("scene: {error}")).ok()
 }

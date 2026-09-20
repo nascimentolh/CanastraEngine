@@ -21,6 +21,11 @@ pub(crate) struct Mover {
 }
 
 impl Mover {
+    /// How many sections it draws, one batch each.
+    pub(super) fn sections(&self) -> usize {
+        self.mesh.sections.len()
+    }
+
     /// `actor` as a mover, when it sways and its mesh loads; `lit` in world zones.
     pub(super) fn load(actor: &Actor, catalog: &mut Catalog, lit: bool) -> Option<Self> {
         let movement = actor.movement?;

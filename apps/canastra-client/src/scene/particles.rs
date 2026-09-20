@@ -104,6 +104,13 @@ pub(crate) fn start(
 
 impl System {
     /// Replaces particles whose life ended before `time`.
+    /// Which square of the map the emitter stands in, so systems near each other are kept near each other.
+    pub(crate) fn cell(&self) -> [i32; 2] {
+        #[expect(clippy::cast_possible_truncation, reason = "a map is a few dozen squares across")]
+        let cell = |at: f32| (at / 4096.0).floor() as i32;
+        [cell(self.origin.first().copied().unwrap_or_default()), cell(self.origin.get(1).copied().unwrap_or_default())]
+    }
+
     /// Whether the emitter stands within `reach` of `eye`, both measured from where the map was loaded.
     pub(crate) fn within(&self, eye: [f32; 3], reach: f32) -> bool {
         let away: f32 = self.origin.iter().zip(eye).map(|(at, eye)| (at - eye) * (at - eye)).sum();

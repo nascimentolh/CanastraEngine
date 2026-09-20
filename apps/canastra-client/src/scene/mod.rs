@@ -52,6 +52,52 @@ const CLEARANCE: f32 = 20.0;
 /// How far a click reaches into the world looking for the floor, in world units.
 // ponytail: as far as a tile's quarter; the fog of world zones is unread, and it is what H5 stops drawing at.
 const REACH: f32 = 8192.0;
+/// What a scene turned out to hold, for the log.
+#[derive(Clone, Copy)]
+struct Held {
+    batches: usize,
+    textures: usize,
+    systems: usize,
+    quads: usize,
+}
+
+fn report(map: &str, camera: Placement, vertices: usize, indices: usize, held: Held) {
+    let Held { batches, textures, systems, quads } = held;
+    println!(
+        "scene: {map} at {:?} turned {:?}, {vertices} vertices, {} triangles, {batches} batches, {textures} textures, {systems} particle systems with {quads} particles",
+        camera.location,
+        camera.rotation,
+        indices / 3,
+    );
+}
+
+/// The buffer the shader reads the view, the fog and the hour's light from.
+fn globals_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("scene globals"),
+        size: GLOBALS_BYTES,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// How many materials a scene keeps side by side: one for every batch that draws in it, the level's own
+/// chunks, the particle systems and the swaying meshes.
+fn slots_of(data: &SceneData, systems: &[System]) -> usize {
+    let sprites: usize = systems.iter().map(|system| system.mesh.as_ref().map_or(1, |mesh| mesh.sections.len())).sum();
+    let movers: usize = data.movers.iter().map(movers::Mover::sections).sum();
+    data.batches.len() + sprites + movers
+}
+
+/// Where a batch's material is kept: the buffer it shares and its place in it.
+#[derive(Clone, Copy)]
+pub(super) struct Slot<'a> {
+    pub(super) uniforms: &'a wgpu::Buffer,
+    pub(super) slot: usize,
+}
+
+/// Bytes a batch's material takes in the buffer its scene shares.
+const SLOT_BYTES: usize = 256;
 /// How far from the camera a particle system still shows, in world units.
 // ponytail: one radius for every system; the client's own emitters carry no reach of their own.
 const PARTICLE_REACH: f32 = 4000.0;
@@ -72,7 +118,8 @@ struct Batch {
     fogged: bool,
     /// Units over which a soft sprite fades in front of the geometry behind it; zero when hard.
     soft: f32,
-    uniform: wgpu::Buffer,
+    /// Where this batch's material sits in the buffer its scene shares.
+    slot: usize,
     /// One bind group a frame of the base texture, the still first one and then its `AnimNext` chain.
     groups: Vec<wgpu::BindGroup>,
     /// Frames of that chain a second; zero where the base does not animate.
@@ -110,6 +157,9 @@ pub(crate) struct Scene {
     mover_start: usize,
     /// Which systems are close enough to the camera to draw, worked out once a frame.
     near: Vec<bool>,
+    /// Every particle and swaying mesh vertex, as the scene last wrote them. A frame fills in what moved and
+    /// sends the stretch that covers it in one go: a write costs far more than the bytes it moves.
+    sprites: Vec<Vertex>,
     /// Vertices written each frame, kept between frames so no frame allocates them again.
     scratch: Vec<Vertex>,
     particle_vertices: wgpu::Buffer,
@@ -132,6 +182,11 @@ pub(crate) struct Scene {
     catalog: Catalog,
     /// The floors of the map, which characters stand on and clicks land on.
     ground: ground::Ground,
+    /// Every batch's material, side by side in one buffer, with the copy a frame fills in and writes at once.
+    materials: wgpu::Buffer,
+    mirror: Vec<u8>,
+    pawn_materials: wgpu::Buffer,
+    pawn_mirror: Vec<u8>,
     /// Where each character in the scene stands, which way it faces and whether it is on its way, in the
     /// order the figures were placed.
     steering: Vec<([f32; 3], i32, bool)>,
@@ -160,15 +215,10 @@ impl Scene {
     }
 
     /// Builds the scene of what [`Scene::read`] read of `map`.
-    pub(crate) fn build(gpu: &Gpu, map: &str, data: SceneData) -> Result<Self, String> {
+    pub(crate) fn build(gpu: &Gpu, map: &str, mut data: SceneData) -> Result<Self, String> {
         let (device, queue) = (&gpu.device, &gpu.queue);
         let mut pipeline = Pipeline::new(device, gpu.config.format.remove_srgb_suffix());
-        let globals = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("scene globals"),
-            size: GLOBALS_BYTES,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let globals = globals_buffer(device);
         let globals_group = pipeline.globals_group(device, &globals, &depth_texture(device, [1, 1]));
         let views: HashMap<&str, wgpu::TextureView> = data
             .textures
@@ -176,20 +226,29 @@ impl Scene {
             .map(|(path, image)| (path.as_str(), Pipeline::texture(device, queue, image)))
             .collect();
         let view = |path: &str| views.get(path);
-        let mut batch = |material: Material, draw: Draw, fogged: bool, soft: f32, indices: Range<u32>| {
-            material_batch(&mut pipeline, device, &view, material, draw, indices).map(|batch| Batch {
-                fogged,
-                soft,
-                ..batch
-            })
-        };
-        let batches = level_batches(data.batches, &mut batch);
-
         let mut systems =
             particles::start(&data.emitters, data.camera.location, data.cloud_tint, &data.particle_meshes);
         systems.retain(|system| {
             system.mesh.is_some() || system.sprite.texture.as_deref().is_some_and(|path| views.contains_key(path))
         });
+        systems.sort_by_key(System::cell);
+        let slots = slots_of(&data, &systems);
+        let materials = material_buffer(device, slots);
+        let mut slot = 0;
+        let mut batch = |material: Material, draw: Draw, fogged: bool, soft: f32, indices: Range<u32>| {
+            let made = material_batch(
+                &mut pipeline,
+                device,
+                &view,
+                material,
+                draw,
+                indices,
+                Slot { uniforms: &materials, slot },
+            );
+            slot += 1;
+            made.map(|batch| Batch { fogged, soft, ..batch })
+        };
+        let batches = level_batches(data.batches, &mut batch);
         let laid = emission::layout(&systems, &mut batch)?;
         let (sprite_batches, system_starts) = (laid.batches, laid.starts);
         let (particle_vertex_count, mut particle_index_data) = (laid.vertices, laid.indices);
@@ -197,6 +256,9 @@ impl Scene {
             movers::layout(&data.movers, particle_vertex_count, &mut particle_index_data, &mut batch)?;
         let particle_vertex_count = particle_vertex_count + mover_vertex_count;
         let quads: usize = systems.iter().map(System::len).sum();
+        // The packages the map was built from are let go once it is on the GPU: a tile's worth of them is
+        // hundreds of megabytes, and what a character needs later is read again then.
+        data.catalog.forget();
 
         let (pawn_vertices, pawn_indices) = cast::pawn_buffers(device, &pawns::layout(&[]));
 
@@ -204,17 +266,8 @@ impl Scene {
         let indices = buffer(device, "scene indices", wgpu::BufferUsages::INDEX, &index_bytes(&data.indices));
         let (particle_vertices, particle_indices) =
             particle_buffers(device, particle_vertex_count, &particle_index_data);
-        println!(
-            "scene: {map} at {:?} turned {:?}, {} vertices, {} triangles, {} materials, {} textures, {} particle systems with {quads} particles, {} swaying meshes",
-            data.camera.location,
-            data.camera.rotation,
-            data.vertices.len(),
-            data.indices.len() / 3,
-            batches.len(),
-            views.len(),
-            systems.len(),
-            data.movers.len(),
-        );
+        let held = Held { batches: batches.len(), textures: views.len(), systems: systems.len(), quads };
+        report(map, data.camera, data.vertices.len(), data.indices.len(), held);
         Ok(Self {
             pipeline,
             globals,
@@ -231,6 +284,7 @@ impl Scene {
             system_starts,
             mover_start: particle_vertex_count - mover_vertex_count,
             near: Vec::new(),
+            sprites: vec![[0.0; 15]; particle_vertex_count],
             scratch: Vec::new(),
             particle_vertices,
             particle_indices,
@@ -245,6 +299,10 @@ impl Scene {
             turning: (0.0, 0.0),
             catalog: data.catalog,
             ground: data.ground,
+            materials,
+            mirror: vec![0; slots.max(1) * SLOT_BYTES],
+            pawn_materials: material_buffer(device, 1),
+            pawn_mirror: Vec::new(),
             steering: Vec::new(),
             daylight: data.daylight,
             environment: data.environment,
@@ -406,16 +464,30 @@ impl Scene {
         self.follow_clock();
         gpu.queue.write_buffer(&self.globals, 0, &self.globals_uniform(aspect));
         let time = self.started.elapsed().as_secs_f32();
-        // Most materials never change; rewriting all their uniforms each frame cost Lobby02 over 50 ms.
-        let batches =
-            self.batches.iter().chain(&self.sprite_batches).chain(&self.pawn_batches).chain(&self.mover_batches);
-        for batch in batches.filter(|batch| !self.uniforms_written || animated(&batch.material)) {
-            gpu.queue.write_buffer(
-                &batch.uniform,
-                0,
-                &material_uniform(&batch.material, time, batch.fogged, batch.soft),
-            );
+        // Materials are kept side by side in one buffer, so a frame that changes a few of them still costs
+        // a single write. Most never change: only the ones that move are filled in again.
+        let scene = self.batches.iter().chain(&self.sprite_batches).chain(&self.mover_batches);
+        let fill = |mirror: &mut Vec<u8>, batch: &Batch| {
+            let bytes = material_uniform(&batch.material, time, batch.fogged, batch.soft);
+            let at = usize::try_from(pipeline::slot_at(batch.slot)).unwrap_or(0);
+            if let Some(slot) = mirror.get_mut(at..at + bytes.len()) {
+                slot.copy_from_slice(&bytes);
+            }
+        };
+        let mut mirror = std::mem::take(&mut self.mirror);
+        for batch in scene.filter(|batch| !self.uniforms_written || animated(&batch.material)) {
+            fill(&mut mirror, batch);
         }
+        gpu.queue.write_buffer(&self.materials, 0, &mirror);
+        self.mirror = mirror;
+        let mut pawn_mirror = std::mem::take(&mut self.pawn_mirror);
+        for batch in self.pawn_batches.iter().filter(|batch| !self.uniforms_written || animated(&batch.material)) {
+            fill(&mut pawn_mirror, batch);
+        }
+        if !pawn_mirror.is_empty() {
+            gpu.queue.write_buffer(&self.pawn_materials, 0, &pawn_mirror);
+        }
+        self.pawn_mirror = pawn_mirror;
         self.uniforms_written = true;
         self.write_particles(gpu, time);
         self.write_pawns(gpu, time);
@@ -507,23 +579,34 @@ impl Scene {
             }
         }
         let mut scratch = std::mem::take(&mut self.scratch);
+        let mut sprites = std::mem::take(&mut self.sprites);
+        let (mut first, mut last) = (usize::MAX, 0usize);
+        let mut fill = |at: usize, written: &[Vertex]| {
+            if let Some(slice) = sprites.get_mut(at..at + written.len()) {
+                slice.copy_from_slice(written);
+                (first, last) = (first.min(at), last.max(at + written.len()));
+            }
+        };
         for (index, system) in self.systems.iter().enumerate() {
             if !self.near.get(index).copied().unwrap_or(false) {
                 continue;
             }
             scratch.clear();
             system.write(time, self.eye.rotation, &mut scratch);
-            let start = self.system_starts.get(index).copied().unwrap_or(0);
-            gpu.queue.write_buffer(&self.particle_vertices, vertex_offset(start), &vertex_bytes(&scratch));
+            fill(self.system_starts.get(index).copied().unwrap_or(0), &scratch);
         }
         if !self.movers.is_empty() {
             scratch.clear();
             for mover in &self.movers {
                 mover.write(time, self.camera, &mut scratch);
             }
-            gpu.queue.write_buffer(&self.particle_vertices, vertex_offset(self.mover_start), &vertex_bytes(&scratch));
+            fill(self.mover_start, &scratch);
         }
-        self.scratch = scratch;
+        if first < last {
+            let moved = sprites.get(first..last).unwrap_or_default();
+            gpu.queue.write_buffer(&self.particle_vertices, vertex_offset(first), &vertex_bytes(moved));
+        }
+        (self.scratch, self.sprites) = (scratch, sprites);
     }
 
     /// Moves every character in the scene and writes the skin they draw with.
@@ -626,16 +709,17 @@ fn material_batch<'a>(
     material: Material,
     draw: Draw,
     indices: Range<u32>,
+    slot: Slot<'_>,
 ) -> Option<Batch> {
+    let Slot { uniforms, slot } = slot;
     let base = view(&material.base.texture)?;
     // A material without a second stage samples its base twice; the shader ignores it.
     let layer = material.layer.as_ref().and_then(|(stage, _, _)| view(&stage.texture));
-    let uniform = material_buffer(device);
     // Every frame of an animated base gets a group of its own, over the one uniform they share.
     let frames = material.frames.iter().filter_map(|frame| view(frame));
     let groups = std::iter::once(base)
         .chain(frames)
-        .map(|frame| pipeline.material(device, &uniform, frame, layer.unwrap_or(frame)))
+        .map(|frame| pipeline.material(device, uniforms, slot, frame, layer.unwrap_or(frame)))
         .collect();
     pipeline.prepare(device, draw);
     Some(Batch {
@@ -644,7 +728,7 @@ fn material_batch<'a>(
         draw,
         fogged: true,
         soft: 0.0,
-        uniform,
+        slot,
         groups,
         indices,
         zone: None,

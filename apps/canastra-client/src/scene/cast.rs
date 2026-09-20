@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use super::load::Vertex;
 use super::pawns::{self, Figure, Pawn};
-use super::pipeline::{Draw, Pipeline, draw_order};
-use super::{Scene, buffer, index_bytes, material_batch};
+use super::pipeline::{self, Draw, Pipeline, draw_order};
+use super::{SLOT_BYTES, Scene, Slot, buffer, index_bytes, material_batch};
 use crate::gpu::Gpu;
 
 impl Scene {
@@ -37,12 +37,27 @@ impl Scene {
             }
         }
         let view = |path: &str| views.get(path);
+        // The characters keep their materials side by side in a buffer of their own, made afresh with them.
+        self.pawn_materials = pipeline::material_buffer(device, layout.ranges.len());
+        self.pawn_mirror = vec![0; layout.ranges.len().max(1) * SLOT_BYTES];
+        let mut slot = 0;
         self.pawn_batches = layout
             .ranges
             .iter()
             .filter_map(|(material, range)| {
                 let draw = Draw::surface(material.blend);
-                material_batch(&mut self.pipeline, device, &view, material.clone(), draw, range.clone())
+                let where_kept = Slot { uniforms: &self.pawn_materials, slot };
+                let made = material_batch(
+                    &mut self.pipeline,
+                    device,
+                    &view,
+                    material.clone(),
+                    draw,
+                    range.clone(),
+                    where_kept,
+                );
+                slot += 1;
+                made
             })
             .collect();
         // Hair blends over the face and collar under it; drawn first, it would keep them out of the depth it writes.

@@ -15,6 +15,8 @@ const SAMPLES: u32 = 4;
 const VERTEX_BYTES: u64 = 60;
 /// Eight `vec4<f32>`, see `Material` in `scene.wgsl`.
 pub(super) const MATERIAL_BYTES: u64 = 128;
+/// Bytes between one batch's material and the next in the shared buffer.
+const SLOT: u64 = 256;
 
 /// How a batch meets the depth buffer and the target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -226,14 +228,17 @@ impl Pipeline {
         &self,
         device: &wgpu::Device,
         uniform: &wgpu::Buffer,
+        slot: usize,
         base: &wgpu::TextureView,
         layer: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
+        let binding =
+            wgpu::BufferBinding { buffer: uniform, offset: slot_at(slot), size: wgpu::BufferSize::new(MATERIAL_BYTES) };
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene material"),
             layout: &self.materials,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(binding) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(base) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(layer) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&self.sampler) },
@@ -252,18 +257,26 @@ pub(super) fn draw_order(blend: Blend) -> u8 {
 }
 
 /// A buffer for one material's uniform, which every frame of an animated material shares.
-pub(super) fn material_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+/// One buffer holding a slot for every batch that draws, so a frame writes them all at once instead of one
+/// small write a batch, which costs far more than the bytes it moves.
+pub(super) fn material_buffer(device: &wgpu::Device, slots: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("scene material"),
-        size: MATERIAL_BYTES,
+        label: Some("scene materials"),
+        size: (slots.max(1) as u64) * SLOT,
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
 }
 
+/// Where a batch's slot begins in the shared buffer. Slots are spaced by what a GPU allows a uniform to be
+/// bound at, which is never finer than 256 bytes.
+pub(super) fn slot_at(slot: usize) -> u64 {
+    slot as u64 * SLOT
+}
+
 /// The shader's `Material` uniform for `material` at `time` seconds; `fogged` false keeps fog off it, and
 /// a positive `soft` fades it out over that many units in front of the geometry behind it.
-pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogged: bool, soft: f32) -> Vec<u8> {
+pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogged: bool, soft: f32) -> Material {
     use l2_catalog::{Combine, IDENTITY, UvMatrix};
     let rows = |[u, v]: UvMatrix| [[u[0], u[1], u[2], 0.0], [v[0], v[1], v[2], 0.0]];
     let (layer, combine, factor) = match &material.layer {
@@ -299,7 +312,7 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
         *channel *= tint;
     }
     let [red, green, blue] = material.glow.map_or([0.0; 3], |glow| glow.at(time));
-    let bytes: Vec<u8> = [
+    let rows = [
         base_u,
         base_v,
         layer_u,
@@ -308,14 +321,16 @@ pub(super) fn material_uniform(material: &l2_catalog::Material, time: f32, fogge
         [combine, factor, cutoff, fog],
         [soft, masked, 0.0, 0.0],
         [red, green, blue, 0.0],
-    ]
-    .iter()
-    .flatten()
-    .flat_map(|value| value.to_le_bytes())
-    .collect();
-    debug_assert_eq!(bytes.len() as u64, MATERIAL_BYTES);
+    ];
+    let mut bytes = [0; MATERIAL_BYTES as usize];
+    for (place, value) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(rows.iter().flatten()) {
+        *place = value.to_le_bytes();
+    }
     bytes
 }
+
+/// A material as the shader reads it; see `Material` in `scene.wgsl`.
+pub(super) type Material = [u8; MATERIAL_BYTES as usize];
 
 impl Pipeline {
     /// The globals group: the `globals` uniform and the depth the scene has drawn so far, which only

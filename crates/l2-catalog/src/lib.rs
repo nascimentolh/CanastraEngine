@@ -129,6 +129,12 @@ impl Catalog {
         ue2_assets::decode_texture(&loaded.package, &loaded.file, index).ok()
     }
 
+    /// Lets go of every package read so far. They are read again when something in them is asked for, so
+    /// this frees what a scene needed to be built without losing anything.
+    pub fn forget(&mut self) {
+        self.packages.clear();
+    }
+
     /// The texture at `path` as a GPU takes it. With `blocks` the client's own compressed blocks and mips
     /// are kept, which a GPU reads directly; without it, and for formats that are not blocks, the top mip is
     /// decoded to RGBA.
