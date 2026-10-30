@@ -184,6 +184,7 @@ impl Running {
     fn key(&mut self, event_loop: &ActiveEventLoop, event: &KeyEvent) {
         match &event.logical_key {
             Key::Named(NamedKey::F5) => self.screen.reload(),
+            Key::Named(NamedKey::Escape) => self.run(event_loop, "cancel"),
             Key::Named(NamedKey::Tab) => self.screen.focus_next(self.modifiers.shift_key()),
             Key::Named(NamedKey::Backspace) => self.screen.backspace(),
             Key::Named(NamedKey::Enter) => {
@@ -210,21 +211,27 @@ impl Running {
         self.gpu.window.request_redraw();
     }
 
-    /// Answers a click in the scene: in the lobby it picks the character under the pointer, in the world it
-    /// walks the character to the floor the pointer is on.
+    /// Answers a click in the scene: in the lobby it picks the character under the pointer, and in the world
+    /// it takes aim at the character there, or walks to the floor the pointer is on when there is none.
     fn pick(&mut self) {
         let scale = self.gpu.scale();
         let (x, y) = self.screen.pointer_at();
         let (size, at) = (self.gpu.size(), [x * scale, y * scale]);
-        if let Some(name) = self.scene.as_ref().and_then(|scene| scene.label_at(size, at)) {
-            self.lobby.pick(name, &mut self.screen);
-            self.follow_screen();
+        let aimed = self.scene.as_ref().and_then(|scene| scene.label_at(size, at));
+        if matches!(self.backdrop, Backdrop::World { .. }) {
+            match aimed {
+                Some(name) => self.lobby.aim_at(name, &mut self.screen),
+                None => {
+                    if let Some(floor) = self.scene.as_ref().and_then(|scene| scene.ground_at(size, at)) {
+                        self.lobby.walk_to(floor);
+                    }
+                }
+            }
             return;
         }
-        if let (Backdrop::World { .. }, Some(scene)) = (&self.backdrop, &self.scene)
-            && let Some(floor) = scene.ground_at(size, at)
-        {
-            self.lobby.walk_to(floor);
+        if let Some(name) = aimed {
+            self.lobby.pick(name, &mut self.screen);
+            self.follow_screen();
         }
     }
 

@@ -232,6 +232,7 @@ mod tests {
         for markup in ["login.ui", "servers.ui", "characters.ui", "create.ui", "delete.ui", "world.ui"] {
             let mut screen = Screen::load(folder.clone(), markup).unwrap_or_else(|error| panic!("{markup}: {error}"));
             screen.set("world.hp".into(), "50%".into());
+            screen.set("target.shown".into(), "true".into());
             screen.layout([1280.0, 720.0], &mut Monospace);
             assert!(!screen.frame.draws.is_empty(), "{markup} drew nothing");
         }

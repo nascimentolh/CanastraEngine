@@ -60,6 +60,8 @@ pub(crate) struct Lobby {
     options: Option<&'static str>,
     /// The character the player is in the world with, once it entered.
     player: Option<CharacterId>,
+    /// What the player has its eye on in the world, among those it can see.
+    target: Option<CharacterId>,
     /// Everyone the player can see in the world, its own character among them, in a steady order.
     in_world: BTreeMap<CharacterId, Presence>,
 }
@@ -146,6 +148,7 @@ impl Lobby {
             audio,
             options: None,
             player: None,
+            target: None,
             in_world: BTreeMap::new(),
         }
     }
@@ -280,6 +283,7 @@ impl Lobby {
                 }
                 self.bind_options(screen);
             }
+            ("cancel", _) => self.drop_target(screen),
             ("back", _) => {
                 screen.status.clear();
                 screen.show(LOGIN_SCREEN);
@@ -314,7 +318,9 @@ impl Lobby {
                 self.player = Some(world.character.id);
                 self.in_world.clear();
                 self.in_world.insert(world.character.id, Presence::new(world));
+                self.target = None;
                 self.bind_vitals(screen);
+                self.bind_target(screen);
                 screen.show(WORLD_SCREEN);
                 String::new()
             }
@@ -325,6 +331,7 @@ impl Lobby {
             Reply::Vanishes(character) => {
                 if Some(character) != self.player {
                     self.in_world.remove(&character);
+                    self.target_vanishes(character, screen);
                 }
                 String::new()
             }

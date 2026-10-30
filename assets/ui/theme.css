@@ -148,6 +148,19 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 .hp { background: linear-gradient(#c33f31, #6b1811) }
 .mp { background: linear-gradient(#3a76bb, #16325c) }
 .gauge-text { position: absolute; left: 0px; right: 0px; font-size: 10px; color: #f3ead6; text-align: center }
+/* What the player has its eye on, named at the top of the window as H5 names it. */
+#target-dock { position: absolute; left: 0px; right: 0px; top: 14px; justify-content: center }
+#target {
+    width: 208px;
+    gap: 2px;
+    padding: 6px 10px 5px 10px;
+    align-items: center;
+    background: linear-gradient(#211c15cc, #110e0bd6);
+    border: 1px solid #8c7443;
+    border-radius: 3px;
+}
+.target-name { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #f0dcaa }
+.target-line { font-size: 10px; color: #a9987a }
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 

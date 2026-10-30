@@ -18,5 +18,15 @@
         </column>
         <label class="hud-line" bind="app.status" text=""/>
     </column>
+    <row id="target-dock" show="target.shown">
+        <column id="target">
+            <label class="target-name" bind="target.name" text=""/>
+            <row class="gauge">
+                <row class="fill hp" fills="target.hp"/>
+                <label class="gauge-text" bind="target.hp-points" text=""/>
+            </row>
+            <label class="target-line" bind="target.detail" text=""/>
+        </column>
+    </row>
     <label id="version" bind="app.version" text="?"/>
 </ui>

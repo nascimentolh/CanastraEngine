@@ -239,3 +239,7 @@ Login, then server and character selection, then walking in the world, with a ba
      when the character enters the world; they are not stored, since nothing spends them yet. The client draws
      each as a bar as full as the pool is, the fight above life and spirit under it, with its points read over
      it. A bar is any element whose `fills` attribute names the data key holding how full it is.
+   - *2026-10-30:* the player takes aim by clicking a character in the world, which names it, says what it is
+     and shows the life it has left at the top of the window; Escape lets go of it, and so does losing sight
+     of it. The target is the client's own, since nothing is aimed at one yet, and a click that lands on no
+     character still walks there.
