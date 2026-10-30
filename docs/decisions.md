@@ -234,3 +234,8 @@ Login, then server and character selection, then walking in the world, with a ba
      thirty-two units over that line. A character stands on the floor under its feet, allowing half a cell
      above them.
 8. MVP windows and NPC dialog templates.
+   - *2026-10-30:* the HUD shows what the character the player steers has left to fight with. The server works
+     the pools out of that character's own class at its level, as the game data holds them, and sends them full
+     when the character enters the world; they are not stored, since nothing spends them yet. The client draws
+     each as a bar as full as the pool is, the fight above life and spirit under it, with its points read over
+     it. A bar is any element whose `fills` attribute names the data key holding how full it is.

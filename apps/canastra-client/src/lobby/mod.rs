@@ -8,6 +8,7 @@ mod figures;
 mod messages;
 mod select_screen;
 mod views;
+mod world_screen;
 
 use canastra_data::GameData;
 use canastra_data::npc::Race;
@@ -313,6 +314,7 @@ impl Lobby {
                 self.player = Some(world.character.id);
                 self.in_world.clear();
                 self.in_world.insert(world.character.id, Presence::new(world));
+                self.bind_vitals(screen);
                 screen.show(WORLD_SCREEN);
                 String::new()
             }

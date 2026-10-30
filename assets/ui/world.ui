@@ -2,6 +2,20 @@
     <column id="hud">
         <label class="hud-name" bind="world.character"/>
         <label class="hud-line" bind="world.detail" text=""/>
+        <column class="gauges">
+            <row class="gauge">
+                <row class="fill cp" fills="world.cp"/>
+                <label class="gauge-text" bind="world.cp-points" text=""/>
+            </row>
+            <row class="gauge">
+                <row class="fill hp" fills="world.hp"/>
+                <label class="gauge-text" bind="world.hp-points" text=""/>
+            </row>
+            <row class="gauge">
+                <row class="fill mp" fills="world.mp"/>
+                <label class="gauge-text" bind="world.mp-points" text=""/>
+            </row>
+        </column>
         <label class="hud-line" bind="app.status" text=""/>
     </column>
     <label id="version" bind="app.version" text="?"/>

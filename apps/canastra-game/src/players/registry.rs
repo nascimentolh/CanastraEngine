@@ -182,7 +182,7 @@ fn within_view(one: [i32; 3], other: [i32; 3]) -> bool {
 #[cfg(test)]
 mod tests {
     use canastra_data::id::ClassId;
-    use canastra_protocol::game::{Appearance, CharacterSummary, Sex};
+    use canastra_protocol::game::{Appearance, CharacterSummary, Sex, Vitals};
     use tokio::sync::mpsc::Receiver;
 
     use super::*;
@@ -197,7 +197,7 @@ mod tests {
             level: 1,
             gear: Vec::new(),
         };
-        InWorld { character, position: at, heading: 0 }
+        InWorld { character, position: at, heading: 0, vitals: Vitals::default() }
     }
 
     fn enter(registry: &Registry, id: i64, at: [i32; 3]) -> Receiver<GameServer> {

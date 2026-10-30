@@ -208,3 +208,32 @@ fn read(folder: &Path, markup: &str) -> Result<(Element, StyleSheet), String> {
     let sheet = canastra_ui::parse_stylesheet(&read(STYLESHEET)?).map_err(|error| format!("{STYLESHEET}: {error}"))?;
     Ok((ui, sheet))
 }
+
+#[cfg(test)]
+mod tests {
+    use canastra_ui::TextStyle;
+
+    use super::*;
+
+    /// Every character is 7 by 14 pixels, unwrapped, so a screen lays out without fonts.
+    struct Monospace;
+
+    impl TextMeasure for Monospace {
+        fn measure(&mut self, text: &str, _style: &TextStyle, _max_width: Option<f32>) -> (f32, f32) {
+            (text.chars().count() as f32 * 7.0, 14.0)
+        }
+    }
+
+    /// The screens are read at runtime, so a mistyped property or tag in them only shows when the client
+    /// opens them. Laying each one out here says so at once.
+    #[test]
+    fn every_shipped_screen_parses_and_lays_out() {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/ui");
+        for markup in ["login.ui", "servers.ui", "characters.ui", "create.ui", "delete.ui", "world.ui"] {
+            let mut screen = Screen::load(folder.clone(), markup).unwrap_or_else(|error| panic!("{markup}: {error}"));
+            screen.set("world.hp".into(), "50%".into());
+            screen.layout([1280.0, 720.0], &mut Monospace);
+            assert!(!screen.frame.draws.is_empty(), "{markup} drew nothing");
+        }
+    }
+}

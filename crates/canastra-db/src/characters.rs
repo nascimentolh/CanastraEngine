@@ -2,7 +2,7 @@
 
 use canastra_data::class::InitialItem;
 use canastra_data::id::{ClassId, ItemId};
-use canastra_protocol::game::{Appearance, CharacterId, CharacterSummary, InWorld, Sex};
+use canastra_protocol::game::{Appearance, CharacterId, CharacterSummary, Sex};
 use canastra_protocol::{AccountId, ServerId};
 
 use crate::{Database, Error};
@@ -107,24 +107,22 @@ impl Database {
         Ok(rows.into_iter().map(|row| summary(row).0).collect())
     }
 
-    /// The account's character `id` on `server` and where it stands; `None` when that character is not the
-    /// account's on this server.
+    /// The account's character `id` on `server`, where it stands and which way it faces; `None` when that
+    /// character is not the account's on this server. What it has left to fight with is not stored: the
+    /// server fills that in from the game data when the character enters the world.
     pub async fn character(
         &self,
         account: AccountId,
         server: ServerId,
         id: CharacterId,
-    ) -> Result<Option<InWorld>, Error> {
+    ) -> Result<Option<(CharacterSummary, [i32; 3], i32)>, Error> {
         let row: Option<Row> = sqlx::query_as(characters!(" AND c.id = $3"))
             .bind(account.0)
             .bind(server.0.cast_signed())
             .bind(id.0)
             .fetch_optional(&self.pool)
             .await?;
-        Ok(row.map(|row| {
-            let (character, position, heading) = summary(row);
-            InWorld { character, position, heading }
-        }))
+        Ok(row.map(summary))
     }
 
     /// Stores where a character stands and which way it faces, as it leaves the world.
@@ -214,12 +212,12 @@ mod tests {
         assert_eq!(names, [name, second]);
         assert_eq!(stored[0].gear, [ItemId(2369)], "only what is worn and unexpired comes back");
         let entered = database.character(account, server, id).await.unwrap().expect("the account's own character");
-        assert_eq!(entered.position, [1, 2, 3], "a character enters the world where it was left");
-        assert_eq!(entered.heading, 0, "and facing the way it was created");
+        assert_eq!(entered.1, [1, 2, 3], "a character enters the world where it was left");
+        assert_eq!(entered.2, 0, "and facing the way it was created");
         assert!(database.character(other, server, id).await.unwrap().is_none(), "another account cannot enter as it");
         database.place_character(id, [10, 20, 30], 16_384).await.unwrap();
         let moved = database.character(account, server, id).await.unwrap().expect("the character");
-        assert_eq!((moved.position, moved.heading), ([10, 20, 30], 16_384), "a character stays where it left off");
+        assert_eq!((moved.1, moved.2), ([10, 20, 30], 16_384), "a character stays where it left off");
         assert!(!database.delete_character(other, server, id).await.unwrap());
         assert!(database.delete_character(account, server, id).await.unwrap());
         assert_eq!(database.characters(account, server).await.unwrap().len(), 1);

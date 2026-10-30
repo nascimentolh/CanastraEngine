@@ -55,6 +55,9 @@ pub struct Element {
     pub tip: Option<String>,
     /// Data key that puts the element in `:checked` while it holds `true`, e.g. the selected item of a list.
     pub checked: Option<String>,
+    /// Data key of how full the element is, a percentage such as `62%`, which becomes its width in place of
+    /// the one its style gives, e.g. the filled part of a health bar.
+    pub fills: Option<String>,
     /// Action name reported when the element is clicked, or when Enter is pressed in an input.
     pub action: Option<String>,
     /// Text an empty input shows.
@@ -82,6 +85,7 @@ impl Element {
             text: None,
             bind: None,
             checked: None,
+            fills: None,
             show: None,
             tip: None,
             action: None,
@@ -118,6 +122,7 @@ fn element(node: Node<'_, '_>) -> Result<Element, UiError> {
             "bind" => element.bind = Some(value),
             "action" => element.action = Some(value),
             "checked" => element.checked = Some(value),
+            "fills" => element.fills = Some(value),
             "show" => element.show = Some(value),
             "tip" => element.tip = Some(value),
             "src" => element.src = Some(value),
@@ -172,5 +177,7 @@ mod tests {
             parse_markup(r#"<ui><input bind="login.password" type="password" placeholder="Password"/></ui>"#).unwrap();
         assert!(ui.children[0].password && ui.children[0].placeholder.as_deref() == Some("Password"));
         assert!(parse_markup(r#"<ui><input type="date"/></ui>"#).is_err());
+        let ui = parse_markup(r#"<ui><row fills="world.hp"/></ui>"#).unwrap();
+        assert_eq!(ui.children[0].fills.as_deref(), Some("world.hp"));
     }
 }

@@ -145,6 +145,10 @@ impl Pass<'_> {
         for declaration in self.sheet.cascade(element, states) {
             apply(declaration, &mut style, &mut computed);
         }
+        // How full a bar is comes from the data, so it wins over the width its style gives.
+        if let Some(part) = element.fills.as_deref().and_then(bindings).as_deref().and_then(portion) {
+            style.size.width = Dimension::percent(part);
+        }
         let (paint, moving) = self.transitions.paint(index, &computed.paint, computed.transition, self.state.time);
         computed.paint = paint;
         self.animating |= moving;
@@ -210,15 +214,16 @@ fn instantiate(element: &Element, list: &str, index: usize) -> Element {
         Some(field) => format!("{list}.{index}.{field}"),
         None => key.clone(),
     };
-    let (bind, show, tip, checked) = (
+    let (bind, show, tip, checked, fills) = (
         element.bind.as_ref().map(item),
         element.show.as_ref().map(item),
         element.tip.as_ref().map(item),
         element.checked.as_ref().map(item),
+        element.fills.as_ref().map(item),
     );
     let action = element.action.as_ref().map(|action| action.replace("{index}", &index.to_string()));
     let children = element.children.iter().map(|child| instantiate(child, list, index)).collect();
-    Element { bind, show, tip, checked, action, children, ..element.clone() }
+    Element { bind, show, tip, checked, fills, action, children, ..element.clone() }
 }
 
 pub(crate) fn default_style(tag: Tag) -> Style {
@@ -272,6 +277,12 @@ pub(crate) fn apply(declaration: &Declaration, style: &mut Style, computed: &mut
         Declaration::BorderImage(source, inset) => computed.border_image = Some((source.clone(), *inset)),
         Declaration::Transition(seconds) => computed.transition = *seconds,
     }
+}
+
+/// A percentage such as `62%` as a fraction of one, or `None` when the value is not one.
+fn portion(value: &str) -> Option<f32> {
+    let percent: f32 = value.trim().strip_suffix('%')?.trim().parse().ok()?;
+    Some((percent / 100.0).clamp(0.0, 1.0))
 }
 
 fn offset(length: Length) -> LengthPercentageAuto {
@@ -568,6 +579,34 @@ mod tests {
         let str_index = frame(None).hits[0].element;
         assert_eq!(texts(&frame(None)), ["STR", "DEX"]);
         assert!(texts(&frame(Some(str_index))).contains(&"Strength raises P. Atk.".to_owned()));
+    }
+
+    #[test]
+    fn a_bar_is_as_wide_as_its_binding_is_full() {
+        let ui = parse_markup(r#"<ui><row class="gauge"><row class="fill" fills="world.hp"/></row></ui>"#).unwrap();
+        let sheet =
+            parse_stylesheet(".gauge { width: 200px; height: 12px } .fill { height: 100%; background: #ff0000 }")
+                .unwrap();
+        let filled = |hp: &str| {
+            let bindings = |key: &str| (key == "world.hp" && !hp.is_empty()).then(|| hp.to_owned());
+            let frame = build(
+                &ui,
+                &sheet,
+                [800.0, 600.0],
+                UiState::default(),
+                &mut Transitions::default(),
+                &mut Monospace,
+                &bindings,
+            )
+            .unwrap();
+            let Some(Draw::Rect { rect, .. }) = frame.draws.first() else { panic!("{:?}", frame.draws) };
+            *rect
+        };
+        let bar = |width| Rect { x: 0.0, y: 0.0, width, height: 12.0 };
+        assert_eq!(filled("62%"), bar(124.0));
+        assert_eq!(filled("0%"), bar(0.0), "a spent pool shows nothing");
+        assert_eq!(filled("150%"), bar(200.0), "more than full fills the bar and no more");
+        assert_eq!(filled(""), bar(0.0), "a bar whose binding is missing reads as spent");
     }
 
     #[test]

@@ -5,7 +5,9 @@ use canastra_data::class::{InitialItem, Origin, StartingClass};
 use canastra_data::npc::Sex as LineSex;
 use canastra_db::{Creation, Database, NewRecord};
 use canastra_net::Connection;
-use canastra_protocol::game::{CreationFailure, GameClient, GameServer, InWorld, NewCharacter, Sex};
+use canastra_protocol::game::{
+    CharacterSummary, CreationFailure, GameClient, GameServer, InWorld, NewCharacter, Pool, Sex, Vitals,
+};
 use canastra_protocol::{AccountId, ServerId};
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -46,15 +48,17 @@ impl Lobby {
                 }
                 GameClient::EnterWorld(id) => {
                     // The client only ever asks for a character it was listed, so another one is a broken client.
-                    let mut entered = self
-                        .database
-                        .character(account, self.server, id)
-                        .await?
-                        .ok_or("a player entered the world as a character that is not theirs")?;
+                    let (character, mut position, heading) =
+                        self.database
+                            .character(account, self.server, id)
+                            .await?
+                            .ok_or("a player entered the world as a character that is not theirs")?;
                     // A character enters standing on the ground the geodata puts under where it was left.
                     if let Some(geo) = geo {
-                        entered.position[2] = geo.spawn_height(entered.position);
+                        position[2] = geo.spawn_height(position);
                     }
+                    let vitals = vitals_of(&self.data, &character);
+                    let entered = InWorld { character, position, heading, vitals };
                     connection.send(&GameServer::Entered(entered.clone())).await?;
                     return Ok(entered);
                 }
@@ -89,6 +93,20 @@ impl Lobby {
             Creation::SlotsFull => Err(CreationFailure::SlotsFull),
         })
     }
+}
+
+/// What a character has to fight with as it enters the world: the pools its own class holds at its level,
+/// all of them full. A class the game data has nothing for leaves them empty.
+// ponytail: full on entering, and nothing spends them yet; store what is left and regenerate it once
+// anything can hurt a character.
+fn vitals_of(data: &GameData, character: &CharacterSummary) -> Vitals {
+    let level = usize::try_from(character.level).unwrap_or(1).max(1);
+    let Some(gain) = data.classes.get(&character.class).and_then(|class| class.levels.get(level - 1)) else {
+        return Vitals::default();
+    };
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "pools are a few thousand points")]
+    let points = |value: f64| value.max(0.0).round() as u32;
+    Vitals { hp: Pool::full(points(gain.hp)), mp: Pool::full(points(gain.mp)), cp: Pool::full(points(gain.cp)) }
 }
 
 /// Where `new` appears, one of its starting class's creation points picked by `roll`, and what it starts with.

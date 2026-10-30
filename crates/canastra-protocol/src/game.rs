@@ -71,6 +71,35 @@ pub struct InWorld {
     pub position: [i32; 3],
     /// Which way it faces, in Unreal rotation units: 65536 to a full turn, 0 along +X.
     pub heading: i32,
+    pub vitals: Vitals,
+}
+
+/// What a character has left to fight with: its life, its spirit, and the fight that stands in front of
+/// them, which blows spend before life does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Vitals {
+    pub hp: Pool,
+    pub mp: Pool,
+    pub cp: Pool,
+}
+
+/// One pool of a character, in whole points: what is left of it and the most it holds at its level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Pool {
+    pub now: u32,
+    pub most: u32,
+}
+
+impl Pool {
+    /// A pool with nothing spent out of it.
+    pub fn full(most: u32) -> Self {
+        Self { now: most, most }
+    }
+
+    /// How full the pool is, from 0 to 100; an empty pool reads as spent.
+    pub fn percent(self) -> u32 {
+        if self.most == 0 { 0 } else { u32::try_from(u64::from(self.now) * 100 / u64::from(self.most)).unwrap_or(100) }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

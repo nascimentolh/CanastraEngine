@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bump on any change to a message type; the `layout_is_frozen` tests fail until you do. Peers on other
 /// versions are refused, never adapted to.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 /// A game server, as the login server and its game servers know it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -64,7 +64,7 @@ mod tests {
             address: String::new(),
             capacity: 1,
         };
-        assert_eq!(encode(&register), [0, 7, 7, 0, 0, 1]);
+        assert_eq!(encode(&register), [0, 8, 7, 0, 0, 1]);
         assert_eq!(encode(&game::GameClient::EnterWorld(game::CharacterId(5))), [3, 10]);
         let refused = game::GameServer::Refused(game::Refusal::Reused);
         assert_eq!(encode(&refused), [2, 2]);
@@ -77,10 +77,18 @@ mod tests {
             level: 1,
             gear: vec![canastra_data::id::ItemId(57)],
         };
-        assert_eq!(
-            encode(&game::GameServer::Characters(vec![summary])),
-            [3, 1, 10, 3, b'A', b'n', b'a', 124, 1, 1, 2, 0, 1, 1, 57]
-        );
+        let listed = [3, 1, 10, 3, b'A', b'n', b'a', 124, 1, 1, 2, 0, 1, 1, 57];
+        assert_eq!(encode(&game::GameServer::Characters(vec![summary.clone()])), listed);
+        let entered = game::InWorld {
+            character: summary,
+            position: [1, -2, 3],
+            heading: 16_384,
+            vitals: game::Vitals { hp: game::Pool { now: 60, most: 80 }, ..game::Vitals::default() },
+        };
+        let mut expected = vec![5];
+        expected.extend(&listed[2..]);
+        expected.extend([2, 3, 6, 0x80, 0x80, 2, 60, 80, 0, 0, 0, 0]);
+        assert_eq!(encode(&game::GameServer::Entered(entered)), expected);
     }
 
     #[test]
