@@ -26,6 +26,8 @@ pub(crate) enum Request {
     Enter(CharacterId),
     /// Asks to walk to a place in the world.
     Move([i32; 3]),
+    /// Says something out loud in the world.
+    Say(String),
 }
 
 /// What the network reports back, as window events.
@@ -54,6 +56,11 @@ pub(crate) enum Reply {
     Moving {
         character: CharacterId,
         walk: Move,
+    },
+    /// Someone close enough to be heard said something.
+    Said {
+        from: String,
+        text: String,
     },
 }
 

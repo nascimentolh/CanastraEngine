@@ -2,7 +2,8 @@
 
 use canastra_protocol::game::{CharacterId, Pool};
 
-use super::Lobby;
+use super::{HEARD, Lobby};
+use crate::network::Request;
 use crate::screen::Screen;
 
 impl Lobby {
@@ -52,6 +53,40 @@ impl Lobby {
         bind_pool(screen, "target.hp", presence.shown.vitals.hp);
     }
 }
+
+impl Lobby {
+    /// Says out loud what the player typed into the chat line, and leaves the line empty.
+    pub(super) fn say(&mut self, screen: &mut Screen) {
+        let text = screen.value(CHAT_LINE).trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        screen.set(CHAT_LINE.into(), String::new());
+        if let Ok(network) = &self.network {
+            network.send(Request::Say(text));
+        }
+    }
+
+    /// Takes a line someone said into the chat log, keeping the last `HEARD` of them.
+    pub(super) fn heard(&mut self, from: &str, text: &str, screen: &mut Screen) {
+        self.chat.push(format!("{from}: {text}"));
+        if self.chat.len() > HEARD {
+            self.chat.remove(0);
+        }
+        self.bind_chat(screen);
+    }
+
+    /// Shows the chat log, oldest line first.
+    pub(super) fn bind_chat(&self, screen: &mut Screen) {
+        screen.set("chat.len".into(), self.chat.len().to_string());
+        for (index, line) in self.chat.iter().enumerate() {
+            screen.set(format!("chat.{index}.text"), line.clone());
+        }
+    }
+}
+
+/// The data key the chat line is typed into.
+const CHAT_LINE: &str = "chat.line";
 
 /// Shows one pool under `key`: how full it is, which is how wide its bar is drawn, and the points behind it.
 fn bind_pool(screen: &mut Screen, key: &str, pool: Pool) {

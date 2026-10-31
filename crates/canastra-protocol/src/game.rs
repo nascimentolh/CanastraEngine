@@ -24,6 +24,8 @@ pub enum GameClient {
     EnterWorld(CharacterId),
     /// Asks to walk to a place in the world.
     MoveTo([i32; 3]),
+    /// Says something out loud, for whoever stands close enough to hear it.
+    Say(String),
 }
 
 // A granted walk carries a speed, which is a float, so these messages compare but do not sort.
@@ -50,6 +52,12 @@ pub enum GameServer {
     Moving {
         character: CharacterId,
         walk: Move,
+    },
+    /// A character close enough to be heard said something. The speaker is named here, so a client can show
+    /// the line without holding on to whoever has since walked out of its view.
+    Said {
+        from: String,
+        text: String,
     },
 }
 

@@ -32,11 +32,8 @@ impl Session {
     ) -> Result<Option<Reply>> {
         match request {
             Request::Login { account, password } => self.login(server, account, password).await.map(Some),
-            Request::Move(to) => {
-                let world = self.world.as_mut().ok_or("not in the world")?;
-                world.send(&GameClient::MoveTo(to)).await?;
-                Ok(None)
-            }
+            Request::Move(to) => self.in_world(GameClient::MoveTo(to)).await,
+            Request::Say(text) => self.in_world(GameClient::Say(text)).await,
             Request::Join(entry) => {
                 let login = self.login.as_mut().ok_or("not logged in")?;
                 login.send(&LoginClient::RequestTicket { server: entry.id }).await?;
@@ -87,6 +84,13 @@ impl Session {
         }
     }
 
+    /// Sends what the player does in the world, which the server answers only by telling everyone there.
+    async fn in_world(&mut self, message: GameClient) -> Result<Option<Reply>> {
+        let world = self.world.as_mut().ok_or("not in the world")?;
+        world.send(&message).await?;
+        Ok(None)
+    }
+
     /// Sends a change to the joined server's characters and waits for the list after it.
     async fn change(&mut self, message: GameClient) -> Result<Reply> {
         let game = self.game.as_mut().ok_or("not on a game server")?;
@@ -122,6 +126,7 @@ fn heard(told: GameServer) -> Reply {
         GameServer::Moving { character, walk } => Reply::Moving { character, walk },
         GameServer::Appears(who) => Reply::Appears(who),
         GameServer::Vanishes(character) => Reply::Vanishes(character),
+        GameServer::Said { from, text } => Reply::Said { from, text },
         GameServer::Characters(list) => Reply::Characters { list, failure: None },
         other => Reply::Failed(format!("the world said {other:?}")),
     }

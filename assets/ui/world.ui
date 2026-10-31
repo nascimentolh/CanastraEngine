@@ -18,6 +18,12 @@
         </column>
         <label class="hud-line" bind="app.status" text=""/>
     </column>
+    <column id="chat">
+        <column class="chat-log" repeat="chat">
+            <label class="chat-line" bind="item.text" text=""/>
+        </column>
+        <input class="chat-line-input" bind="chat.line" action="say" placeholder="Press Enter to speak"/>
+    </column>
     <row id="target-dock" show="target.shown">
         <column id="target">
             <label class="target-name" bind="target.name" text=""/>

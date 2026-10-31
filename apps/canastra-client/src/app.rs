@@ -187,11 +187,11 @@ impl Running {
             Key::Named(NamedKey::Escape) => self.run(event_loop, "cancel"),
             Key::Named(NamedKey::Tab) => self.screen.focus_next(self.modifiers.shift_key()),
             Key::Named(NamedKey::Backspace) => self.screen.backspace(),
-            Key::Named(NamedKey::Enter) => {
-                if let Some(action) = self.screen.submit() {
-                    self.run(event_loop, &action);
-                }
-            }
+            Key::Named(NamedKey::Enter) => match self.screen.submit() {
+                Some(action) => self.run(event_loop, &action),
+                // Enter outside an input takes the player to the first one, which in the world is the chat line.
+                None => self.screen.focus_next(false),
+            },
             _ => {
                 if let Some(text) = &event.text {
                     self.screen.type_text(text);

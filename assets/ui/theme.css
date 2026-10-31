@@ -161,6 +161,11 @@ button:hover { color: #fff3d0; background: linear-gradient(#6d5838, #372c1c); bo
 }
 .target-name { font-family: Cinzel; font-size: 13px; font-weight: 700; color: #f0dcaa }
 .target-line { font-size: 10px; color: #a9987a }
+/* Chat in the corner H5 keeps it in: what was said above the line it is typed on. */
+#chat { position: absolute; left: 18px; bottom: 18px; width: 380px; gap: 4px }
+.chat-log { gap: 1px }
+.chat-line { font-size: 12px; color: #d9d0bb }
+.chat-line-input { font-size: 12px }
 
 #version { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: #6b6150 }
 

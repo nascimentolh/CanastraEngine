@@ -86,6 +86,19 @@ impl Registry {
         }
     }
 
+    /// Passes on what a character said to everyone who can see where it stands, under the name it carries
+    /// there, so a listener needs nothing of the speaker to show the line.
+    pub(crate) fn says(&self, character: CharacterId, text: &str) {
+        let speaker = self
+            .read()
+            .get(&character)
+            .map(|player| (player.presence.character.name.clone(), player.presence.position));
+        let Some((from, at)) = speaker else { return };
+        for listener in self.around(at) {
+            self.tell(listener, GameServer::Said { from: from.clone(), text: text.to_owned() });
+        }
+    }
+
     /// Brings every player's view up to date: characters that came within sight are shown to it, and those
     /// that went out of sight are taken away.
     pub(crate) fn follow(&self) {
@@ -245,6 +258,18 @@ mod tests {
         let heard: Vec<GameServer> = std::iter::from_fn(|| arrived.try_recv().ok()).collect();
         assert!(heard.iter().any(|told| matches!(told, GameServer::Appears(seen) if seen.position == [100, 0, 0])));
         assert!(heard.contains(&GameServer::Moving { character: CharacterId(1), walk }));
+    }
+
+    #[tokio::test]
+    async fn speech_reaches_whoever_can_see_the_speaker() {
+        let registry = Registry::default();
+        let mut near = enter(&registry, 1, [0, 0, 0]);
+        let mut far = enter(&registry, 2, [VIEW * 3, 0, 0]);
+        registry.says(CharacterId(1), "hello");
+        let said = GameServer::Said { from: "Hero1".into(), text: "hello".into() };
+        assert_eq!(near.try_recv().ok(), Some(said), "a speaker hears itself, as H5 shows it");
+        assert!(far.try_recv().is_err(), "speech out of sight is not heard");
+        registry.says(CharacterId(9), "nobody");
     }
 
     #[tokio::test]

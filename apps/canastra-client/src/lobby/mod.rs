@@ -38,6 +38,8 @@ const WORLD_SCREEN: &str = "world.ui";
 const LOBBY_MUSIC: &str = "intro";
 /// The settings tabs the options window shows, the first one open when it opens.
 const TABS: [&str; 2] = ["audio", "graphics"];
+/// Lines of chat the log keeps; older ones are forgotten.
+const HEARD: usize = 8;
 
 pub(crate) struct Lobby {
     /// The network thread, or why it could not start.
@@ -62,6 +64,8 @@ pub(crate) struct Lobby {
     player: Option<CharacterId>,
     /// What the player has its eye on in the world, among those it can see.
     target: Option<CharacterId>,
+    /// The last lines said around the player, oldest first.
+    chat: Vec<String>,
     /// Everyone the player can see in the world, its own character among them, in a steady order.
     in_world: BTreeMap<CharacterId, Presence>,
 }
@@ -149,6 +153,7 @@ impl Lobby {
             options: None,
             player: None,
             target: None,
+            chat: Vec::new(),
             in_world: BTreeMap::new(),
         }
     }
@@ -284,6 +289,7 @@ impl Lobby {
                 self.bind_options(screen);
             }
             ("cancel", _) => self.drop_target(screen),
+            ("say", _) => self.say(screen),
             ("back", _) => {
                 screen.status.clear();
                 screen.show(LOGIN_SCREEN);
@@ -319,8 +325,10 @@ impl Lobby {
                 self.in_world.clear();
                 self.in_world.insert(world.character.id, Presence::new(world));
                 self.target = None;
+                self.chat.clear();
                 self.bind_vitals(screen);
                 self.bind_target(screen);
+                self.bind_chat(screen);
                 screen.show(WORLD_SCREEN);
                 String::new()
             }
@@ -333,6 +341,10 @@ impl Lobby {
                     self.in_world.remove(&character);
                     self.target_vanishes(character, screen);
                 }
+                String::new()
+            }
+            Reply::Said { from, text } => {
+                self.heard(&from, &text, screen);
                 String::new()
             }
             Reply::Moving { character, walk } => {

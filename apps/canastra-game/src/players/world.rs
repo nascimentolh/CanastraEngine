@@ -30,6 +30,11 @@ const WRITE: Duration = Duration::from_secs(10);
 const FOLLOW: Duration = Duration::from_millis(250);
 /// How often a character's place is written down while it plays.
 const SAVE: Duration = Duration::from_secs(300);
+/// The longest line a player may say; H5's own chat box stops the player there too.
+const LINE: usize = 100;
+/// How often a player may say something, so one voice cannot fill everyone's outbox around it.
+// ponytail: one line every half second, enough for typing; a channel of its own needs its own limit.
+const SAYS: Duration = Duration::from_millis(500);
 
 /// Runs the world for one player: what it asks for and what the world tells it travel apart, so the world
 /// never waits on this one connection. Wherever the character stands when it leaves is where it stands again
@@ -74,6 +79,7 @@ async fn steer<S: AsyncRead + AsyncWrite + Unpin>(
         tokio::select! {
             ask = asks.recv() => match ask {
                 Some(GameClient::MoveTo(to)) => walk(player, players.geo.as_ref(), &players.world, to),
+                Some(GameClient::Say(text)) => say(player, &players.world, &text),
                 Some(other) => return Err(format!("a player in the world sent {other:?}").into()),
                 None => return Ok(()),
             },
@@ -107,6 +113,17 @@ fn walk(player: &mut Player, geo: Option<&Geo>, world: &Registry, to: [i32; 3]) 
     world.walks(player.character, walk);
 }
 
+/// Passes on what a player says to everyone around it. A blank line says nothing, a long one is cut to
+/// what the chat box holds, and one said too soon after the last is dropped.
+fn say(player: &mut Player, world: &Registry, text: &str) {
+    let text: String = text.trim().chars().filter(|letter| !letter.is_control()).take(LINE).collect();
+    if text.is_empty() || player.said.is_some_and(|said| said.elapsed() < SAYS) {
+        return;
+    }
+    player.said = Some(Instant::now());
+    world.says(player.character, &text);
+}
+
 /// A character in the world, walking in a straight line from where it was to where it is bound.
 struct Player {
     character: CharacterId,
@@ -118,6 +135,8 @@ struct Player {
     speed: f32,
     /// When the walk from `from` began.
     since: Instant,
+    /// When the player last said something, so speech cannot be poured out faster than `SAYS`.
+    said: Option<Instant>,
 }
 
 impl Player {
@@ -130,6 +149,7 @@ impl Player {
             heading: entered.heading,
             speed,
             since: Instant::now(),
+            said: None,
         }
     }
 
@@ -181,7 +201,28 @@ mod tests {
     use super::*;
 
     fn standing(speed: f32) -> Player {
-        Player { character: CharacterId(1), from: [0.0; 3], to: [0.0; 3], heading: 0, speed, since: Instant::now() }
+        Player {
+            character: CharacterId(1),
+            from: [0.0; 3],
+            to: [0.0; 3],
+            heading: 0,
+            speed,
+            since: Instant::now(),
+            said: None,
+        }
+    }
+
+    #[test]
+    fn a_player_is_not_heard_twice_over_nor_said_to_say_nothing() {
+        let world = Registry::default();
+        let mut player = standing(100.0);
+        // Nobody is in the registry, so nothing is passed on; what matters is what the limits let through.
+        say(&mut player, &world, "   ");
+        assert!(player.said.is_none(), "a blank line is not speech");
+        say(&mut player, &world, "hello");
+        let first = player.said.expect("the line was said");
+        say(&mut player, &world, "again");
+        assert_eq!(player.said, Some(first), "a line said too soon after the last is dropped");
     }
 
     #[test]

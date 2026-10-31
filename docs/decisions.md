@@ -243,3 +243,9 @@ Login, then server and character selection, then walking in the world, with a ba
      and shows the life it has left at the top of the window; Escape lets go of it, and so does losing sight
      of it. The target is the client's own, since nothing is aimed at one yet, and a click that lands on no
      character still walks there.
+   - *2026-10-30:* players speak to whoever can see them. A line is said to the server, which trims it, cuts it
+     to the hundred characters H5's chat box holds, drops it when it comes sooner than half a second after the
+     last, and passes it to everyone around the speaker under the name it carries there, the speaker included.
+     The client keeps the last eight lines over the world and types on the line under them; Enter outside an
+     input goes to that line. Only speech that carries as far as sight does exists: shouts, trade and whispers
+     wait for channels of their own.
