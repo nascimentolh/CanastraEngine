@@ -66,6 +66,8 @@ pub(crate) struct Lobby {
     target: Option<CharacterId>,
     /// The last lines said around the player, oldest first.
     chat: Vec<String>,
+    /// The shortcut slot last pressed, which the bar marks.
+    shortcut: Option<usize>,
     /// Everyone the player can see in the world, its own character among them, in a steady order.
     in_world: BTreeMap<CharacterId, Presence>,
 }
@@ -154,6 +156,7 @@ impl Lobby {
             player: None,
             target: None,
             chat: Vec::new(),
+            shortcut: None,
             in_world: BTreeMap::new(),
         }
     }
@@ -290,6 +293,7 @@ impl Lobby {
             }
             ("cancel", _) => self.drop_target(screen),
             ("say", _) => self.say(screen),
+            ("shortcut", Some(slot)) => self.press_shortcut(slot, screen),
             ("back", _) => {
                 screen.status.clear();
                 screen.show(LOGIN_SCREEN);
@@ -329,6 +333,7 @@ impl Lobby {
                 self.bind_vitals(screen);
                 self.bind_target(screen);
                 self.bind_chat(screen);
+                self.bind_shortcuts(screen);
                 screen.show(WORLD_SCREEN);
                 String::new()
             }

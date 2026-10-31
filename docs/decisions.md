@@ -249,3 +249,6 @@ Login, then server and character selection, then walking in the world, with a ba
      The client keeps the last eight lines over the world and types on the line under them; Enter outside an
      input goes to that line. Only speech that carries as far as sight does exists: shouts, trade and whispers
      wait for channels of their own.
+   - *2026-10-30:* the shortcut bar stands where H5 keeps it, a slot per function key, and marks the slot a key
+     or a click lands on. A slot holds nothing: there is no inventory and no skill in the world to put in one,
+     so the bar is its shape and its keys only, and F5 keeps reloading the screen while the UI is worked on.

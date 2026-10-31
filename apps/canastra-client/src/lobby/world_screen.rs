@@ -87,6 +87,26 @@ impl Lobby {
 
 /// The data key the chat line is typed into.
 const CHAT_LINE: &str = "chat.line";
+/// Shortcut slots on the bar, one per function key, as H5 keeps them.
+pub(super) const SLOTS: usize = 12;
+
+impl Lobby {
+    /// Marks the slot the player pressed or clicked. Nothing can be put in a slot yet, so pressing one does
+    /// no more than say which key landed.
+    pub(super) fn press_shortcut(&mut self, slot: usize, screen: &mut Screen) {
+        self.shortcut = (slot < SLOTS).then_some(slot);
+        self.bind_shortcuts(screen);
+    }
+
+    /// Shows the bar: a slot per function key, with the one last pressed marked.
+    pub(super) fn bind_shortcuts(&self, screen: &mut Screen) {
+        screen.set("shortcuts.len".into(), SLOTS.to_string());
+        for slot in 0..SLOTS {
+            screen.set(format!("shortcuts.{slot}.key"), format!("F{}", slot + 1));
+            screen.set(format!("shortcuts.{slot}.held"), (self.shortcut == Some(slot)).to_string());
+        }
+    }
+}
 
 /// Shows one pool under `key`: how full it is, which is how wide its bar is drawn, and the points behind it.
 fn bind_pool(screen: &mut Screen, key: &str, pool: Pool) {

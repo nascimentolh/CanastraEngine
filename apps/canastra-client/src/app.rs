@@ -193,7 +193,11 @@ impl Running {
                 None => self.screen.focus_next(false),
             },
             _ => {
-                if let Some(text) = &event.text {
+                if let Key::Named(named) = &event.logical_key
+                    && let Some(slot) = shortcut_slot(*named)
+                {
+                    self.run(event_loop, &format!("shortcut:{slot}"));
+                } else if let Some(text) = &event.text {
                     self.screen.type_text(text);
                 }
             }
@@ -405,6 +409,27 @@ impl ApplicationHandler<Event> for App {
         let blink = self.running.as_ref().and_then(|running| running.screen.next_blink());
         event_loop.set_control_flow(blink.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
+}
+
+/// The shortcut slot a function key stands for: F1 is the first.
+// ponytail: F5 still reloads the screen while the UI is being worked on, so its slot answers to clicks only;
+// move the reload elsewhere once a slot can hold something.
+fn shortcut_slot(key: NamedKey) -> Option<usize> {
+    const KEYS: [NamedKey; 12] = [
+        NamedKey::F1,
+        NamedKey::F2,
+        NamedKey::F3,
+        NamedKey::F4,
+        NamedKey::F5,
+        NamedKey::F6,
+        NamedKey::F7,
+        NamedKey::F8,
+        NamedKey::F9,
+        NamedKey::F10,
+        NamedKey::F11,
+        NamedKey::F12,
+    ];
+    KEYS.iter().position(|function| *function == key)
 }
 
 /// A name drawn centered above the point `at`, in logical pixels, about as wide as its letters.

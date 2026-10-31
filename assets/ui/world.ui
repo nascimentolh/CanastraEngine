@@ -34,5 +34,12 @@
             <label class="target-line" bind="target.detail" text=""/>
         </column>
     </row>
+    <row id="shortcut-dock">
+        <row class="shortcuts" repeat="shortcuts">
+            <column class="slot" checked="item.held" action="shortcut:{index}">
+                <label class="slot-key" bind="item.key" text=""/>
+            </column>
+        </row>
+    </row>
     <label id="version" bind="app.version" text="?"/>
 </ui>

@@ -235,6 +235,7 @@ mod tests {
             screen.set("target.shown".into(), "true".into());
             screen.set("chat.len".into(), "2".into());
             screen.set("chat.0.text".into(), "Ana: hello".into());
+            screen.set("shortcuts.len".into(), "12".into());
             screen.layout([1280.0, 720.0], &mut Monospace);
             assert!(!screen.frame.draws.is_empty(), "{markup} drew nothing");
         }
